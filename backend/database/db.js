@@ -89,6 +89,8 @@ async function initDB() {
   const probColsResult = sqlDb.exec("PRAGMA table_info(problems)");
   const probCols = probColsResult.length > 0 ? probColsResult[0].values.map(r => r[1]) : [];
   if (!probCols.includes('provider')) sqlDb.exec("ALTER TABLE problems ADD COLUMN provider TEXT DEFAULT ''");
+  if (!probCols.includes('sample_input')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_input TEXT DEFAULT ''");
+  if (!probCols.includes('sample_output')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_output TEXT DEFAULT ''");
 
   const artColsResult = sqlDb.exec("PRAGMA table_info(articles)");
   const artCols = artColsResult.length > 0 ? artColsResult[0].values.map(r => r[1]) : [];

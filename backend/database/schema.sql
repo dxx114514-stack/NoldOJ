@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS problems (
   allowed_languages TEXT DEFAULT '[]',
   subtask_mode TEXT DEFAULT 'simple' CHECK(subtask_mode IN ('simple','advanced')),
   scoring_script TEXT DEFAULT '',
+  sample_input TEXT DEFAULT '',
+  sample_output TEXT DEFAULT '',
   is_public INTEGER DEFAULT 1,
   provider TEXT DEFAULT '',
   created_by INTEGER,
