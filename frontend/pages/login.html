@@ -12,28 +12,46 @@
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
   <div class="max-w-md mx-auto mt-16 px-4">
-    <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-lg p-8 border border-gray-100 dark:border-gray-700">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 border border-gray-100 dark:border-gray-700">
       <div class="text-center mb-8">
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">欢迎回来</h1>
-        <p class="text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-2">登录你的 WinOJ 账户</p>
+        <p class="text-gray-500 dark:text-gray-400 mt-2">登录你的 WinOJ 账户</p>
       </div>
       <div id="error" class="hidden mb-4 px-4 py-3 border-2 border-red-400 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-xl text-sm font-medium"></div>
       <form onsubmit="handleLogin(event)">
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">用户名</label>
-          <input id="username" type="text" required class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition dark:bg-gray-800 dark:text-white" placeholder="请输入用户名">
+          <input id="username" type="text" required class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition dark:bg-gray-700 dark:text-white" placeholder="请输入用户名">
         </div>
-        <div class="mb-6">
+        <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
-          <input id="password" type="password" required class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition dark:bg-gray-800 dark:text-white" placeholder="请输入密码">
+          <input id="password" type="password" required class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition dark:bg-gray-700 dark:text-white" placeholder="请输入密码">
         </div>
+        <div id="cfWidget" class="mb-4"></div>
         <button type="submit" id="loginBtn" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">登 录</button>
       </form>
-      <p class="text-center mt-6 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">还没有账号？<a href="/pages/register.html" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium">立即注册</a></p>
+      <p class="text-center mt-6 text-sm text-gray-500 dark:text-gray-400">还没有账号？<a href="/pages/register.html" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium">立即注册</a></p>
     </div>
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('');
+    let cfSiteKey = '';
+    async function loadTurnstile() {
+      try {
+        const data = await apiCall('GET', '/auth/turnstile-sitekey');
+        cfSiteKey = data.siteKey;
+        if (cfSiteKey) {
+          const script = document.createElement('script');
+          script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+          script.async = true;
+          script.onload = () => {
+            turnstile.render('#cfWidget', { sitekey: cfSiteKey, theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light' });
+          };
+          document.head.appendChild(script);
+        }
+      } catch {}
+    }
+    loadTurnstile();
     async function handleLogin(e) {
       e.preventDefault();
       const btn = document.getElementById('loginBtn');
@@ -41,9 +59,11 @@
       btn.disabled = true; btn.textContent = '登录中...';
       errDiv.classList.add('hidden');
       try {
+        const cfToken = cfSiteKey ? (turnstile.getResponse() || '') : '';
         const data = await apiCall('POST', '/auth/login', {
           username: document.getElementById('username').value,
-          password: document.getElementById('password').value
+          password: document.getElementById('password').value,
+          cf_turnstile_token: cfToken
         });
         setToken(data.access_token);
         setUser(data.user);
@@ -52,6 +72,7 @@
         errDiv.textContent = err.message || '登录失败';
         errDiv.classList.remove('hidden');
         btn.disabled = false; btn.textContent = '登 录';
+        if (cfSiteKey) turnstile.reset();
       }
     }
   </script>

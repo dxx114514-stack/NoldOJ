@@ -31,6 +31,9 @@ Desktop.ini
 .vscode/
 .idea/
 
+# Config with secrets
+config/cf.txt
+
 # Logs
 *.log
 

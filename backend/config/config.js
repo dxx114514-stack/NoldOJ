@@ -1,5 +1,22 @@
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
+
+function loadCfConfig() {
+  const cfPath = path.join(__dirname, '..', '..', 'config', 'cf.txt');
+  const result = { siteKey: '', secretKey: '' };
+  try {
+    const content = fs.readFileSync(cfPath, 'utf8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('TURNSTILE_SITE_KEY=')) result.siteKey = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('TURNSTILE_SECRET_KEY=')) result.secretKey = trimmed.split('=').slice(1).join('=');
+    }
+  } catch {}
+  return result;
+}
+
+const cf = loadCfConfig();
 
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
@@ -28,5 +45,9 @@ module.exports = {
     ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434/api/chat',
     ollamaModel: process.env.OLLAMA_MODEL || 'qwen3:1.7b',
     codeLengthLimit: parseInt(process.env.CODE_LENGTH_LIMIT || '131072')
+  },
+  turnstile: {
+    siteKey: cf.siteKey,
+    secretKey: cf.secretKey
   }
 };

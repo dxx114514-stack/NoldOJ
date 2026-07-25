@@ -10,6 +10,23 @@ const { createRateLimit } = require('../middleware/ratelimit');
 const router = express.Router();
 const registerRateLimit = createRateLimit({ windowMs: 3600000, max: 1 });
 
+async function verifyTurnstile(token, ip) {
+  if (!config.turnstile.secretKey) return true;
+  if (!token) return false;
+  try {
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${config.turnstile.secretKey}&response=${token}&remoteip=${ip || ''}`
+    });
+    const data = await res.json();
+    return data.success === true;
+  } catch (e) {
+    console.error('Turnstile verify error:', e.message);
+    return false;
+  }
+}
+
 function generateAccessToken(userId) {
   return jwt.sign({ userId }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry });
 }
@@ -22,10 +39,19 @@ function generateRefreshToken(userId) {
   return token;
 }
 
-router.post('/login', (req, res) => {
-  const { username, password } = req.body;
+router.get('/turnstile-sitekey', (req, res) => {
+  res.json({ siteKey: config.turnstile.siteKey || '' });
+});
+
+router.post('/login', async (req, res) => {
+  const { username, password, cf_turnstile_token } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
+  }
+
+  const cfOk = await verifyTurnstile(cf_turnstile_token, req.ip);
+  if (!cfOk) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '人机验证失败，请重试。' });
   }
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
@@ -50,11 +76,17 @@ router.post('/login', (req, res) => {
   });
 });
 
-router.post('/register', registerRateLimit, (req, res) => {
-  const { username, password, nickname } = req.body;
+router.post('/register', registerRateLimit, async (req, res) => {
+  const { username, password, nickname, cf_turnstile_token } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
   }
+
+  const cfOk = await verifyTurnstile(cf_turnstile_token, req.ip);
+  if (!cfOk) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '人机验证失败，请重试。' });
+  }
+
   if (username.length < 3 || username.length > 32) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username must be 3-32 characters.' });
   }
