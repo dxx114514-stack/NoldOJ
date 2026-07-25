@@ -11,7 +11,7 @@ const router = express.Router();
 const registerRateLimit = createRateLimit({ windowMs: 3600000, max: 1 });
 
 async function verifyTurnstile(token, ip) {
-  if (!config.turnstile.secretKey) return true;
+  if (!config.turnstile.enabled || !config.turnstile.secretKey) return true;
   if (!token) return false;
   try {
     const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {

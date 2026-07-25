@@ -4,11 +4,12 @@ const fs = require('fs');
 
 function loadCfConfig() {
   const cfPath = path.join(__dirname, '..', '..', 'config', 'cf.txt');
-  const result = { siteKey: '', secretKey: '' };
+  const result = { enabled: false, siteKey: '', secretKey: '' };
   try {
     const content = fs.readFileSync(cfPath, 'utf8');
     for (const line of content.split('\n')) {
       const trimmed = line.trim();
+      if (trimmed.startsWith('TURNSTILE_ENABLED=')) result.enabled = trimmed.split('=')[1] === 'true';
       if (trimmed.startsWith('TURNSTILE_SITE_KEY=')) result.siteKey = trimmed.split('=').slice(1).join('=');
       if (trimmed.startsWith('TURNSTILE_SECRET_KEY=')) result.secretKey = trimmed.split('=').slice(1).join('=');
     }
