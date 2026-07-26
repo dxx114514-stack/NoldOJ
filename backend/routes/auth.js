@@ -6,6 +6,7 @@ const db = require('../database/db');
 const config = require('../config/config');
 const { requireAuth } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
+const { generateCode, sendVerificationEmail, saveCode, verifyCode } = require('../services/email');
 
 const router = express.Router();
 const registerRateLimit = createRateLimit({ windowMs: 3600000, max: 1 });
@@ -43,6 +44,42 @@ router.get('/turnstile-sitekey', (req, res) => {
   res.json({ siteKey: config.turnstile.siteKey || '' });
 });
 
+const emailCodeRateLimit = createRateLimit({ windowMs: 60000, max: 3 });
+
+router.post('/send-code', emailCodeRateLimit, async (req, res) => {
+  const { email } = req.body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '请输入有效的邮箱地址。' });
+  }
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (existing) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '该邮箱已被注册。' });
+  }
+  const code = generateCode();
+  saveCode(email, code);
+  const sent = await sendVerificationEmail(email, code);
+  if (!sent) {
+    return res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: '验证码发送失败，请稍后重试。' });
+  }
+  res.json({ message: '验证码已发送。' });
+});
+
+router.post('/verify-code', (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '邮箱和验证码不能为空。' });
+  }
+  const ok = verifyCode(email, code);
+  if (!ok) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '验证码无效或已过期。' });
+  }
+  res.json({ message: '验证成功。' });
+});
+
+router.get('/email-enabled', (req, res) => {
+  res.json({ enabled: config.email.enabled });
+});
+
 router.post('/login', async (req, res) => {
   const { username, password, cf_turnstile_token } = req.body;
   if (!username || !password) {
@@ -77,7 +114,7 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/register', registerRateLimit, async (req, res) => {
-  const { username, password, nickname, cf_turnstile_token } = req.body;
+  const { username, password, nickname, email, email_code, cf_turnstile_token } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
   }
@@ -85,6 +122,23 @@ router.post('/register', registerRateLimit, async (req, res) => {
   const cfOk = await verifyTurnstile(cf_turnstile_token, req.ip);
   if (!cfOk) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '人机验证失败，请重试。' });
+  }
+
+  if (config.email.enabled) {
+    if (!email || !email_code) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '请先验证邮箱。' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '请输入有效的邮箱地址。' });
+    }
+    const emailExists = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (emailExists) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '该邮箱已被注册。' });
+    }
+    const codeOk = verifyCode(email, email_code);
+    if (!codeOk) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '验证码无效或已过期。' });
+    }
   }
 
   if (username.length < 3 || username.length > 32) {
@@ -99,7 +153,8 @@ router.post('/register', registerRateLimit, async (req, res) => {
   }
   const hash = bcrypt.hashSync(password, 10);
   const newId = db.findNextId('users');
-  db.prepare('INSERT INTO users (id, username, password_hash, nickname, role) VALUES (?, ?, ?, ?, ?)').run(newId, username, hash, nickname || username, 'user');
+  const emailVerified = config.email.enabled && email ? 1 : 0;
+  db.prepare('INSERT INTO users (id, username, password_hash, nickname, role, email, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, username, hash, nickname || username, 'user', email || '', emailVerified);
   const accessToken = generateAccessToken(newId);
   const refreshToken = generateRefreshToken(newId);
 

@@ -19,6 +19,24 @@ function loadCfConfig() {
 
 const cf = loadCfConfig();
 
+function loadEmailConfig() {
+  const emailPath = path.join(__dirname, '..', '..', 'config', 'email.txt');
+  const result = { enabled: false, apiKey: '', from: 'onboarding@resend.dev' };
+  try {
+    const content = fs.readFileSync(emailPath, 'utf8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('RESEND_API_KEY=')) result.apiKey = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('EMAIL_FROM=')) result.from = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('EMAIL_ENABLED=')) result.enabled = trimmed.split('=')[1] === 'true';
+    }
+    if (result.apiKey && result.apiKey !== 're_xxxxxxxxx') result.enabled = true;
+  } catch {}
+  return result;
+}
+
+const email = loadEmailConfig();
+
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
   jwt: {
@@ -50,5 +68,10 @@ module.exports = {
   turnstile: {
     siteKey: cf.siteKey,
     secretKey: cf.secretKey
+  },
+  email: {
+    enabled: email.enabled,
+    apiKey: email.apiKey,
+    from: email.from
   }
 };

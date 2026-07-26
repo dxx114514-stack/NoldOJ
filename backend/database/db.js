@@ -134,6 +134,8 @@ async function initDB() {
   if (!ideCols.includes('memory_used')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN memory_used INTEGER DEFAULT 0");
 
   if (!cols.includes('submit_lock_exempt')) sqlDb.exec("ALTER TABLE users ADD COLUMN submit_lock_exempt INTEGER DEFAULT 0");
+  if (!cols.includes('email')) sqlDb.exec("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''");
+  if (!cols.includes('email_verified')) sqlDb.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0");
 
   const tagsTableExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'");
   if (tagsTableExists.length === 0 || tagsTableExists[0].values.length === 0) {
@@ -154,6 +156,19 @@ async function initDB() {
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_tags_tag ON problem_tags(tag_id)');
   }
   saveDB();
+
+  const emailCodesExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='email_codes'");
+  if (emailCodesExists.length === 0 || emailCodesExists[0].values.length === 0) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS email_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`);
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_email_codes_email ON email_codes(email)');
+  }
 
   const langCount = prepare('SELECT COUNT(*) as c FROM languages').get()?.c || 0;
   if (langCount === 0) {

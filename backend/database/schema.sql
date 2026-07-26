@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
+  email TEXT DEFAULT '',
   password_hash TEXT NOT NULL,
   nickname TEXT DEFAULT '',
   role TEXT DEFAULT 'user' CHECK(role IN ('user','teacher','admin','su')),
@@ -231,3 +232,14 @@ CREATE TABLE IF NOT EXISTS problem_tags (
 
 CREATE INDEX IF NOT EXISTS idx_problem_tags_problem ON problem_tags(problem_id);
 CREATE INDEX IF NOT EXISTS idx_problem_tags_tag ON problem_tags(tag_id);
+
+CREATE TABLE IF NOT EXISTS email_codes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL,
+  code TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_codes_email ON email_codes(email);

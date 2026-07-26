@@ -33,6 +33,7 @@ Desktop.ini
 
 # Config with secrets
 config/cf.txt
+config/email.txt
 
 # Logs
 *.log
