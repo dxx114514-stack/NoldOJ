@@ -219,8 +219,9 @@ router.post('/', requireAuth, requireRole('su'), (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username already exists.' });
   }
   const hash = bcrypt.hashSync(password, 10);
-  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run(username, hash, nickname || username, role || 'user');
-  res.status(201).json({ message: 'User created.', user: { id: result.lastInsertRowid, username, role: role || 'user' } });
+  const newId = db.findNextId('users');
+  db.prepare('INSERT INTO users (id, username, password_hash, nickname, role) VALUES (?, ?, ?, ?, ?)').run(newId, username, hash, nickname || username, role || 'user');
+  res.status(201).json({ message: 'User created.', user: { id: newId, username, role: role || 'user' } });
 });
 
 router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {

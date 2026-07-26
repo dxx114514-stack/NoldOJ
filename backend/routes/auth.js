@@ -98,9 +98,10 @@ router.post('/register', registerRateLimit, async (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username already exists.' });
   }
   const hash = bcrypt.hashSync(password, 10);
-  const result = db.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run(username, hash, nickname || username, 'user');
-  const accessToken = generateAccessToken(result.lastInsertRowid);
-  const refreshToken = generateRefreshToken(result.lastInsertRowid);
+  const newId = db.findNextId('users');
+  db.prepare('INSERT INTO users (id, username, password_hash, nickname, role) VALUES (?, ?, ?, ?, ?)').run(newId, username, hash, nickname || username, 'user');
+  const accessToken = generateAccessToken(newId);
+  const refreshToken = generateRefreshToken(newId);
 
   res.cookie('refresh_token', refreshToken, {
     httpOnly: true,
@@ -111,7 +112,7 @@ router.post('/register', registerRateLimit, async (req, res) => {
 
   res.status(201).json({
     access_token: accessToken,
-    user: { id: result.lastInsertRowid, username, nickname: nickname || username, role: 'user', rating: 1500, preferred_language: '' }
+    user: { id: newId, username, nickname: nickname || username, role: 'user', rating: 1500, preferred_language: '' }
   });
 });
 
