@@ -81,7 +81,7 @@ user（用户） < teacher（教师） < admin（管理员） < su（超级管�
 
 ### POST /auth/register — 注册
 
-无需认证。
+无需认证。**限流**：单个 IP 每小时仅可注册 1 次。
 
 **请求体：**
 ```json
@@ -131,7 +131,7 @@ user（用户） < teacher（教师） < admin（管理员） < su（超级管�
 
 ### POST /problems — 创建题目
 
-需教师权限。支持 `provider`（提供者）字段。
+需教师权限。支持 `provider`（提供者）、`sample_input`（输入样例）、`sample_output`（输出样例）字段。
 
 ### PUT /problems/:id — 更新题目
 
@@ -267,6 +267,8 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需认证，有速率限制。源代码上限 128KB (131072 字符)。
 
+**提交锁**：有未完成提交（pending_review/pending/running/compiling/judging）时禁止再次提交，返回 429。超级管理员和特权用户（`submit_lock_exempt`）豁免。
+
 **提交流程：**
 1. 创建提交记录，状态为 `pending_review`
 2. 立即返回 `submission_id`
@@ -400,6 +402,15 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需超级管理员权限。
 
+### PUT /users/:id/submit-lock-exempt — 设置提交锁豁免
+
+需超级管理员权限。设置用户免提交等待限制。
+
+**请求体：**
+```json
+{ "submit_lock_exempt": true }
+```
+
 ### POST /users/sudo-login — 免密登录
 
 需超级管理员权限。以指定用户身份生成 Token。
@@ -414,9 +425,11 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 ---
 
-## 6. 语言管理模块 `/languages`
+## 6. 语言管理模块 `/languages`（仅超级管理员）
 
 ### GET /languages — 语言列表
+
+无需认证。
 
 ### POST /languages — 添加语言
 
@@ -424,7 +437,11 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 ### PUT /languages/:id — 更新语言
 
+需超级管理员权限。
+
 ### DELETE /languages/:id — 删除语言
+
+需超级管理员权限。
 
 ---
 
