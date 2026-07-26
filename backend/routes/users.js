@@ -102,7 +102,7 @@ router.get('/', requireAuth, requireRole('admin'), (req, res) => {
     params.push(role);
   }
   const total = db.prepare(`SELECT COUNT(*) as c FROM users ${where}`).get(...params).c;
-  const users = db.prepare(`SELECT id, username, nickname, role, banned, rating, hide_rating, created_at FROM users ${where} ORDER BY id LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
+  const users = db.prepare(`SELECT id, username, nickname, email, role, banned, rating, hide_rating, created_at FROM users ${where} ORDER BY id LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
   res.json({ total, page: parseInt(page), limit: parseInt(limit), users });
 });
 
