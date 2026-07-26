@@ -52,6 +52,8 @@
             turnstile.render('#cfWidget', { sitekey: cfSiteKey, theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light' });
           };
           document.head.appendChild(script);
+        } else {
+          document.getElementById('cfWidget').style.display = 'none';
         }
       } catch {}
     }
