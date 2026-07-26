@@ -119,15 +119,6 @@
       btn.disabled = true; btn.textContent = '创建中...';
       errDiv.classList.add('hidden');
       try {
-        if (emailEnabled) {
-          const email = document.getElementById('email').value.trim();
-          const code = document.getElementById('emailCode').value.trim();
-          if (!email || !code) {
-            throw { message: '请填写邮箱并验证。' };
-          }
-          const verifyRes = await apiCall('POST', '/auth/verify-code', { email, code });
-          emailVerified = true;
-        }
         const cfToken = cfSiteKey ? (turnstile.getResponse() || '') : '';
         const data = await apiCall('POST', '/auth/register', {
           username: document.getElementById('username').value,
