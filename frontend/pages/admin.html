@@ -753,8 +753,8 @@
           return `
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">
             <td class="px-4 py-3 text-sm">${u.id}</td>
-            <td class="px-4 py-3 text-sm font-medium">${escapeHtml(u.username)}</td>
-            <td class="px-4 py-3 text-sm">${escapeHtml(u.nickname)}</td>
+            <td class="px-4 py-3 text-sm font-medium"><a href="profile.html?id=${u.id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(u.username)}</a></td>
+            <td class="px-4 py-3 text-sm"><a href="profile.html?id=${u.id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(u.nickname)}</a></td>
             <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">${u.email ? escapeHtml(u.email) : '<span class="text-gray-300 dark:text-gray-600">-</span>'}</td>
             <td class="px-4 py-3 text-center">
               ${isSu && u.id !== currentUser.id ? `
@@ -824,7 +824,7 @@
           <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700">
             <div>
               <a href="/pages/article.html?id=${a.id}" class="font-medium text-gray-900 dark:text-white hover:text-indigo-600 dark:text-indigo-400">${escapeHtml(a.title)}</a>
-              <div class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">${escapeHtml(a.nickname || a.username)} · ${new Date(a.created_at).toLocaleString()} ${a.is_published ? '' : '<span class="text-yellow-600 dark:text-yellow-400">未发布</span>'}</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1"><a href="profile.html?id=${a.author_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(a.nickname || a.username)}</a> · ${new Date(a.created_at).toLocaleString()} ${a.is_published ? '' : '<span class="text-yellow-600 dark:text-yellow-400">未发布</span>'}</div>
             </div>
             <div class="flex space-x-2">
               <a href="/pages/article-edit.html?id=${a.id}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">编辑</a>
@@ -850,7 +850,7 @@
             <div class="flex items-center space-x-3">
               <span class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">#${f.id}</span>
               <a href="/uploads/${f.filename}" target="_blank" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">${escapeHtml(f.original_name)}</a>
-              <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">${(f.size/1024).toFixed(1)}KB · ${escapeHtml(f.username || '匿名')}</span>
+              <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">${(f.size/1024).toFixed(1)}KB · <a href="profile.html?id=${f.user_id}" class="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">${escapeHtml(f.username || '匿名')}</a></span>
               <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">${new Date(f.created_at).toLocaleString()}</span>
             </div>
             <button onclick="deleteFile(${f.id}, '${f.filename}')" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
@@ -879,7 +879,7 @@
                 <div class="w-3 h-3 bg-green-50 dark:bg-green-900/300 rounded-full animate-pulse"></div>
               </div>
               <div>
-                <div class="font-medium text-gray-900 dark:text-white">${escapeHtml(u.nickname || u.username)}</div>
+                <div class="font-medium"><a href="profile.html?id=${u.id}" class="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">${escapeHtml(u.nickname || u.username)}</a></div>
                 <div class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">@${escapeHtml(u.username)} · ${roleBadge(u.role)}</div>
               </div>
             </div>
@@ -974,7 +974,7 @@
           <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="flex items-center space-x-3">
               <span class="text-sm font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500">#${p.user_id}</span>
-              <span class="text-sm font-medium">${escapeHtml(p.nickname || p.username)}</span>
+              <span class="text-sm font-medium"><a href="profile.html?id=${p.user_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(p.nickname || p.username)}</a></span>
               ${roleBadge(p.role)}
               ${p.invited_by_name ? `<span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">被 ${escapeHtml(p.invited_by_name)} 邀请</span>` : '<span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">自行加入</span>'}
             </div>

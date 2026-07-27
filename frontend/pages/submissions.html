@@ -50,7 +50,7 @@
         tbody.innerHTML = data.submissions.map(s => `
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700 transition">
             <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500">${s.id}</td>
-            <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">${escapeHtml(s.username||'-')}</td>
+            <td class="px-4 py-3 text-sm"><a href="profile.html?id=${s.user_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(s.username||'-')}</a></td>
             <td class="px-4 py-3 text-sm text-indigo-600 dark:text-indigo-400 font-medium"><a href="/pages/problem.html?id=${s.problem_id}" class="hover:underline">${escapeHtml(s.problem_title||'未知')}</a></td>
             <td class="px-4 py-3 text-center text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">${s.language}</td>
             <td class="px-4 py-3 text-center"><span class="px-2.5 py-1 text-xs rounded-full font-medium ${statusColor(s.status)}">${statusText(s.status)}</span></td>

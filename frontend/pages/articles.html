@@ -42,7 +42,7 @@
           <a href="/pages/article.html?id=${a.id}" class="block bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 hover:shadow-md transition">
             <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">${escapeHtml(a.title)}</h2>
             <div class="flex items-center space-x-3 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
-              <span>${escapeHtml(a.nickname || a.username)}</span>
+              <a href="profile.html?id=${a.author_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(a.nickname || a.username)}</a>
               ${a.provider ? `<span class="px-2 py-0.5 text-xs rounded-full bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">${escapeHtml(a.provider)}</span>` : ''}
               <span>·</span>
               <span>${new Date(a.created_at).toLocaleDateString()}</span>

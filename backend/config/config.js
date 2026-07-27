@@ -66,6 +66,7 @@ module.exports = {
     codeLengthLimit: parseInt(process.env.CODE_LENGTH_LIMIT || '131072')
   },
   turnstile: {
+    enabled: cf.enabled,
     siteKey: cf.siteKey,
     secretKey: cf.secretKey
   },

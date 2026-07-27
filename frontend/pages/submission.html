@@ -95,7 +95,7 @@
               <div>
                 <h1 class="text-2xl font-bold text-gray-900 dark:text-white">提交 #${s.id}</h1>
                 <div class="flex items-center space-x-3 mt-2 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
-                  <span>用户: ${escapeHtml(s.username||'-')}</span>
+                  <span>用户: <a href="profile.html?id=${s.user_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(s.username||'-')}</a></span>
                   <span>|</span>
                   <a href="/pages/problem.html?id=${s.problem_id}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800">${escapeHtml(s.problem_title||'未知')}</a>
                   <span>|</span>

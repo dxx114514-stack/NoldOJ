@@ -39,3 +39,7 @@ config/email.txt
 *.log
 
 clearHistory.bat
+
+st.bat
+
+sp.bat

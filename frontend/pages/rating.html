@@ -85,7 +85,7 @@
                 ${rank <= 3 ? `<span class="inline-block w-7 h-7 rounded-full text-center leading-7 text-sm font-bold ${rank===1?'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300':rank===2?'bg-gray-200 text-gray-600 dark:text-gray-400 dark:text-gray-500':'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'}">${rank}</span>` : `<span class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">${rank}</span>`}
               </td>
               <td class="px-4 py-3">
-                <span class="font-medium text-gray-900 dark:text-white">${escapeHtml(u.nickname || u.username)}</span>
+                <a href="profile.html?id=${u.id}" class="font-medium text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">${escapeHtml(u.nickname || u.username)}</a>
                 <span class="text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400 ml-2">@${escapeHtml(u.username)}</span>
               </td>
               <td class="px-4 py-3 text-center font-bold text-lg ${u.rating >= 1500 ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400 dark:text-gray-500'}">${u.rating || 1500}</td>

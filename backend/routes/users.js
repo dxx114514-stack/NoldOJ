@@ -25,6 +25,15 @@ router.get('/rating', (req, res) => {
   res.json({ total, page: parseInt(page), limit: parseInt(limit), users });
 });
 
+// 公开用户资料 API（所有人可访问）
+router.get('/:id/profile', (req, res) => {
+  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, created_at FROM users WHERE id = ?').get(req.params.id);
+  if (!user) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
+  }
+  res.json(user);
+});
+
 router.get('/me', requireAuth, (req, res) => {
   const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, preferred_language, submit_lock_exempt, created_at FROM users WHERE id = ?').get(req.user.id);
   res.json(user);

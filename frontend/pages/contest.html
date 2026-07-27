@@ -79,7 +79,7 @@
                           <td class="px-4 py-3 text-center">
                             ${u.rank <= 3 ? `<span class="inline-block w-7 h-7 rounded-full text-center leading-7 text-sm font-bold ${u.rank===1?'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300':u.rank===2?'bg-gray-200 text-gray-600 dark:text-gray-400 dark:text-gray-500':'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'}">${u.rank}</span>` : `<span class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">${u.rank}</span>`}
                           </td>
-                          <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">${escapeHtml(u.nickname || u.username)}</td>
+                          <td class="px-4 py-3 text-sm font-medium"><a href="profile.html?id=${u.user_id}" class="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">${escapeHtml(u.nickname || u.username)}</a></td>
                           ${lb.problem_ids.map(pid => {
                             const p = u.problems[pid];
                             return `<td class="px-4 py-3 text-center text-sm">${p ? (p.status==='accepted'?`<span class="text-green-600 dark:text-green-400">${p.score}</span>`:`<span class="text-red-400">X</span>`) : '<span class="text-gray-300">-</span>'}</td>`;
