@@ -35,7 +35,7 @@ function generateAccessToken(userId) {
 function generateRefreshToken(userId) {
   const token = jwt.sign({ userId }, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshExpiry });
   const hash = bcrypt.hashSync(token, 4);
-  const expiresAt = new Date(Date.now() + config.jwt.refreshExpiryMs).toISOString();
+  const expiresAt = new Date(Date.now() + config.jwt.refreshExpiryMs).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
   db.prepare('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(userId, hash, expiresAt);
   return token;
 }

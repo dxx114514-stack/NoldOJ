@@ -136,6 +136,8 @@ async function initDB() {
   if (!cols.includes('submit_lock_exempt')) sqlDb.exec("ALTER TABLE users ADD COLUMN submit_lock_exempt INTEGER DEFAULT 0");
   if (!cols.includes('email')) sqlDb.exec("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''");
   if (!cols.includes('email_verified')) sqlDb.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0");
+  if (!cols.includes('max_file_size')) sqlDb.exec("ALTER TABLE users ADD COLUMN max_file_size INTEGER DEFAULT 0");
+  if (!cols.includes('max_storage')) sqlDb.exec("ALTER TABLE users ADD COLUMN max_storage INTEGER DEFAULT 0");
 
   const tagsTableExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'");
   if (tagsTableExists.length === 0 || tagsTableExists[0].values.length === 0) {
@@ -154,6 +156,34 @@ async function initDB() {
     )`);
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_tags_problem ON problem_tags(problem_id)');
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_tags_tag ON problem_tags(tag_id)');
+  }
+
+  const categoriesExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='categories'");
+  if (categoriesExists.length === 0 || categoriesExists[0].values.length === 0) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`);
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS problem_categories (
+      problem_id INTEGER NOT NULL,
+      category_id INTEGER NOT NULL,
+      PRIMARY KEY (problem_id, category_id),
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+    )`);
+    const catCount = sqlDb.prepare('SELECT COUNT(*) as c FROM categories').get().c;
+    if (catCount === 0) {
+      const ins = sqlDb.prepare('INSERT INTO categories (name, description, sort_order) VALUES (?, ?, ?)');
+      ins.run('一代上', '第一学年 上学期', 1);
+      ins.run('一代下', '第一学年 下学期', 2);
+      ins.run('二代上', '第二学年 上学期', 3);
+      ins.run('二代下', '第二学年 下学期', 4);
+      ins.run('三代上', '第三学年 上学期', 5);
+      ins.run('三代下', '第三学年 下学期', 6);
+    }
   }
   saveDB();
 

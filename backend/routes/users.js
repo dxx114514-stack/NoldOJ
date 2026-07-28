@@ -80,8 +80,8 @@ router.put('/:id/hide-rating', requireAuth, requireRole('admin'), (req, res) => 
   const hierarchy = ['user', 'teacher', 'admin', 'su'];
   const myLevel = hierarchy.indexOf(req.user.role);
   const targetLevel = hierarchy.indexOf(target.role);
-  if (myLevel <= targetLevel) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot modify a user with equal or higher privileges.' });
+  if (targetLevel > myLevel || (targetLevel === myLevel && String(target.id) !== String(req.user.id))) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot modify a user with equal or higher privileges (except yourself).' });
   }
   db.prepare('UPDATE users SET hide_rating = ?, updated_at = datetime(\'now\') WHERE id = ?').run(hide_rating ? 1 : 0, req.params.id);
   res.json({ message: 'Hide rating updated.', hide_rating: hide_rating ? 1 : 0 });
@@ -95,6 +95,18 @@ router.put('/:id/submit-lock-exempt', requireAuth, requireRole('su'), (req, res)
   }
   db.prepare("UPDATE users SET submit_lock_exempt = ?, updated_at = datetime('now') WHERE id = ?").run(submit_lock_exempt ? 1 : 0, req.params.id);
   res.json({ message: 'Submit lock exempt updated.', submit_lock_exempt: submit_lock_exempt ? 1 : 0 });
+});
+
+router.put('/:id/upload-limits', requireAuth, requireRole('su'), (req, res) => {
+  const { max_file_size, max_storage } = req.body;
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!target) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
+  }
+  const fileSize = (typeof max_file_size === 'number' && max_file_size >= 0) ? Math.floor(max_file_size) : 0;
+  const storage = (typeof max_storage === 'number' && max_storage >= 0) ? Math.floor(max_storage) : 0;
+  db.prepare("UPDATE users SET max_file_size = ?, max_storage = ?, updated_at = datetime('now') WHERE id = ?").run(fileSize, storage, req.params.id);
+  res.json({ message: 'Upload limits updated.', max_file_size: fileSize, max_storage: storage });
 });
 
 router.get('/', requireAuth, requireRole('admin'), (req, res) => {
@@ -150,8 +162,10 @@ router.post('/:id/ban', requireAuth, requireRole('admin'), (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
   const hierarchy = ['user', 'teacher', 'admin', 'su'];
-  if (hierarchy.indexOf(req.user.role) <= hierarchy.indexOf(target.role)) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot ban a user with equal or higher privileges.' });
+  const banMyLevel = hierarchy.indexOf(req.user.role);
+  const banTargetLevel = hierarchy.indexOf(target.role);
+  if (banTargetLevel > banMyLevel || (banTargetLevel === banMyLevel && String(target.id) !== String(req.user.id))) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot ban a user with equal or higher privileges (except yourself).' });
   }
   db.prepare('UPDATE users SET banned = 1, updated_at = datetime(\'now\') WHERE id = ?').run(target.id);
   db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(target.id);
@@ -175,8 +189,10 @@ router.post('/:id/force-logout', requireAuth, requireRole('admin'), (req, res) =
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
   const hierarchy = ['user', 'teacher', 'admin', 'su'];
-  if (hierarchy.indexOf(req.user.role) <= hierarchy.indexOf(target.role)) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot force logout a user with equal or higher privileges.' });
+  const flMyLevel = hierarchy.indexOf(req.user.role);
+  const flTargetLevel = hierarchy.indexOf(target.role);
+  if (flTargetLevel > flMyLevel || (flTargetLevel === flMyLevel && String(target.id) !== String(req.user.id))) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot force logout a user with equal or higher privileges (except yourself).' });
   }
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(target.id);
   db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(target.id);

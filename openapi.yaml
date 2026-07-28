@@ -70,6 +70,12 @@ components:
           enum: [0, 1]
         preferred_language:
           type: string
+        max_file_size:
+          type: integer
+          description: 单文件大小限制（字节），0=使用系统默认
+        max_storage:
+          type: integer
+          description: 总存储限制（字节），0=使用系统默认
         created_at:
           type: string
 
@@ -1386,7 +1392,7 @@ paths:
     post:
       tags: [IDE]
       summary: AI 代码安全审查
-      description: 调用 Ollama 审查代码安全性，无需登录
+      description: 调用 AI 服务审查代码安全性，无需登录
       requestBody:
         required: true
         content:
@@ -1868,6 +1874,47 @@ paths:
       responses:
         '200':
           description: 设置成功
+
+  /users/{id}/upload-limits:
+    put:
+      tags: [用户]
+      summary: 设置图床限制
+      description: 超级管理员设置用户单文件大小和总存储限制，0 表示使用系统默认（10MB / 2GB）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_file_size:
+                  type: integer
+                  description: 单文件大小限制（字节），0=默认10MB
+                max_storage:
+                  type: integer
+                  description: 总存储限制（字节），0=默认2GB
+      responses:
+        '200':
+          description: 设置成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  max_file_size:
+                    type: integer
+                  max_storage:
+                    type: integer
 
   # ===== LANGUAGES =====
   /languages:

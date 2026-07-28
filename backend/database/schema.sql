@@ -230,6 +230,22 @@ CREATE TABLE IF NOT EXISTS problem_tags (
   FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT DEFAULT '',
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS problem_categories (
+  problem_id INTEGER NOT NULL,
+  category_id INTEGER NOT NULL,
+  PRIMARY KEY (problem_id, category_id),
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_problem_tags_problem ON problem_tags(problem_id);
 CREATE INDEX IF NOT EXISTS idx_problem_tags_tag ON problem_tags(tag_id);
 

@@ -7,7 +7,9 @@ const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
-const upload = multer({ dest: path.join(__dirname, '../../data/uploads') });
+const uploadDir = path.join(__dirname, '../../data/uploads');
+fs.mkdirSync(uploadDir, { recursive: true });
+const upload = multer({ dest: uploadDir, limits: { fileSize: 200 * 1024 * 1024 } });
 
 function sanitizeProblem(p) {
   if (!p) return null;
@@ -18,7 +20,7 @@ function sanitizeProblem(p) {
 }
 
 router.get('/', (req, res) => {
-  const { page = 1, limit = 50, search = '', tag = '' } = req.query;
+  const { page = 1, limit = 50, search = '', tag = '', category = '' } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
   let where = 'WHERE p.is_public = 1';
   const params = [];
@@ -32,6 +34,11 @@ router.get('/', (req, res) => {
     where += ' AND p.id IN (SELECT pt.problem_id FROM problem_tags pt JOIN tags t ON pt.tag_id = t.id WHERE t.name = ?)';
     params.push(tag);
   }
+
+  if (category) {
+    where += ' AND p.id IN (SELECT pc.problem_id FROM problem_categories pc JOIN categories c ON pc.category_id = c.id WHERE c.name = ?)';
+    params.push(category);
+  }
   
   const total = db.prepare(`SELECT COUNT(*) as c FROM problems p ${where}`).get(...params).c;
   const problems = db.prepare(`SELECT p.id, p.title, p.problem_type, p.time_limit, p.memory_limit, p.is_public, p.created_at FROM problems p ${where} ORDER BY p.id DESC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
@@ -43,6 +50,13 @@ router.get('/', (req, res) => {
       WHERE pt.problem_id = ?
     `).all(problem.id);
     problem.tags = tags;
+
+    const cats = db.prepare(`
+      SELECT c.id, c.name, c.description FROM categories c
+      JOIN problem_categories pc ON c.id = pc.category_id
+      WHERE pc.problem_id = ?
+    `).all(problem.id);
+    problem.categories = cats;
   }
 
   res.json({ total, page: parseInt(page), limit: parseInt(limit), problems });
@@ -61,16 +75,28 @@ router.get('/:id', (req, res) => {
   }
   const result = sanitizeProblem(problem);
   result.test_cases_count = db.prepare('SELECT COUNT(*) as c FROM test_cases WHERE problem_id = ?').get(problem.id).c;
+  const cats = db.prepare(`
+    SELECT c.id, c.name, c.description FROM categories c
+    JOIN problem_categories pc ON c.id = pc.category_id
+    WHERE pc.problem_id = ?
+  `).all(problem.id);
+  result.categories = cats;
+  const tags = db.prepare(`
+    SELECT t.id, t.name, t.color FROM tags t
+    JOIN problem_tags pt ON t.id = pt.tag_id
+    WHERE pt.problem_id = ?
+  `).all(problem.id);
+  result.tags = tags;
   res.json(result);
 });
 
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output } = req.body;
+  const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode } = req.body;
   if (!title) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
   const newId = db.findNextId('problems');
-  db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     newId,
     title,
     description || '',
@@ -88,7 +114,8 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     provider || '',
     req.user.id,
     sample_input || '',
-    sample_output || ''
+    sample_output || '',
+    subtask_mode || 'simple'
   );
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(newId);
   res.status(201).json(sanitizeProblem(problem));
@@ -104,7 +131,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot edit a problem that is part of a contest.' });
   }
 
-  const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output'];
+  const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode'];
   const updates = [];
   const values = [];
   for (const field of fields) {

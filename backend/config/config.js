@@ -39,14 +39,15 @@ const email = loadEmailConfig();
 
 function loadAiConfig() {
   const aiPath = path.join(__dirname, '..', '..', 'config', 'ai.txt');
-  const result = { enabled: true, ollamaUrl: 'http://localhost:11434/api/chat', ollamaModel: 'qwen3:1.7b', codeLengthLimit: 131072 };
+  const result = { enabled: false, url: 'http://localhost:11434/api/chat', model: 'qwen3:1.7b', key: '', codeLengthLimit: 131072 };
   try {
     const content = fs.readFileSync(aiPath, 'utf8');
     for (const line of content.split('\n')) {
       const trimmed = line.trim();
       if (trimmed.startsWith('AI_ENABLED=')) result.enabled = trimmed.split('=')[1] === 'true';
-      if (trimmed.startsWith('OLLAMA_URL=')) result.ollamaUrl = trimmed.split('=').slice(1).join('=');
-      if (trimmed.startsWith('OLLAMA_MODEL=')) result.ollamaModel = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('URL=')) result.url = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('MODEL=')) result.model = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('KEY=')) result.key = trimmed.split('=').slice(1).join('=');
       if (trimmed.startsWith('CODE_LENGTH_LIMIT=')) result.codeLengthLimit = parseInt(trimmed.split('=')[1], 10) || 131072;
     }
   } catch {}
@@ -80,8 +81,9 @@ module.exports = {
   },
   security: {
     enabled: ai.enabled,
-    ollamaUrl: ai.ollamaUrl,
-    ollamaModel: ai.ollamaModel,
+    url: ai.url,
+    model: ai.model,
+    key: ai.key,
     codeLengthLimit: ai.codeLengthLimit
   },
   turnstile: {

@@ -18,6 +18,7 @@
         <input id="search" type="text" placeholder="搜索题目..." class="px-4 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-800 dark:text-white" onkeyup="loadProblems()">
       </div>
     </div>
+    <div id="categoryFilter" class="mb-3 flex flex-wrap gap-2"></div>
     <div id="tagFilter" class="mb-4 flex flex-wrap gap-2"></div>
     <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
       <table class="w-full">
@@ -42,7 +43,42 @@
     document.getElementById('nav').innerHTML = renderNav('problems');
     let currentPage = 1;
     let selectedTag = '';
+    let selectedCategory = '';
     let allTags = [];
+    let allCategories = [];
+
+    async function loadCategories() {
+      try {
+        allCategories = await apiCall('GET', '/categories');
+        renderCategoryFilter();
+      } catch (err) {
+        console.error('Failed to load categories:', err);
+      }
+    }
+
+    function renderCategoryFilter() {
+      const container = document.getElementById('categoryFilter');
+      if (allCategories.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = `
+        <span class="text-xs text-gray-500 dark:text-gray-400 self-center mr-1">分类:</span>
+        <button onclick="filterByCategory('')" class="px-3 py-1 text-xs rounded-full transition ${!selectedCategory ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}">全部</button>
+        ${allCategories.map(c => `
+          <button onclick="filterByCategory('${escapeHtml(c.name)}')" class="px-3 py-1 text-xs rounded-full transition ${selectedCategory === c.name ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}">
+            ${escapeHtml(c.name)}
+          </button>
+        `).join('')}
+      `;
+    }
+
+    function filterByCategory(category) {
+      selectedCategory = category;
+      currentPage = 1;
+      renderCategoryFilter();
+      loadProblems();
+    }
 
     async function loadTags() {
       try {
@@ -60,9 +96,10 @@
         return;
       }
       container.innerHTML = `
-        <button onclick="filterByTag('')" class="px-3 py-1 text-xs rounded-full transition ${!selectedTag ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700'}">全部</button>
+        <span class="text-xs text-gray-500 dark:text-gray-400 self-center mr-1">标签:</span>
+        <button onclick="filterByTag('')" class="px-3 py-1 text-xs rounded-full transition ${!selectedTag ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}">全部</button>
         ${allTags.map(t => `
-          <button onclick="filterByTag('${escapeHtml(t.name)}')" class="px-3 py-1 text-xs rounded-full transition ${selectedTag === t.name ? 'text-white' : 'bg-white border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700'}" ${selectedTag === t.name ? `style="background-color: ${t.color}"` : ''}>
+          <button onclick="filterByTag('${escapeHtml(t.name)}')" class="px-3 py-1 text-xs rounded-full transition ${selectedTag === t.name ? 'text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}" ${selectedTag === t.name ? `style="background-color: ${t.color}"` : ''}>
             ${escapeHtml(t.name)}
           </button>
         `).join('')}
@@ -85,6 +122,7 @@
           search: search
         });
         if (selectedTag) params.append('tag', selectedTag);
+        if (selectedCategory) params.append('category', selectedCategory);
         const data = await apiCall('GET', `/problems?${params.toString()}`);
         const tbody = document.getElementById('problemList');
         const empty = document.getElementById('empty');
@@ -99,6 +137,7 @@
             <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">${p.id}</td>
             <td class="px-6 py-4">
               <a href="/pages/problem.html?id=${p.id}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium">${escapeHtml(p.title)}</a>
+              ${(p.categories || []).length > 0 ? `<span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">${escapeHtml(p.categories.map(c => c.name).join(', '))}</span>` : ''}
             </td>
             <td class="px-6 py-4 text-center">
               <div class="flex flex-wrap justify-center gap-1">
@@ -127,6 +166,7 @@
       }
     }
 
+    loadCategories();
     loadTags();
     loadProblems();
   </script>

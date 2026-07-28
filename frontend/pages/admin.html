@@ -27,6 +27,7 @@
       <button onclick="showTab('articles')" id="tab-articles" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">文章管理</button>
       <button onclick="showTab('files')" id="tab-files" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">文件管理</button>
       <button onclick="showTab('contests')" id="tab-contests" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">比赛管理</button>
+      <button onclick="showTab('categories')" id="tab-categories" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">分类管理</button>
     </div>
 
     <div id="panel-problems">
@@ -64,6 +65,10 @@
         <textarea id="pHint" rows="2" placeholder="提示/说明（支持 Markdown）" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl mb-2 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
         <p class="text-xs text-orange-500 dark:text-orange-400 mb-3">提示：请在输入输出格式或提示中说明数据范围（如 $1 \\leq n \\leq 10^5$），方便选手选择合适的算法。</p>
         <input id="pProvider" placeholder="提供者（选填）" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl mb-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white">
+        <div class="mb-3">
+          <label class="text-xs text-gray-500 dark:text-gray-400 mb-1 block">分类归属 (按住 Ctrl/Cmd 多选)</label>
+          <select id="pCategories" multiple class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white min-h-[80px]"></select>
+        </div>
         <div class="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label class="text-xs text-gray-500 dark:text-gray-400">输入样例</label>
@@ -198,6 +203,7 @@
             <tr>
               <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">ID</th>
               <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">标题</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">分类</th>
               <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">类型</th>
               <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">模式</th>
               <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">测试点</th>
@@ -332,6 +338,40 @@
       </div>
       <div id="adminFiles" class="space-y-3"></div>
     </div>
+
+    <div id="panel-categories" class="hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold">分类管理</h2>
+        <button onclick="showCreateCategory()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 新建分类</button>
+      </div>
+      <div id="createCategoryForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-4">
+        <h3 class="font-semibold mb-3" id="categoryFormTitle">新建分类</h3>
+        <div class="grid grid-cols-3 gap-4 mb-3">
+          <input id="catName" placeholder="分类名称（如：一代上）" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+          <input id="catDesc" placeholder="分类描述（选填）" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+          <input id="catOrder" type="number" placeholder="排序" value="0" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+        </div>
+        <div class="flex justify-end space-x-3">
+          <button onclick="hideCreateCategory()" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl">取消</button>
+          <button onclick="saveCategory()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700" id="categorySaveBtn">创建</button>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <table class="w-full">
+          <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">ID</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">名称</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">描述</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">题目数</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">排序</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">操作</th>
+            </tr>
+          </thead>
+          <tbody id="categoryList" class="divide-y divide-gray-100 dark:divide-gray-700"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -342,7 +382,7 @@
     let editingTcId = null;
 
     function showTab(tab) {
-      ['problems','users','online','articles','files','contests'].forEach(t => {
+      ['problems','users','online','articles','files','contests','categories'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
         const btn = document.getElementById(`tab-${t}`);
         btn.className = t === tab ? 'px-4 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white' : 'px-4 py-2 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50';
@@ -353,9 +393,8 @@
       if (tab === 'files') loadAdminFiles();
       if (tab === 'contests') loadContests();
       if (tab === 'problems') loadAdminProblems();
+      if (tab === 'categories') loadAdminCategories();
     }
-    function showCreateProblem() { document.getElementById('createProblemForm').classList.remove('hidden'); }
-    function hideCreateProblem() { document.getElementById('createProblemForm').classList.add('hidden'); }
     function showCreateContest() { document.getElementById('createContestForm').classList.remove('hidden'); }
     function hideCreateContest() { document.getElementById('createContestForm').classList.add('hidden'); }
 
@@ -366,6 +405,7 @@
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">
             <td class="px-4 py-3 text-sm">${p.id}</td>
             <td class="px-4 py-3 text-sm font-medium">${escapeHtml(p.title)}</td>
+            <td class="px-4 py-3 text-center text-sm">${(p.categories || []).map(c => `<span class="px-1.5 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 mr-1">${escapeHtml(c.name)}</span>`).join('')}</td>
             <td class="px-4 py-3 text-center text-sm">${p.problem_type === 'traditional' ? '传统题' : p.problem_type}</td>
             <td class="px-4 py-3 text-center text-sm">${p.subtask_mode === 'advanced' ? '分组' : '简单'}</td>
             <td class="px-4 py-3 text-center text-sm" id="tc-count-${p.id}">-</td>
@@ -389,6 +429,123 @@
     }
 
     let editingProblemId = null;
+  let allCategoriesCache = [];
+
+    async function loadAllCategories() {
+      try {
+        allCategoriesCache = await apiCall('GET', '/categories');
+        const sel = document.getElementById('pCategories');
+        if (sel) {
+          sel.innerHTML = allCategoriesCache.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        }
+      } catch (err) { console.error(err); }
+    }
+
+    async function loadProblemCategories(problemId) {
+      try {
+        const data = await apiCall('GET', '/problems?limit=100');
+        const problem = data.problems.find(p => p.id === problemId);
+        if (problem && problem.categories) {
+          const sel = document.getElementById('pCategories');
+          const selectedIds = problem.categories.map(c => c.id);
+          Array.from(sel.options).forEach(opt => {
+            opt.selected = selectedIds.includes(parseInt(opt.value));
+          });
+        }
+      } catch (err) { console.error(err); }
+    }
+
+    async function saveProblemCategories(problemId) {
+      const sel = document.getElementById('pCategories');
+      const selectedIds = Array.from(sel.selectedOptions).map(o => parseInt(o.value));
+      try {
+        const currentCats = await apiCall('GET', '/problems?limit=100');
+        const problem = currentCats.problems.find(p => p.id === problemId);
+        if (problem && problem.categories) {
+          for (const cat of problem.categories) {
+            if (!selectedIds.includes(cat.id)) {
+              await apiCall('DELETE', `/categories/${cat.id}/problems/${problemId}`);
+            }
+          }
+        }
+        for (const catId of selectedIds) {
+          await apiCall('POST', `/categories/${catId}/problems/${problemId}`);
+        }
+      } catch (err) { console.error(err); }
+    }
+
+    async function loadAdminCategories() {
+      try {
+        const cats = await apiCall('GET', '/categories');
+        const tbody = document.getElementById('categoryList');
+        tbody.innerHTML = cats.map(c => `
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+            <td class="px-4 py-3 text-sm">${c.id}</td>
+            <td class="px-4 py-3 text-sm font-medium">${escapeHtml(c.name)}</td>
+            <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">${escapeHtml(c.description || '-')}</td>
+            <td class="px-4 py-3 text-center text-sm">${c.problem_count || 0}</td>
+            <td class="px-4 py-3 text-center text-sm">${c.sort_order || 0}</td>
+            <td class="px-4 py-3 text-center">
+              <button onclick="editCategory(${c.id})" class="text-blue-600 dark:text-blue-400 text-sm hover:underline mr-2">编辑</button>
+              <button onclick="deleteCategory(${c.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) { console.error(err); }
+    }
+
+    let editingCategoryId = null;
+
+    function showCreateCategory() {
+      editingCategoryId = null;
+      document.getElementById('categoryFormTitle').textContent = '新建分类';
+      document.getElementById('categorySaveBtn').textContent = '创建';
+      document.getElementById('catName').value = '';
+      document.getElementById('catDesc').value = '';
+      document.getElementById('catOrder').value = '0';
+      document.getElementById('createCategoryForm').classList.remove('hidden');
+    }
+    function hideCreateCategory() { document.getElementById('createCategoryForm').classList.add('hidden'); editingCategoryId = null; }
+
+    async function editCategory(id) {
+      try {
+        const c = await apiCall('GET', `/categories/${id}`);
+        editingCategoryId = id;
+        document.getElementById('categoryFormTitle').textContent = `编辑分类 #${id}`;
+        document.getElementById('categorySaveBtn').textContent = '保存';
+        document.getElementById('catName').value = c.name || '';
+        document.getElementById('catDesc').value = c.description || '';
+        document.getElementById('catOrder').value = c.sort_order || 0;
+        document.getElementById('createCategoryForm').classList.remove('hidden');
+      } catch (err) { alert(err.message); }
+    }
+
+    async function saveCategory() {
+      const data = {
+        name: document.getElementById('catName').value,
+        description: document.getElementById('catDesc').value,
+        sort_order: parseInt(document.getElementById('catOrder').value) || 0
+      };
+      try {
+        if (editingCategoryId) {
+          await apiCall('PUT', `/categories/${editingCategoryId}`, data);
+        } else {
+          await apiCall('POST', '/categories', data);
+        }
+        hideCreateCategory();
+        loadAdminCategories();
+        loadAllCategories();
+      } catch (err) { alert(err.message || '操作失败'); }
+    }
+
+    async function deleteCategory(id) {
+      if (!confirm('确定删除此分类？分类下的题目不会被删除，但关联关系将被移除。')) return;
+      try {
+        await apiCall('DELETE', `/categories/${id}`);
+        loadAdminCategories();
+        loadAllCategories();
+      } catch (err) { alert(err.message); }
+    }
 
     function showCreateProblem() {
       editingProblemId = null;
@@ -407,6 +564,8 @@
       document.getElementById('pProvider').value = '';
       document.getElementById('pSampleInput').value = '';
       document.getElementById('pSampleOutput').value = '';
+      const catSel = document.getElementById('pCategories');
+      if (catSel) Array.from(catSel.options).forEach(opt => opt.selected = false);
       document.getElementById('createProblemForm').classList.remove('hidden');
     }
     function hideCreateProblem() { document.getElementById('createProblemForm').classList.add('hidden'); editingProblemId = null; }
@@ -431,6 +590,8 @@
         document.getElementById('pSampleInput').value = p.sample_input || '';
         document.getElementById('pSampleOutput').value = p.sample_output || '';
         document.getElementById('createProblemForm').classList.remove('hidden');
+        await loadAllCategories();
+        await loadProblemCategories(id);
       } catch (err) { alert(err.message); }
     }
 
@@ -451,10 +612,15 @@
         sample_output: document.getElementById('pSampleOutput').value,
       };
       try {
+        let newId = editingProblemId;
         if (editingProblemId) {
           await apiCall('PUT', `/problems/${editingProblemId}`, data);
         } else {
-          await apiCall('POST', '/problems', data);
+          const res = await apiCall('POST', '/problems', data);
+          newId = res.id;
+        }
+        if (newId) {
+          await saveProblemCategories(newId);
         }
         hideCreateProblem();
         loadAdminProblems();
@@ -721,17 +887,26 @@
     async function uploadZip(file) {
       if (!file) return;
       if (!currentProblemId) { alert('请先选择题目'); return; }
+      if (!file.name.toLowerCase().endsWith('.zip')) { alert('请上传 .zip 文件'); return; }
       const formData = new FormData();
       formData.append('file', file);
       try {
         const res = await fetch(`/api/v1/problems/${currentProblemId}/testdata-zip`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${getToken()}` },
+          credentials: 'include',
           body: formData
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || '上传失败');
-        alert(data.message);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            clearToken();
+            window.location.href = '/pages/login.html';
+            return;
+          }
+          throw new Error(data.message || '上传失败');
+        }
+        alert(data.message || '上传成功');
         await loadGroups();
         await loadTestCases();
       } catch (err) {
@@ -769,7 +944,7 @@
             <td class="px-4 py-3 text-center text-sm">${u.rating || 1500}</td>
             <td class="px-4 py-3 text-center">${u.banned ? '<span class="text-red-600 dark:text-red-400 text-sm">已封禁</span>' : '<span class="text-green-600 dark:text-green-400 text-sm">正常</span>'}</td>
             <td class="px-4 py-3 text-center">
-              ${isSu || (currentUser.role === 'admin' && hierarchy.indexOf(u.role) < myLevel) ? `
+              ${isSu || (currentUser.role === 'admin' && (hierarchy.indexOf(u.role) < myLevel || u.id === currentUser.id)) ? `
                 <button onclick="toggleHideRating(${u.id}, ${u.hide_rating ? 0 : 1})" class="text-xs px-2 py-1 rounded ${u.hide_rating ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' : 'bg-gray-100 text-gray-600 dark:text-gray-400 dark:text-gray-500'} hover:opacity-80">
                   ${u.hide_rating ? '已隐藏' : '显示'}
                 </button>
@@ -783,6 +958,7 @@
               ${isSu && u.id !== currentUser.id ? `<button onclick="sudoLogin(${u.id}, '${escapeHtml(u.username)}')" class="text-purple-600 dark:text-purple-400 text-xs hover:underline">免密</button>` : ''}
               ${isSu && u.id !== currentUser.id ? `<button onclick="deleteUser(${u.id})" class="text-red-600 dark:text-red-400 text-xs hover:underline">删除</button>` : ''}
               ${isSu && u.id !== currentUser.id ? `<button onclick="toggleSubmitExempt(${u.id}, ${u.submit_lock_exempt ? 0 : 1})" class="text-xs hover:underline ${u.submit_lock_exempt ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}">${u.submit_lock_exempt ? '已豁免' : '豁免'}</button>` : ''}
+              ${isSu ? `<button onclick="setUploadLimits(${u.id})" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">图床</button>` : ''}
             </td>
           </tr>
         `}).join('');
@@ -892,6 +1068,16 @@
     async function banUser(id) { try { await apiCall('POST', `/users/${id}/ban`); loadUsers(); } catch (err) { alert(err.message); } }
     async function toggleSubmitExempt(id, val) {
       try { await apiCall('PUT', `/users/${id}/submit-lock-exempt`, { submit_lock_exempt: val }); loadUsers(); } catch (err) { alert(err.message); }
+    }
+    async function setUploadLimits(id) {
+      const maxFileSize = prompt('单文件大小限制（字节，0=默认10MB）：', '0');
+      if (maxFileSize === null) return;
+      const maxStorage = prompt('总存储限制（字节，0=默认2GB）：', '0');
+      if (maxStorage === null) return;
+      try {
+        await apiCall('PUT', `/users/${id}/upload-limits`, { max_file_size: parseInt(maxFileSize) || 0, max_storage: parseInt(maxStorage) || 0 });
+        alert('已更新');
+      } catch (err) { alert(err.message); }
     }
     async function unbanUser(id) {
       if (!confirm('确定解封此用户？')) return;
@@ -1048,6 +1234,7 @@
     }
 
     loadAdminProblems();
+    loadAllCategories();
   </script>
 </body>
 </html>

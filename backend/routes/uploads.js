@@ -19,9 +19,28 @@ const storage = multer.diskStorage({
   }
 });
 
+const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const DEFAULT_MAX_STORAGE = 2 * 1024 * 1024 * 1024; // 2GB
+
+// 动态创建 multer 实例，根据用户限制
+function createUploadMiddleware(maxFileSize) {
+  return multer({
+    storage,
+    limits: { fileSize: maxFileSize },
+    fileFilter: (req, file, cb) => {
+      const allowed = /\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|tar|gz|txt|md|csv|json|xml|cpp|c|py|java|js)$/i;
+      if (allowed.test(path.extname(file.originalname))) {
+        cb(null, true);
+      } else {
+        cb(new Error('File type not allowed.'));
+      }
+    }
+  });
+}
+
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: DEFAULT_MAX_FILE_SIZE },
   fileFilter: (req, file, cb) => {
     const allowed = /\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|tar|gz|txt|md|csv|json|xml|cpp|c|py|java|js)$/i;
     if (allowed.test(path.extname(file.originalname))) {
@@ -55,17 +74,29 @@ router.post('/', requireAuth, requireRole('teacher'), upload.single('file'), (re
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No file uploaded.' });
   }
 
-  const userSize = db.prepare('SELECT COALESCE(SUM(size), 0) as total FROM uploaded_files WHERE user_id = ?').get(req.user.id).total;
-  if (userSize + req.file.size > 2 * 1024 * 1024 * 1024) {
+  // 获取用户自定义限制
+  const user = db.prepare('SELECT max_file_size, max_storage FROM users WHERE id = ?').get(req.user.id);
+  const maxFileSize = (user?.max_file_size > 0) ? user.max_file_size : DEFAULT_MAX_FILE_SIZE;
+  const maxStorage = (user?.max_storage > 0) ? user.max_storage : DEFAULT_MAX_STORAGE;
+
+  // 检查单文件大小限制
+  if (req.file.size > maxFileSize) {
     fs.unlinkSync(req.file.path);
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '用户文件总大小超过 2GB 限制。' });
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `单文件大小超过限制 (${(maxFileSize / 1024 / 1024).toFixed(1)}MB)。` });
+  }
+
+  // 检查用户总存储限制
+  const userSize = db.prepare('SELECT COALESCE(SUM(size), 0) as total FROM uploaded_files WHERE user_id = ?').get(req.user.id).total;
+  if (userSize + req.file.size > maxStorage) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `文件总大小超过限制 (${(maxStorage / 1024 / 1024 / 1024).toFixed(1)}GB)。` });
   }
 
   db.prepare('INSERT INTO uploaded_files (user_id, filename, original_name, mime_type, size) VALUES (?, ?, ?, ?, ?)').run(
     req.user.id, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size
   );
   const url = `/uploads/${req.file.filename}`;
-  res.json({ url, filename: req.file.filename, original_name: req.file.originalname, size: req.file.size });
+  res.json({ url, filename: req.file.filename, original_name: req.file.original_name, size: req.file.size });
 });
 
 router.get('/:filename', (req, res) => {

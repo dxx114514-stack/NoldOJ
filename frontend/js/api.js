@@ -9,6 +9,19 @@
     .prose p, .prose div, .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 { text-align: left !important; }
     .prose ul, .prose ol, .prose blockquote, .prose pre, .prose code { text-align: left !important; }
     textarea, input[type="text"], input:not([type]) { text-align: left !important; }
+    .dark .katex, .dark .katex .mord, .dark .katex-display .katex { color: #e5e7eb !important; }
+    .dark .katex .mtext { color: #d1d5db !important; }
+    .dark .prose hr { border-color: #374151; }
+    .dark .prose blockquote { border-color: #4b5563; color: #d1d5db; background-color: #1f2937; padding: 0.5rem 1rem; border-left-width: 4px; }
+    .dark .prose table { color: #e5e7eb; border-color: #374151; border-collapse: collapse; }
+    .dark .prose table th { background-color: #1f2937; border-color: #374151; padding: 0.5rem 0.75rem; border-width: 1px; }
+    .dark .prose table td { border-color: #374151; padding: 0.5rem 0.75rem; border-width: 1px; }
+    .dark .prose ol, .dark .prose ul { color: #e5e7eb; }
+    .dark .prose ol li, .dark .prose ul li { margin: 0.25rem 0; }
+    .dark .prose pre { color: #e5e7eb; background-color: #1f2937 !important; border: 1px solid #374151; }
+    .dark .prose p { color: #e5e7eb; margin: 0.5rem 0; }
+    .dark .prose strong { color: #f9fafb; }
+    .dark .prose em { color: #e5e7eb; }
   `;
   document.head.appendChild(style);
 })();
@@ -23,6 +36,29 @@ function toggleDarkMode() {
 }
 
 const API_BASE = '/api/v1';
+
+let refreshPromise = null;
+
+async function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setToken(data.access_token);
+        return data.access_token;
+      }
+      if (res.status === 403) {
+        throw { status: 403, message: '账号已被封禁' };
+      }
+      throw { status: 401, message: 'Refresh failed' };
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
 
 function getToken() {
   return localStorage.getItem('access_token');
@@ -47,11 +83,8 @@ function clearToken() {
 }
 
 function getUser() {
-  try {
-    if (isTokenExpired()) { clearToken(); return null; }
-    const u = localStorage.getItem('user');
-    return u ? JSON.parse(u) : null;
-  } catch { clearToken(); return null; }
+  const u = localStorage.getItem('user');
+  return u ? JSON.parse(u) : null;
 }
 
 function setUser(user) {
@@ -98,24 +131,19 @@ async function apiCall(method, path, body = null) {
   try { data = await res.json(); } catch { data = {}; }
   if (res.status === 401 && data.reason === 'ERR_UNAUTHORIZED') {
     try {
-      const refreshRes = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' });
-      if (refreshRes.ok) {
-        const refreshData = await refreshRes.json();
-        setToken(refreshData.access_token);
-        headers['Authorization'] = `Bearer ${refreshData.access_token}`;
-        const retryRes = await fetch(`${API_BASE}${path}`, { method, headers, credentials: 'include', body: opts.body });
-        const retryData = await retryRes.json();
-        if (!retryRes.ok) throw { status: retryRes.status, ...retryData };
-        return retryData;
-      }
-      const refreshData = await refreshRes.json().catch(() => ({}));
-      if (refreshRes.status === 403 || refreshData.reason === 'ERR_FORBIDDEN') {
+      const newToken = await refreshAccessToken();
+      headers['Authorization'] = `Bearer ${newToken}`;
+      const retryRes = await fetch(`${API_BASE}${path}`, { method, headers, credentials: 'include', body: opts.body });
+      const retryData = await retryRes.json().catch(() => ({}));
+      if (!retryRes.ok) throw { status: retryRes.status, ...retryData };
+      return retryData;
+    } catch (e) {
+      if (e && e.status === 403 && e.message === '账号已被封禁') {
         clearToken();
         if (window.location.pathname !== '/pages/login.html') window.location.href = '/pages/login.html';
-        throw { status: 403, message: '账号已被封禁' };
+        throw e;
       }
-    } catch (e) {
-      if (e && e.status !== undefined) throw e;
+      if (e && e.status !== undefined && e.status !== 401) throw e;
     }
     clearToken();
     if (window.location.pathname !== '/pages/login.html') window.location.href = '/pages/login.html';

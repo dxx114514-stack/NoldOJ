@@ -1,6 +1,7 @@
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 const config = require('../config/config');
 const { initDB } = require('../database/db');
@@ -12,6 +13,7 @@ async function main() {
 
   const app = express();
   app.use(cors({ origin: true, credentials: true }));
+  app.use(cookieParser());
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(express.static(path.join(__dirname, '../../frontend')));
@@ -27,6 +29,7 @@ async function main() {
   const articleRoutes = require('../routes/articles');
   const uploadRoutes = require('../routes/uploads');
   const tagRoutes = require('../routes/tags');
+  const categoryRoutes = require('../routes/categories');
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/problems', problemRoutes);
@@ -38,6 +41,7 @@ async function main() {
   app.use('/api/v1/articles', articleRoutes);
   app.use('/api/v1/uploads', uploadRoutes);
   app.use('/api/v1/tags', tagRoutes);
+  app.use('/api/v1/categories', categoryRoutes);
 
   app.get('/api/v1/stats', (req, res) => {
     const problems = db.prepare('SELECT COUNT(*) as c FROM problems WHERE is_public = 1').get().c;

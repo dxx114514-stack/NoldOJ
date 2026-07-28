@@ -1,4 +1,5 @@
-AI_ENABLED=true
-OLLAMA_URL=http://localhost:11434/api/chat
-OLLAMA_MODEL=qwen3:1.7b
+AI_ENABLED=false
+URL=http://localhost:11434/api/chat
+MODEL=qwen3:1.7b
+KEY=
 CODE_LENGTH_LIMIT=131072

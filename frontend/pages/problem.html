@@ -27,12 +27,16 @@
         const p = await apiCall('GET', `/problems/${pid}`);
         document.title = `${p.title} - WinOJ`;
         let tagsHtml = '';
+        let categoriesHtml = '';
         try {
           const tags = await apiCall('GET', `/tags/problem/${p.id}`);
           if (tags.length > 0) {
             tagsHtml = tags.map(t => `<span class="px-3 py-1 text-xs rounded-full" style="background-color: ${t.color}20; color: ${t.color}">${escapeHtml(t.name)}</span>`).join('');
           }
         } catch {}
+        if (p.categories && p.categories.length > 0) {
+          categoriesHtml = p.categories.map(c => `<span class="px-3 py-1 text-xs rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">${escapeHtml(c.name)}</span>`).join('');
+        }
 
         document.getElementById('content').innerHTML = `
           <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
@@ -40,6 +44,7 @@
               <div>
                 <h1 class="text-3xl font-bold text-gray-900 dark:text-white">${escapeHtml(p.title)}</h1>
                 <div class="flex flex-wrap gap-2 mt-3">
+                  ${categoriesHtml}
                   ${tagsHtml}
                   <span class="px-3 py-1 text-xs rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">${p.problem_type === 'traditional' ? '传统题' : p.problem_type === 'interactive' ? '交互题' : p.problem_type === 'submit_answer' ? '提交答案' : p.problem_type}</span>
                   <span class="px-3 py-1 text-xs rounded-full bg-gray-100 text-gray-600 dark:text-gray-400 dark:text-gray-500">时限: ${p.time_limit}ms</span>
