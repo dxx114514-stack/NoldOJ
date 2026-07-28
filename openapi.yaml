@@ -16,7 +16,7 @@ info:
 
     ## 角色层级
     user < teacher < admin < su
-  version: 1.4.0
+  version: 1.6.0
   contact:
     name: WinOJ
   license:
@@ -62,6 +62,13 @@ components:
         signature:
           type: string
         bio:
+          type: string
+        email:
+          type: string
+        hide_rating:
+          type: integer
+          enum: [0, 1]
+        preferred_language:
           type: string
         created_at:
           type: string
@@ -344,6 +351,76 @@ components:
 
 paths:
   # ===== AUTH =====
+  /auth/turnstile-sitekey:
+    get:
+      tags: [认证]
+      summary: 获取 Turnstile 站点密钥
+      responses:
+        '200':
+          description: 站点密钥
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  site_key:
+                    type: string
+
+  /auth/email-enabled:
+    get:
+      tags: [认证]
+      summary: 查询邮件服务是否启用
+      responses:
+        '200':
+          description: 启用状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+
+  /auth/send-code:
+    post:
+      tags: [认证]
+      summary: 发送验证码邮件
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        '200':
+          description: 验证码已发送
+
+  /auth/verify-code:
+    post:
+      tags: [认证]
+      summary: 邮箱验证码登录/注册
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email:
+                  type: string
+                code:
+                  type: string
+      responses:
+        '200':
+          description: 验证成功
+
   /auth/login:
     post:
       tags: [认证]
@@ -1305,6 +1382,39 @@ paths:
         '200':
           description: 语言列表
 
+  /ide/review:
+    post:
+      tags: [IDE]
+      summary: AI 代码安全审查
+      description: 调用 Ollama 审查代码安全性，无需登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [language, source_code]
+              properties:
+                language:
+                  type: string
+                source_code:
+                  type: string
+      responses:
+        '200':
+          description: 审查结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  safe:
+                    type: boolean
+                  reason:
+                    type: string
+                  threat_level:
+                    type: string
+                    enum: [none, low, medium, high, critical]
+
   /ide/run:
     post:
       tags: [IDE]
@@ -1324,8 +1434,56 @@ paths:
                 stdin:
                   type: string
       responses:
+        '201':
+          description: 运行已排队
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_id:
+                    type: integer
+                  status:
+                    type: string
+
+  /ide/run/{id}:
+    get:
+      tags: [IDE]
+      summary: 查询运行结果
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
         '200':
           description: 运行结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                  stdout:
+                    type: string
+                  stderr:
+                    type: string
+                  compile_output:
+                    type: string
+                  exit_code:
+                    type: integer
+                  time_used:
+                    type: integer
+                  memory_used:
+                    type: integer
+                  language:
+                    type: string
+                  created_at:
+                    type: string
 
   # ===== USERS =====
   /users:
@@ -1411,6 +1569,44 @@ paths:
       responses:
         '200':
           description: 更新成功
+
+  /users/{id}/profile:
+    get:
+      tags: [用户]
+      summary: 获取公开用户资料
+      description: 无需登录即可查看用户的公开资料（昵称、签名、简介、Rating 等）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 用户资料
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  username:
+                    type: string
+                  nickname:
+                    type: string
+                  role:
+                    type: string
+                  signature:
+                    type: string
+                  bio:
+                    type: string
+                  rating:
+                    type: integer
+                  created_at:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /users/rating:
     get:
@@ -1619,6 +1815,59 @@ paths:
       responses:
         '200':
           description: 修改成功
+
+  /users/{id}/hide-rating:
+    put:
+      tags: [用户]
+      summary: 隐藏/显示 Rating
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hide_rating]
+              properties:
+                hide_rating:
+                  type: integer
+                  enum: [0, 1]
+      responses:
+        '200':
+          description: 设置成功
+
+  /users/{id}/submit-lock-exempt:
+    put:
+      tags: [用户]
+      summary: 设置提交锁豁免
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [submit_lock_exempt]
+              properties:
+                submit_lock_exempt:
+                  type: boolean
+      responses:
+        '200':
+          description: 设置成功
 
   # ===== LANGUAGES =====
   /languages:

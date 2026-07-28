@@ -16,6 +16,7 @@
 
 ### AI 代码安全审查
 - **Ollama 集成**：自动调用本地 Ollama（默认 qwen3:1.7b）审查提交代码
+- **可配置开关**：通过 `config/ai.txt` 启用/禁用 AI 审查、自定义 Ollama 地址和模型
 - **异步审查**：审查在后台运行，不阻塞提交响应，审查通过后才编译运行
 - **恶意代码检测**：检测文件攻击、网络攻击、权限提升、挖矿程序、敏感信息窃取等
 - **自动封禁**：发现恶意代码立即封禁用户并踢出登录，Access Token 立即失效
@@ -299,7 +300,7 @@ A: 行内公式用 `$E=mc^2$`，块级公式用 `$$\sum_{i=1}^{n} i$$`。
 A: Bilibili 用 `@[bilibili](BV号)`，任意网站用 `@[url](URL)`，音频 `@[audio](URL)`，视频 `@[video](URL)`。
 
 **Q: AI 安全审查如何配置？**
-A: 安装 Ollama 并拉取 qwen3:1.7b 模型（`ollama pull qwen3:1.7b`），默认监听 `localhost:11434`。可通过环境变量 `OLLAMA_URL` 和 `OLLAMA_MODEL` 自定义。
+A: 编辑 `config/ai.txt` 文件。安装 Ollama 并拉取 qwen3:1.7b 模型（`ollama pull qwen3:1.7b`），默认监听 `localhost:11434`。可通过 `AI_ENABLED` 开关禁用审查，或通过 `OLLAMA_URL` 和 `OLLAMA_MODEL` 自定义地址和模型。
 
 **Q: 数据库在哪里？**
 A: 默认在 `backend/data/winoj.db`，SQLite 格式，所有数据在重启后保留。
