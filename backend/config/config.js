@@ -37,6 +37,24 @@ function loadEmailConfig() {
 
 const email = loadEmailConfig();
 
+function loadAiConfig() {
+  const aiPath = path.join(__dirname, '..', '..', 'config', 'ai.txt');
+  const result = { enabled: true, ollamaUrl: 'http://localhost:11434/api/chat', ollamaModel: 'qwen3:1.7b', codeLengthLimit: 131072 };
+  try {
+    const content = fs.readFileSync(aiPath, 'utf8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('AI_ENABLED=')) result.enabled = trimmed.split('=')[1] === 'true';
+      if (trimmed.startsWith('OLLAMA_URL=')) result.ollamaUrl = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('OLLAMA_MODEL=')) result.ollamaModel = trimmed.split('=').slice(1).join('=');
+      if (trimmed.startsWith('CODE_LENGTH_LIMIT=')) result.codeLengthLimit = parseInt(trimmed.split('=')[1], 10) || 131072;
+    }
+  } catch {}
+  return result;
+}
+
+const ai = loadAiConfig();
+
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
   jwt: {
@@ -61,9 +79,10 @@ module.exports = {
     ideRun: { windowMs: 60000, max: 20 }
   },
   security: {
-    ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434/api/chat',
-    ollamaModel: process.env.OLLAMA_MODEL || 'qwen3:1.7b',
-    codeLengthLimit: parseInt(process.env.CODE_LENGTH_LIMIT || '131072')
+    enabled: ai.enabled,
+    ollamaUrl: ai.ollamaUrl,
+    ollamaModel: ai.ollamaModel,
+    codeLengthLimit: ai.codeLengthLimit
   },
   turnstile: {
     enabled: cf.enabled,

@@ -17,11 +17,6 @@ data/uploads/
 # Sandbox temp files
 winoj-sandbox/
 
-# Language runtimes installed by setup
-tools/gcc/
-tools/python/
-tools/java/
-
 # OS files
 Thumbs.db
 Desktop.ini
@@ -39,7 +34,3 @@ config/email.txt
 *.log
 
 clearHistory.bat
-
-st.bat
-
-sp.bat

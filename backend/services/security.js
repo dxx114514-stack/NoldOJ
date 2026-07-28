@@ -1,5 +1,6 @@
 const config = require('../config/config');
 
+const AI_ENABLED = config.security.enabled;
 const OLLAMA_URL = config.security.ollamaUrl;
 const OLLAMA_MODEL = config.security.ollamaModel;
 const CODE_LENGTH_LIMIT = config.security.codeLengthLimit;
@@ -65,6 +66,10 @@ function sanitizeForReview(code, maxLength = 8000) {
 }
 
 async function reviewCode(sourceCode, language) {
+  if (!AI_ENABLED) {
+    return { safe: true, reason: 'AI审查已关闭', threat_level: 'none' };
+  }
+
   if (!sourceCode || sourceCode.length < 50) {
     return { safe: true, reason: '代码过短，无需审查', threat_level: 'none' };
   }
@@ -131,4 +136,4 @@ async function reviewCode(sourceCode, language) {
   }
 }
 
-module.exports = { reviewCode, detectPromptInjection, sanitizeForReview, CODE_LENGTH_LIMIT, OLLAMA_URL, OLLAMA_MODEL };
+module.exports = { reviewCode, detectPromptInjection, sanitizeForReview, CODE_LENGTH_LIMIT, OLLAMA_URL, OLLAMA_MODEL, AI_ENABLED };
