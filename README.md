@@ -109,7 +109,7 @@
 | 依赖 | 版本要求 | 用途 |
 |------|---------|------|
 | **Node.js** | >= 18.x | 运行后端服务 |
-| **GCC/G++** | 任意版本 | C/C++ 编译 |
+| **Mingw64** | 任意版本 | C/C++ 编译 |
 | **Python 3** | 任意版本 | Python 代码执行（可选） |
 | **JDK** | 任意版本 | Java 编译和执行（可选） |
 | **操作系统** | Windows | 主要支持平台 |
@@ -117,29 +117,33 @@
 
 ## 快速开始
 
-### 方式一：一键安装（推荐）
+### 安装
 
-双击 `setup.bat`，自动完成：
-- 预留端口 3000
-- 安装 Node.js 依赖
-- 自动下载/安装 GCC、Python、JDK
-- 自动添加到系统 PATH 环境变量
-- 初始化数据库和语言库
+（等待b站教程发出）
 
-### 方式二：手动启动
+文字版：
 
-```bash
-cd backend
-npm install
-npm start
+自行下载以上依赖和Git并安装
+
+找到你想安装到的目录
+
+在此处打开cmd
+
+输入
+```batch
+git clone https://github.com/dxx114514-stack/winoj.mimo.git
 ```
-
-启动后访问 http://localhost:3000
+完成后运行`start.bat`
 
 ### 更新与卸载
 
-- **更新**：双击 `update.bat`，自动拉取最新代码并更新依赖
-- **卸载**：双击 `uninstall.bat`，删除下载的依赖（Node.js 除外）
+- **更新**：
+```batch
+git pull
+```
+
+- **卸载**
+将winoj整体删除、进入设置-》应用管理-》删除你安装的依赖项（如 Node.js / Mingw64 等）
 
 ### 默认管理员账户
 
@@ -184,11 +188,8 @@ SANDBOX_TEMP=C:\temp\winoj-sandbox
 ```
 winoj/
 ├── start.bat               # 一键启动脚本
-├── setup.bat               # 一键安装部署（含环境配置）
-├── update.bat              # 一键更新
-├── uninstall.bat           # 一键卸载依赖
+├── st.bat                     # 一键启动脚本（含cloudflare tunnel启动和混合输出）
 ├── README.md               # 项目说明
-├── APIuse.md               # API 接口文档
 ├── openapi.yaml            # OpenAPI 3.0 规范文档
 ├── backend/
 │   ├── config/             # 配置文件
