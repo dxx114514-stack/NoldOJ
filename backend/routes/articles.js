@@ -5,12 +5,18 @@ const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth')
 const router = express.Router();
 
 router.get('/', optionalAuth, (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
+  const { page = 1, limit = 20, search = '' } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
   let where = '';
   let params = [];
   if (!req.user || !['teacher', 'admin', 'su'].includes(req.user.role)) {
     where = 'WHERE a.is_published = 1';
+  }
+  if (search) {
+    const fuzzy = '%' + search.replace(/\s+/g, '') + '%';
+    where += where ? ' AND ' : 'WHERE ';
+    where += '(REPLACE(a.title, \' \', \'\') LIKE ? OR REPLACE(IFNULL(a.provider, \'\'), \' \', \'\') LIKE ?)';
+    params.push(fuzzy, fuzzy);
   }
   const total = db.prepare(`SELECT COUNT(*) as c FROM articles a ${where}`).get(...params).c;
   const articles = db.prepare(`

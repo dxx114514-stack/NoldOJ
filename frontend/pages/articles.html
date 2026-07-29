@@ -19,6 +19,9 @@
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">文章</h1>
       <div class="flex space-x-2" id="articleActions"></div>
     </div>
+    <div class="mb-4">
+      <input id="search" type="text" placeholder="搜索文章..." class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-800 dark:text-white" onkeyup="loadArticles()">
+    </div>
     <div id="articleList" class="space-y-4"></div>
     <div id="empty" class="hidden text-center py-12 text-gray-400 dark:text-gray-500 dark:text-gray-400">暂无文章</div>
   </div>
@@ -33,7 +36,10 @@
 
     async function loadArticles() {
       try {
-        const data = await apiCall('GET', '/articles');
+        const search = document.getElementById('search').value;
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        const data = await apiCall('GET', `/articles${params.toString() ? '?' + params.toString() : ''}`);
         const el = document.getElementById('articleList');
         const empty = document.getElementById('empty');
         if (data.articles.length === 0) { el.innerHTML = ''; empty.classList.remove('hidden'); return; }

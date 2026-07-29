@@ -26,8 +26,9 @@ router.get('/', (req, res) => {
   const params = [];
   
   if (search) {
-    where += ' AND (p.title LIKE ? OR p.description LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`);
+    const fuzzy = '%' + search.replace(/\s+/g, '') + '%';
+    where += ` AND (REPLACE(p.title, ' ', '') LIKE ? OR REPLACE(p.description, ' ', '') LIKE ? OR REPLACE(IFNULL(p.provider, ''), ' ', '') LIKE ?)`;
+    params.push(fuzzy, fuzzy, fuzzy);
   }
   
   if (tag) {

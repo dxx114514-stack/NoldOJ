@@ -5,15 +5,23 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  const { page = 1, limit = 50 } = req.query;
+  const { page = 1, limit = 50, search = '' } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
-  const total = db.prepare('SELECT COUNT(*) as c FROM contests').get().c;
+  let where = '';
+  const params = [];
+  if (search) {
+    const fuzzy = '%' + search.replace(/\s+/g, '') + '%';
+    where = 'WHERE REPLACE(c.title, \' \', \'\') LIKE ? OR REPLACE(c.description, \' \', \'\') LIKE ?';
+    params.push(fuzzy, fuzzy);
+  }
+  const total = db.prepare(`SELECT COUNT(*) as c FROM contests c ${where}`).get(...params).c;
   const contests = db.prepare(`
     SELECT c.*, u.username as creator_name,
       (SELECT COUNT(*) FROM contest_problems WHERE contest_id = c.id) as problem_count
     FROM contests c LEFT JOIN users u ON c.created_by = u.id
+    ${where}
     ORDER BY c.id DESC LIMIT ? OFFSET ?
-  `).all(parseInt(limit), offset);
+  `).all(...params, parseInt(limit), offset);
   res.json({ total, page: parseInt(page), limit: parseInt(limit), contests });
 });
 

@@ -12,6 +12,9 @@
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
   <div class="max-w-5xl mx-auto px-4 py-8">
+    <div class="mb-4">
+      <input id="search" type="text" placeholder="搜索比赛..." class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-800 dark:text-white" onkeyup="loadContests()">
+    </div>
     <div id="contestList" class="space-y-4"></div>
     <div id="empty" class="hidden text-center py-12 text-gray-400 dark:text-gray-500 dark:text-gray-400">暂无比赛</div>
   </div>
@@ -19,7 +22,10 @@
     document.getElementById('nav').innerHTML = renderNav('contests');
     async function loadContests() {
       try {
-        const data = await apiCall('GET', '/contests');
+        const search = document.getElementById('search').value;
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        const data = await apiCall('GET', `/contests${params.toString() ? '?' + params.toString() : ''}`);
         const el = document.getElementById('contestList');
         const empty = document.getElementById('empty');
         if (data.contests.length === 0) { el.innerHTML = ''; empty.classList.remove('hidden'); return; }
