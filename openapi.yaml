@@ -357,22 +357,25 @@ components:
 
 paths:
   # ===== AUTH =====
-  /auth/turnstile-sitekey:
+  /auth/captcha:
     get:
       tags: [认证]
-      summary: 获取 Turnstile 站点密钥
+      summary: 获取 SVG 图形验证码
+      description: 返回验证码 ID 和 SVG 图形，用于登录/注册验证
       responses:
         '200':
-          description: 站点密钥
+          description: 验证码数据
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  enabled:
-                    type: boolean
-                  site_key:
+                  id:
                     type: string
+                    description: 验证码会话 ID
+                  svg:
+                    type: string
+                    description: SVG 图形验证码
 
   /auth/email-enabled:
     get:
@@ -430,19 +433,25 @@ paths:
   /auth/login:
     post:
       tags: [认证]
-      summary: 登录
+      summary: 登录（需验证码）
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [username, password, captcha_id, captcha_code]
               properties:
                 username:
                   type: string
                 password:
                   type: string
+                captcha_id:
+                  type: string
+                  description: 验证码会话 ID
+                captcha_code:
+                  type: string
+                  description: 验证码内容
       responses:
         '200':
           description: 登录成功
@@ -470,14 +479,14 @@ paths:
   /auth/register:
     post:
       tags: [认证]
-      summary: 注册
+      summary: 注册（需验证码）
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [username, password, captcha_id, captcha_code]
               properties:
                 username:
                   type: string
@@ -488,6 +497,16 @@ paths:
                   minLength: 6
                 nickname:
                   type: string
+                email:
+                  type: string
+                email_code:
+                  type: string
+                captcha_id:
+                  type: string
+                  description: 验证码会话 ID
+                captcha_code:
+                  type: string
+                  description: 验证码内容
       responses:
         '201':
           description: 注册成功

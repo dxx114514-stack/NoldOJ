@@ -8,6 +8,11 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={darkMode:'class'}</script>
   <script src="/js/api.js"></script>
+  <style>
+    .captcha-svg svg { display: block; }
+    .captcha-svg { background: #fff; border-radius: 0.5rem; }
+    .dark .captcha-svg { border-color: #4b5563 !important; }
+  </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
@@ -27,7 +32,13 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
           <input id="password" type="password" required class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition dark:bg-gray-700 dark:text-white" placeholder="请输入密码">
         </div>
-        <div id="cfWidget" class="mb-4"></div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">验证码</label>
+          <div class="flex space-x-2">
+            <input id="captchaCode" type="text" required minlength="4" maxlength="4" class="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition dark:bg-gray-700 dark:text-white uppercase" placeholder="请输入验证码">
+            <div id="captchaImg" class="captcha-svg cursor-pointer border border-gray-300 dark:border-gray-600 rounded-xl overflow-hidden hover:opacity-80 transition flex items-center justify-center" title="点击刷新验证码" style="min-width:130px;"></div>
+          </div>
+        </div>
         <button type="submit" id="loginBtn" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">登 录</button>
       </form>
       <p class="text-center mt-6 text-sm text-gray-500 dark:text-gray-400">还没有账号？<a href="/pages/register.html" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium">立即注册</a></p>
@@ -35,25 +46,19 @@
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('');
-    let cfSiteKey = '';
-    async function loadTurnstile() {
+    let captchaId = '';
+
+    async function loadCaptcha() {
       try {
-        const data = await apiCall('GET', '/auth/turnstile-sitekey');
-        cfSiteKey = data.siteKey;
-        if (cfSiteKey) {
-          const script = document.createElement('script');
-          script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-          script.async = true;
-          script.onload = () => {
-            turnstile.render('#cfWidget', { sitekey: cfSiteKey, theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light' });
-          };
-          document.head.appendChild(script);
-        } else {
-          document.getElementById('cfWidget').style.display = 'none';
-        }
+        const data = await apiCall('GET', '/auth/captcha');
+        captchaId = data.id;
+        const container = document.getElementById('captchaImg');
+        container.innerHTML = data.svg;
+        container.onclick = loadCaptcha;
       } catch {}
     }
-    loadTurnstile();
+    loadCaptcha();
+
     async function handleLogin(e) {
       e.preventDefault();
       const btn = document.getElementById('loginBtn');
@@ -61,11 +66,11 @@
       btn.disabled = true; btn.textContent = '登录中...';
       errDiv.classList.add('hidden');
       try {
-        const cfToken = cfSiteKey ? (turnstile.getResponse() || '') : '';
         const data = await apiCall('POST', '/auth/login', {
           username: document.getElementById('username').value,
           password: document.getElementById('password').value,
-          cf_turnstile_token: cfToken
+          captcha_id: captchaId,
+          captcha_code: document.getElementById('captchaCode').value
         });
         setToken(data.access_token);
         setUser(data.user);
@@ -74,7 +79,8 @@
         errDiv.textContent = err.message || '登录失败';
         errDiv.classList.remove('hidden');
         btn.disabled = false; btn.textContent = '登 录';
-        if (cfSiteKey) turnstile.reset();
+        document.getElementById('captchaCode').value = '';
+        loadCaptcha();
       }
     }
   </script>

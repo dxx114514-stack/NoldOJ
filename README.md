@@ -1,6 +1,6 @@
 # WinOJ - Windows 在线评测系统
 
-专为 Windows 平台设计的在线评测系统，支持多语言代码评测、安全沙箱执行、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查、黑夜模式等功能。
+专为 Windows 平台设计的在线评测系统，支持多语言代码评测、安全沙箱执行、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查、黑夜模式、SVG 图形验证码、模糊搜索等功能。
 
 ## 功能特性
 
@@ -62,6 +62,7 @@
 - **强制登出**：Access Token 立即失效，无需等待 15 分钟过期
 - **免密登录**：超级管理员可一键切换到任意用户身份
 - **在线用户列表**：管理员可查看 5 分钟内活跃的在线用户
+- **资料预览**：排行榜、比赛、文章、提交等所有页面用户名均可点击查看他人资料
 
 ### 比赛系统
 - **比赛 CRUD**：教师及以上角色创建、编辑、删除比赛
@@ -79,7 +80,7 @@
 
 ### 文件与图床（仅教师及以上）
 - **文件上传**：支持图片、文档等文件上传（最大 10MB）
-- **用户限额**：单用户最大 2GB 上传空间
+- **用户限额**：单用户最大 2GB 上传空间（超管可调整）
 - **图床功能**：上传文件可通过 URL 访问，方便在 Markdown 中插入资源
 - **文件管理**：记录上传者、文件名、大小等信息，管理员可删除
 
@@ -95,10 +96,24 @@
 - **动态配置**：超管可在管理面板添加、编辑、禁用、删除编程语言
 - **编译/运行命令**：支持 `{src}`、`{exe}`、`{workdir}` 占位符
 
+### 验证码系统
+- **SVG 图形验证码**：使用 svg-captcha 动态生成 4 位随机字符（排除易混淆字符 O/0/I/1），带干扰线和彩色噪点
+- **点击刷新**：点击验证码图片即可生成新的验证码
+- **一次性使用**：验证成功/失败后立即销毁，防止重放
+- **5 分钟有效期**：超时自动过期，需重新获取
+- **大小写不敏感**：用户输入自动转大写匹配
+- **配置开关**：通过 `config/config.js` 中 `captcha.enabled` 控制
+
+### 搜索功能
+- **模糊搜索**：题目、比赛、文章均支持标题/描述模糊搜索
+- **忽略空格**：搜索 `a+b` 可匹配 `A + B Problem`
+- **实时过滤**：输入即搜，无需等待提交
+
 ### 安全机制
 - **双 Token 认证**：15 分钟 Access Token + 7 天 Refresh Token（HttpOnly Cookie）
 - **强制登出即失效**：通过 force_logout_at 时间戳 + JWT iat 比对，Access Token 立即失效
 - **封禁全拦截**：封禁用户的 Access Token 和 Refresh Token 均被拒绝
+- **图形验证码**：登录和注册需通过 SVG 图形验证码验证，防止自动化攻击
 - **注册限流**：单个 IP 每小时仅可注册 1 次
 - **速率限制**：提交和 IDE 运行接口均有令牌桶限流
 - **输入校验**：SQL 注入防护、源码大小限制（128KB）、语言可用性检查
@@ -114,6 +129,7 @@
 | **JDK** | 任意版本 | Java 编译和执行（可选） |
 | **操作系统** | Windows | 主要支持平台 |
 | **Ollama** | 任意版本 | AI 代码安全审查（可选，需加载 qwen3:1.7b 模型） |
+| **svg-captcha** | >= 1.4.0 | SVG 图形验证码生成 |
 
 ## 快速开始
 
@@ -154,6 +170,44 @@ git pull
 
 ## 配置说明
 
+### 配置文件
+
+所有配置均通过 `config/` 目录下的配置文件管理，不使用环境变量。
+
+#### `config/ai.txt` — AI 代码安全审查配置
+
+```
+AI_ENABLED=false
+URL=http://localhost:11434/api/chat
+MODEL=qwen3:1.7b
+KEY=
+CODE_LENGTH_LIMIT=131072
+```
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `AI_ENABLED` | `false` | 是否启用 AI 代码审查 |
+| `URL` | `http://localhost:11434/api/chat` | AI 服务 API 地址 |
+| `MODEL` | `qwen3:1.7b` | 审查模型名称 |
+| `KEY` | 空 | AI 服务 API Key（可选，用于需要认证的服务） |
+| `CODE_LENGTH_LIMIT` | 131072 | 源代码最大字符数 (128KB) |
+
+#### `config/email.txt` — 邮件发送配置
+
+```
+EMAIL_ENABLED=false
+RESEND_API_KEY=
+EMAIL_FROM=onboarding@resend.dev
+```
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `EMAIL_ENABLED` | `false` | 是否启用邮箱功能（注册验证） |
+| `RESEND_API_KEY` | 空 | Resend API Key |
+| `EMAIL_FROM` | `onboarding@resend.dev` | 发件人地址 |
+
+### 核心配置
+
 编辑 `backend/config/config.js`：
 
 | 配置项 | 默认值 | 说明 |
@@ -168,35 +222,25 @@ git pull
 | `sandbox.maxOutputSize` | 64KB | 最大输出大小 |
 | `rateLimit.submissions` | 10次/分钟 | 提交频率限制 |
 | `rateLimit.ideRun` | 20次/分钟 | IDE 运行频率限制 |
-| `security.url` | `localhost:11434` | AI 服务 API 地址 |
-| `security.model` | `qwen3:1.7b` | 审查模型名称 |
-| `security.key` | 空 | AI 服务 API Key（可选） |
-| `security.codeLengthLimit` | 131072 | 源代码最大字符数 (128KB) |
-
-### 环境变量
-
-```bash
-PORT=3000
-JWT_ACCESS_SECRET=your-secret
-JWT_REFRESH_SECRET=your-secret
-DB_PATH=./data/winoj.db
-SANDBOX_TEMP=C:\temp\winoj-sandbox
-```
+| `captcha.enabled` | `true` | 是否启用登录/注册验证码 |
 
 ## 项目结构
 
 ```
 winoj/
 ├── start.bat               # 一键启动脚本
-├── st.bat                     # 一键启动脚本（含cloudflare tunnel启动和混合输出）
+├── st.bat                  # 一键启动脚本（含cloudflare tunnel启动和混合输出）
 ├── README.md               # 项目说明
 ├── openapi.yaml            # OpenAPI 3.0 规范文档
+├── config/                 # 外部配置文件
+│   ├── ai.txt              # AI 代码安全审查配置
+│   └── email.txt           # 邮件发送配置
 ├── backend/
-│   ├── config/             # 配置文件
+│   ├── config/             # 核心配置（config.js）
 │   ├── database/           # 数据库 schema 和初始化（含自动迁移）
-│   ├── middleware/          # 认证、限流、在线用户追踪
+│   ├── middleware/         # 认证、限流、在线用户追踪
 │   ├── routes/             # API 路由（10个模块，60+端点）
-│   ├── services/           # 评测引擎 + IDE 评测 + AI 安全审查
+│   ├── services/           # 评测引擎 + IDE 评测 + AI 安全审查 + 验证码
 │   ├── sandbox/            # 代码执行沙箱 + 计分脚本解释器 + memwatch
 │   ├── test/               # 单元测试（55+ 测试用例）
 │   └── src/                # 服务器入口
@@ -215,12 +259,29 @@ winoj/
 
 | 角色 | 说明 | 权限范围 |
 |------|------|---------|
-| **用户** | 普通注册用户 | 做题、提交代码、使用 IDE（需登录）、查看提交记录、加入比赛 |
+| **用户** | 普通注册用户 | 做题、提交代码、使用 IDE（需登录）、查看提交记录、加入比赛、查看他人资料 |
 | **教师** | 题目管理者 | 创建/编辑题目、管理测试点、创建比赛、邀请用户、重测提交、发布文章、文件上传/图床 |
-| **管理员** | 用户管理者 | 管理用户（封禁/解封/强制登出）、查看在线用户、删除提交 |
-| **超级管理员** | 最高权限 | 所有权限 + 修改角色、重置密码、免密登录、管理语言、设置 Rating、自删除 |
+| **管理员** | 用户管理者 | 管理权限低于自己或自己的用户（封禁/解封/强制登出）、查看在线用户、删除提交 |
+| **超级管理员** | 最高权限 | 所有权限 + 修改角色、重置密码、免密登录、管理语言、设置 Rating、自删除、设置图床限额 |
 
 ## 更新日志
+
+### v1.6.0
+- 新增 SVG 图形验证码替代 Cloudflare Turnstile（svg-captcha 实现，4位字符+干扰线）
+- 新增模糊搜索功能（题目、比赛、文章支持忽略空格匹配）
+- 新增用户资料预览（排行榜、比赛、文章、提交等所有页面用户名可点击查看）
+- 新增图床限制管理（超级管理员可更改单用户图床限额）
+- 配置文件体系化：AI/邮件配置改为从 config/ 目录读取，移除环境变量依赖
+- AI 配置新增 KEY 字段，启用默认值改为 false，移除 OLLAMA_ 前缀
+- 修复 Token 刷新并发冲突（添加刷新锁，统一时间格式）
+- 修复暗色模式下 Markdown/KaTeX 元素显示不明显
+- 修复比赛排行榜用户名不可点击
+- 修复个性签名和个人简介无法显示
+- 修复用户权限逻辑（只能管理更低级或自己，不可管理同级）
+- 修复 Task 选了分组但不加上分组
+- 修复 Zip 一键上传功能
+- 题目列表改为一代上
+- 更新依赖：新增 svg-captcha，cookie-parser
 
 ### v1.5.0
 - 新增黑夜模式一键切换，19 个页面全面暗色适配
@@ -299,7 +360,16 @@ A: 行内公式用 `$E=mc^2$`，块级公式用 `$$\sum_{i=1}^{n} i$$`。
 A: Bilibili 用 `@[bilibili](BV号)`，任意网站用 `@[url](URL)`，音频 `@[audio](URL)`，视频 `@[video](URL)`。
 
 **Q: AI 安全审查如何配置？**
-A: 编辑 `config/ai.txt` 文件。将 `AI_ENABLED` 设为 `true` 启用审查，通过 `URL` 设置 AI 服务地址，`MODEL` 设置模型名称，`KEY` 设置 API Key（可选，用于需要认证的服务）。默认配置指向本地 Ollama（`localhost:11434`，模型 `qwen3:1.7b`）。
+A: 编辑 `config/ai.txt` 文件。将 `AI_ENABLED` 设为 `true` 启用审查，通过 `URL` 设置 AI 服务地址（默认 `http://localhost:11434/api/chat`），`MODEL` 设置模型名称（默认 `qwen3:1.7b`），`KEY` 设置 API Key（可选，用于需要认证的服务）。
+
+**Q: 验证码是如何工作的？**
+A: 系统使用 svg-captcha 动态生成 4 位随机字符的 SVG 图形验证码，带干扰线和彩色噪点。用户登录/注册时需输入验证码，验证后立即销毁（一次性使用），5 分钟内有效。点击验证码图片可刷新。验证码在 `backend/config/config.js` 中通过 `captcha.enabled` 控制（默认开启）。
+
+**Q: 如何修改某用户的图床限额？**
+A: 以超级管理员登录，进入用户管理页面，找到目标用户，点击编辑按钮即可修改单文件大小限制和总存储空间。只能管理权限等级低于自己或自己的账号。
+
+**Q: 如何搜索题目/比赛/文章？**
+A: 在列表页顶部的搜索框输入关键词即可。搜索支持模糊匹配并忽略空格，例如搜索 `a+b` 可匹配 `A + B Problem`。
 
 **Q: 数据库在哪里？**
 A: 默认在 `backend/data/winoj.db`，SQLite 格式，所有数据在重启后保留。

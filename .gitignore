@@ -27,7 +27,6 @@ Desktop.ini
 .idea/
 
 # Config with secrets
-config/cf.txt
 config/email.txt
 
 # Logs

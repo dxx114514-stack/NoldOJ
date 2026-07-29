@@ -7,26 +7,10 @@ const config = require('../config/config');
 const { requireAuth } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
 const { generateCode, sendVerificationEmail, saveCode, verifyCode } = require('../services/email');
+const { generateCaptcha, verifyCaptcha } = require('../services/captcha');
 
 const router = express.Router();
 const registerRateLimit = createRateLimit({ windowMs: 3600000, max: 1 });
-
-async function verifyTurnstile(token, ip) {
-  if (!config.turnstile.enabled || !config.turnstile.secretKey) return true;
-  if (!token) return false;
-  try {
-    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `secret=${config.turnstile.secretKey}&response=${token}&remoteip=${ip || ''}`
-    });
-    const data = await res.json();
-    return data.success === true;
-  } catch (e) {
-    console.error('Turnstile verify error:', e.message);
-    return false;
-  }
-}
 
 function generateAccessToken(userId) {
   return jwt.sign({ userId }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry });
@@ -40,8 +24,9 @@ function generateRefreshToken(userId) {
   return token;
 }
 
-router.get('/turnstile-sitekey', (req, res) => {
-  res.json({ siteKey: config.turnstile.siteKey || '' });
+router.get('/captcha', (req, res) => {
+  const { id, svg } = generateCaptcha();
+  res.json({ id, svg });
 });
 
 const emailCodeRateLimit = createRateLimit({ windowMs: 60000, max: 3 });
@@ -81,15 +66,21 @@ router.get('/email-enabled', (req, res) => {
 });
 
 router.post('/login', async (req, res) => {
-  const { username, password, cf_turnstile_token } = req.body;
+  const { username, password, captcha_id, captcha_code } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
   }
 
-  const cfOk = await verifyTurnstile(cf_turnstile_token, req.ip);
-  if (!cfOk) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '人机验证失败，请重试。' });
+  if (config.captcha.enabled) {
+    if (!captcha_id || !captcha_code) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '请完成验证码。' });
+    }
+    const ok = verifyCaptcha(captcha_id, captcha_code);
+    if (!ok) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '验证码错误，请重试。' });
+    }
   }
+
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'Invalid username or password.' });
@@ -114,14 +105,19 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/register', registerRateLimit, async (req, res) => {
-  const { username, password, nickname, email, email_code, cf_turnstile_token } = req.body;
+  const { username, password, nickname, email, email_code, captcha_id, captcha_code } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
   }
 
-  const cfOk = await verifyTurnstile(cf_turnstile_token, req.ip);
-  if (!cfOk) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '人机验证失败，请重试。' });
+  if (config.captcha.enabled) {
+    if (!captcha_id || !captcha_code) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '请完成验证码。' });
+    }
+    const ok = verifyCaptcha(captcha_id, captcha_code);
+    if (!ok) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '验证码错误，请重试。' });
+    }
   }
 
   if (config.email.enabled) {
@@ -221,8 +217,14 @@ router.post('/refresh', (req, res) => {
   }
 });
 
-router.post('/logout', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(req.user.id);
+router.post('/logout', (req, res) => {
+  const refreshToken = req.cookies?.refresh_token;
+  if (refreshToken) {
+    try {
+      const payload = jwt.verify(refreshToken, config.jwt.refreshSecret);
+      db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(payload.userId);
+    } catch {}
+  }
   res.clearCookie('refresh_token');
   res.json({ message: 'Logged out successfully.' });
 });

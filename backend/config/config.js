@@ -2,23 +2,6 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-function loadCfConfig() {
-  const cfPath = path.join(__dirname, '..', '..', 'config', 'cf.txt');
-  const result = { enabled: false, siteKey: '', secretKey: '' };
-  try {
-    const content = fs.readFileSync(cfPath, 'utf8');
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('TURNSTILE_ENABLED=')) result.enabled = trimmed.split('=')[1] === 'true';
-      if (trimmed.startsWith('TURNSTILE_SITE_KEY=')) result.siteKey = trimmed.split('=').slice(1).join('=');
-      if (trimmed.startsWith('TURNSTILE_SECRET_KEY=')) result.secretKey = trimmed.split('=').slice(1).join('=');
-    }
-  } catch {}
-  return result;
-}
-
-const cf = loadCfConfig();
-
 function loadEmailConfig() {
   const emailPath = path.join(__dirname, '..', '..', 'config', 'email.txt');
   const result = { enabled: false, apiKey: '', from: 'onboarding@resend.dev' };
@@ -86,10 +69,8 @@ module.exports = {
     key: ai.key,
     codeLengthLimit: ai.codeLengthLimit
   },
-  turnstile: {
-    enabled: cf.enabled,
-    siteKey: cf.siteKey,
-    secretKey: cf.secretKey
+  captcha: {
+    enabled: true
   },
   email: {
     enabled: email.enabled,
