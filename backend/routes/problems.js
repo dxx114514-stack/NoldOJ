@@ -42,7 +42,7 @@ router.get('/', (req, res) => {
   }
   
   const total = db.prepare(`SELECT COUNT(*) as c FROM problems p ${where}`).get(...params).c;
-  const problems = db.prepare(`SELECT p.id, p.title, p.problem_type, p.time_limit, p.memory_limit, p.is_public, p.created_at FROM problems p ${where} ORDER BY p.id DESC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
+  const problems = db.prepare(`SELECT p.id, p.title, p.problem_type, p.time_limit, p.memory_limit, p.is_public, p.created_at FROM problems p ${where} ORDER BY p.id ASC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
 
   for (const problem of problems) {
     const tags = db.prepare(`

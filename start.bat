@@ -9,6 +9,11 @@ echo.
 
 cd /d "%~dp0"
 
+if not exist "log" mkdir log
+if exist "log\server.log" del /q "log\server.log"
+for %%f in (log\*) do del /q "%%f" 2>nul
+echo [OK] Log directory cleared.
+
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] Node.js not found. Please install Node.js first.
@@ -56,10 +61,11 @@ if %errorlevel% equ 0 (
 
 echo.
 echo [..] Starting WinOJ server...
+echo [..] Logs: log\server.log
 echo.
 
 start "" http://localhost:3000
 
-node backend\src\server.js
+node backend\src\server.js > "log\server.log" 2>&1
 
 pause
