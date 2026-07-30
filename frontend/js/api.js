@@ -80,6 +80,12 @@ function isTokenExpired() {
 function clearToken() {
   localStorage.removeItem('access_token');
   localStorage.removeItem('user');
+  const navEl = document.getElementById('nav');
+  if (navEl && typeof renderNav === 'function') {
+    const pathName = window.location.pathname;
+    const page = pathName.split('/').pop().replace('.html', '');
+    navEl.innerHTML = renderNav(page);
+  }
 }
 
 function getUser() {
@@ -94,8 +100,15 @@ function setUser(user) {
 async function refreshUser() {
   try {
     const u = await apiCall('GET', '/users/me');
-    const current = getUser() || {};
-    setUser({ id: u.id, username: u.username, nickname: u.nickname, role: u.role, rating: u.rating, preferred_language: u.preferred_language || '' });
+    if (u) {
+      setUser({ id: u.id, username: u.username, nickname: u.nickname, role: u.role, rating: u.rating, preferred_language: u.preferred_language || '' });
+      const navEl = document.getElementById('nav');
+      if (navEl && typeof renderNav === 'function') {
+        const pathName = window.location.pathname;
+        const page = pathName.split('/').pop().replace('.html', '');
+        navEl.innerHTML = renderNav(page);
+      }
+    }
     return u;
   } catch { return null; }
 }
@@ -104,9 +117,7 @@ async function refreshRating() {
   try {
     const u = await apiCall('GET', '/users/me');
     if (u) {
-      const current = getUser() || {};
-      current.rating = u.rating;
-      setUser(current);
+      setUser({ id: u.id, username: u.username, nickname: u.nickname, role: u.role, rating: u.rating, preferred_language: u.preferred_language || '' });
       const el = document.getElementById('nav-rating');
       if (el) el.textContent = `R:${u.rating || 1500}`;
     }
@@ -136,6 +147,7 @@ async function apiCall(method, path, body = null) {
       const retryRes = await fetch(`${API_BASE}${path}`, { method, headers, credentials: 'include', body: opts.body });
       const retryData = await retryRes.json().catch(() => ({}));
       if (!retryRes.ok) throw { status: retryRes.status, ...retryData };
+      if (path !== '/users/me') refreshUser().catch(() => {});
       return retryData;
     } catch (e) {
       if (e && e.status === 403 && e.message === '账号已被封禁') {
@@ -178,6 +190,8 @@ function statusColor(status) {
     judging: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30',
     compiling: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30',
     pending_review: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30',
+    pending_rejudge: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30',
+    skipped: 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800',
   };
   return colors[status] || 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700';
 }
@@ -197,6 +211,7 @@ function statusText(status) {
     compiling: '编译中',
     pending_rejudge: '等待重测',
     pending_review: '审查中',
+    skipped: '已跳过',
   };
   return texts[status] || status;
 }

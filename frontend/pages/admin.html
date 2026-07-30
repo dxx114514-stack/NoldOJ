@@ -155,6 +155,7 @@
           <div class="flex items-center justify-between mb-2">
             <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">测试点列表</h4>
             <div class="flex space-x-2">
+              <button onclick="showBatchSetModal()" class="text-xs px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-lg hover:bg-amber-200">⚙️ 一键设置</button>
               <button onclick="addTestCase()" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200">+ 添加测试点</button>
               <button onclick="batchAddTestCases()" class="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200">批量添加</button>
               <label class="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/30 cursor-pointer">
@@ -178,10 +179,18 @@
               <textarea id="tcOutput" rows="4" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-lg font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
             </div>
           </div>
-          <div class="grid grid-cols-3 gap-3 mb-3">
+          <div class="grid grid-cols-5 gap-3 mb-3">
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">分数</label>
               <input id="tcScore" type="number" value="0" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">时间限制 (ms)</label>
+              <input id="tcTimeLimit" type="number" placeholder="留空=默认" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">内存限制 (MB)</label>
+              <input id="tcMemLimit" type="number" placeholder="留空=默认" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
             </div>
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">所属分组</label>
@@ -192,6 +201,34 @@
             <div class="flex items-end">
               <button onclick="saveTestCase()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">保存</button>
               <button onclick="cancelEditTC()" class="ml-2 px-4 py-2 text-gray-600 dark:text-gray-400 dark:text-gray-500 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 批量设置模态框 -->
+        <div id="batchSetModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <h3 class="text-lg font-semibold mb-1 text-gray-900 dark:text-white">⚙️ 一键设置所有测试点</h3>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">留空的字段不会被修改</p>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">统一分数</label>
+                <input id="batchScore" type="number" placeholder="留空则不修改" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">时间限制 (ms)</label>
+                  <input id="batchTimeLimit" type="number" placeholder="留空则不修改" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">内存限制 (MB)</label>
+                  <input id="batchMemLimit" type="number" placeholder="留空则不修改" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+                </div>
+              </div>
+            </div>
+            <div class="flex justify-end space-x-3 mt-6">
+              <button onclick="hideBatchSetModal()" class="px-4 py-2 text-gray-600 dark:text-gray-400 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">取消</button>
+              <button onclick="applyBatchSettings()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">应用更改</button>
             </div>
           </div>
         </div>
@@ -800,6 +837,8 @@
               <span class="text-sm font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500">#${tc.id}</span>
               <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">排序: ${tc.sort_order}</span>
               <span class="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">分数: ${tc.score}</span>
+              <span class="text-xs px-2 py-0.5 ${tc.time_limit ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300' : 'bg-gray-100 dark:bg-gray-600 text-gray-400 dark:text-gray-500'} rounded">${tc.time_limit ? tc.time_limit + 'ms' : '默认时限'}</span>
+              <span class="text-xs px-2 py-0.5 ${tc.memory_limit ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' : 'bg-gray-100 dark:bg-gray-600 text-gray-400 dark:text-gray-500'} rounded">${tc.memory_limit ? tc.memory_limit + 'MB' : '默认内存'}</span>
               ${group ? `<span class="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">分组: ${group.subtask_id}</span>` : '<span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">无分组</span>'}
               <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 max-w-[200px] truncate">输入: ${escapeHtml(tc.input_data || tc.input_file || '(空)').slice(0, 30)}</span>
               <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 max-w-[200px] truncate">输出: ${escapeHtml(tc.output_data || tc.output_file || '(空)').slice(0, 30)}</span>
@@ -826,6 +865,8 @@
       document.getElementById('tcInput').value = '';
       document.getElementById('tcOutput').value = '';
       document.getElementById('tcScore').value = '0';
+      document.getElementById('tcTimeLimit').value = '';
+      document.getElementById('tcMemLimit').value = '';
       document.getElementById('tcGroup').value = '';
       document.getElementById('tcEditor').classList.remove('hidden');
       updateGroupSelect();
@@ -839,6 +880,8 @@
       document.getElementById('tcInput').value = tc.input_data || '';
       document.getElementById('tcOutput').value = tc.output_data || '';
       document.getElementById('tcScore').value = tc.score;
+      document.getElementById('tcTimeLimit').value = tc.time_limit || '';
+      document.getElementById('tcMemLimit').value = tc.memory_limit || '';
       document.getElementById('tcGroup').value = tc.group_id || '';
       document.getElementById('tcEditor').classList.remove('hidden');
       updateGroupSelect();
@@ -853,12 +896,22 @@
       const input = document.getElementById('tcInput').value;
       const output = document.getElementById('tcOutput').value;
       const score = parseFloat(document.getElementById('tcScore').value) || 0;
+      const timeLimit = document.getElementById('tcTimeLimit').value;
+      const memLimit = document.getElementById('tcMemLimit').value;
       const group_id = document.getElementById('tcGroup').value || null;
 
       if (editingTcId) {
-        await apiCall('PUT', `/problems/${currentProblemId}/testcases/${editingTcId}`, { input_data: input, output_data: output, score, group_id });
+        await apiCall('PUT', `/problems/${currentProblemId}/testcases/${editingTcId}`, {
+          input_data: input, output_data: output, score, group_id,
+          time_limit: timeLimit ? parseInt(timeLimit) : null,
+          memory_limit: memLimit ? parseInt(memLimit) : null
+        });
       } else {
-        await apiCall('POST', `/problems/${currentProblemId}/testcases`, { test_cases: [{ input_data: input, output_data: output, score, group_id }] });
+        await apiCall('POST', `/problems/${currentProblemId}/testcases`, { test_cases: [{
+          input_data: input, output_data: output, score, group_id,
+          time_limit: timeLimit ? parseInt(timeLimit) : null,
+          memory_limit: memLimit ? parseInt(memLimit) : null
+        }] });
       }
       cancelEditTC();
       await loadTestCases();
@@ -1231,6 +1284,42 @@
         await loadContestProblems();
         loadContests();
       } catch (err) { alert(err.message); }
+    }
+
+    function showBatchSetModal() {
+      document.getElementById('batchScore').value = '';
+      document.getElementById('batchTimeLimit').value = '';
+      document.getElementById('batchMemLimit').value = '';
+      document.getElementById('batchSetModal').classList.remove('hidden');
+    }
+
+    function hideBatchSetModal() {
+      document.getElementById('batchSetModal').classList.add('hidden');
+    }
+
+    async function applyBatchSettings() {
+      if (!currentProblemId) { alert('请先选择题目'); return; }
+      const score = document.getElementById('batchScore').value;
+      const timeLimit = document.getElementById('batchTimeLimit').value;
+      const memLimit = document.getElementById('batchMemLimit').value;
+
+      if (!score && !timeLimit && !memLimit) {
+        alert('请至少填写一项');
+        return;
+      }
+
+      try {
+        await apiCall('PUT', `/problems/${currentProblemId}/batch-testcases`, {
+          score: score ? parseInt(score) : null,
+          time_limit: timeLimit ? parseInt(timeLimit) : null,
+          memory_limit: memLimit ? parseInt(memLimit) : null
+        });
+        hideBatchSetModal();
+        await loadTestCases();
+        alert('批量设置已应用');
+      } catch (err) {
+        alert(err.message);
+      }
     }
 
     loadAdminProblems();

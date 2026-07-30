@@ -262,7 +262,7 @@ router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {
   }
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(target.id);
   db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
-  res.json({ message: 'User deleted.', self: target.id === req.user.id });
+  res.json({ message: 'User deleted.' });
 });
 
 module.exports = router;

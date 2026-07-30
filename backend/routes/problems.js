@@ -347,16 +347,43 @@ router.get('/:id/testdata', requireAuth, requireRole('teacher'), (req, res) => {
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
-  const testCases = db.prepare('SELECT * FROM test_cases WHERE problem_id = ? ORDER BY sort_order, id').all(problem.id);
-  const result = testCases.map(tc => ({
-    id: tc.id,
-    input_data: tc.input_data || '',
-    output_data: tc.output_data || '',
-    input_file: tc.input_file ? path.basename(tc.input_file) : '',
-    output_file: tc.output_file ? path.basename(tc.output_file) : '',
-    score: tc.score,
-    sort_order: tc.sort_order
-  }));
+  const testCases = db.prepare('SELECT tc.*, tg.subtask_id FROM test_cases tc LEFT JOIN test_groups tg ON tc.group_id = tg.id WHERE tc.problem_id = ? ORDER BY tc.sort_order, tc.id').all(problem.id);
+  
+  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  
+  function resolveFilePath(baseDir, storedPath) {
+    if (!storedPath) return null;
+    return path.isAbsolute(storedPath) ? storedPath : path.join(baseDir, storedPath);
+  }
+
+  const result = testCases.map(tc => {
+    let inputData = tc.input_data || '';
+    let outputData = tc.output_data || '';
+    
+    const inputPath = resolveFilePath(problemDir, tc.input_file);
+    if (!inputData && inputPath && fs.existsSync(inputPath)) {
+      try { inputData = fs.readFileSync(inputPath, 'utf8'); } catch {}
+    }
+    
+    const outputPath = resolveFilePath(problemDir, tc.output_file);
+    if (!outputData && outputPath && fs.existsSync(outputPath)) {
+      try { outputData = fs.readFileSync(outputPath, 'utf8'); } catch {}
+    }
+    
+    return {
+      id: tc.id,
+      group_id: tc.group_id || null,
+      subtask_id: tc.subtask_id || '',
+      input_data: inputData,
+      output_data: outputData,
+      input_file: tc.input_file ? path.basename(tc.input_file) : '',
+      output_file: tc.output_file ? path.basename(tc.output_file) : '',
+      score: tc.score,
+      time_limit: tc.time_limit || null,
+      memory_limit: tc.memory_limit || null,
+      sort_order: tc.sort_order
+    };
+  });
   res.json(result);
 });
 
@@ -376,9 +403,17 @@ router.post('/:id/testcases', requireAuth, requireRole('teacher'), (req, res) =>
 
   for (const tc of test_cases) {
     order++;
-    db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, score, sort_order) VALUES (?, ?, ?, ?, ?)').run(
-      problem.id, tc.input_data || '', tc.output_data || '', tc.score || 0, order
-    );
+    const tl = tc.time_limit ? parseInt(tc.time_limit) : null;
+    const ml = tc.memory_limit ? parseInt(tc.memory_limit) : null;
+    if (tc.group_id !== undefined && tc.group_id !== null && tc.group_id !== '') {
+      db.prepare('INSERT INTO test_cases (problem_id, group_id, input_data, output_data, score, time_limit, memory_limit, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+        problem.id, tc.group_id, tc.input_data || '', tc.output_data || '', tc.score || 0, tl, ml, order
+      );
+    } else {
+      db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, score, time_limit, memory_limit, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        problem.id, tc.input_data || '', tc.output_data || '', tc.score || 0, tl, ml, order
+      );
+    }
     count++;
   }
 
@@ -486,7 +521,7 @@ router.put('/:id/testcases/:tcid', requireAuth, requireRole('teacher'), (req, re
   if (!tc) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Test case not found.' });
   }
-  const { input_data, output_data, score, group_id, sort_order } = req.body;
+  const { input_data, output_data, score, group_id, sort_order, time_limit, memory_limit } = req.body;
   const updates = [];
   const values = [];
   if (input_data !== undefined) { updates.push('input_data = ?'); values.push(input_data); }
@@ -494,6 +529,8 @@ router.put('/:id/testcases/:tcid', requireAuth, requireRole('teacher'), (req, re
   if (score !== undefined) { updates.push('score = ?'); values.push(score); }
   if (group_id !== undefined) { updates.push('group_id = ?'); values.push(group_id || null); }
   if (sort_order !== undefined) { updates.push('sort_order = ?'); values.push(sort_order); }
+  if (time_limit !== undefined) { updates.push('time_limit = ?'); values.push(time_limit ? parseInt(time_limit) : null); }
+  if (memory_limit !== undefined) { updates.push('memory_limit = ?'); values.push(memory_limit ? parseInt(memory_limit) : null); }
   if (updates.length === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
@@ -509,6 +546,43 @@ router.delete('/:id/testcases/:tcid', requireAuth, requireRole('teacher'), (req,
   }
   db.prepare('DELETE FROM test_cases WHERE id = ?').run(tc.id);
   res.json({ message: 'Test case deleted.' });
+});
+
+router.put('/:id/batch-testcases', requireAuth, requireRole('teacher'), (req, res) => {
+  const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
+  if (!problem) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+
+  const { score, time_limit, memory_limit } = req.body;
+  const updates = [];
+  const values = [];
+
+  if (score !== undefined && score !== null && score !== '') {
+    updates.push('score = ?');
+    values.push(score);
+  }
+  if (time_limit !== undefined && time_limit !== null && time_limit !== '') {
+    updates.push('time_limit = ?');
+    values.push(parseInt(time_limit));
+  }
+  if (memory_limit !== undefined && memory_limit !== null && memory_limit !== '') {
+    updates.push('memory_limit = ?');
+    values.push(parseInt(memory_limit));
+  }
+
+  if (updates.length > 0) {
+    values.push(problem.id);
+    db.prepare(`UPDATE test_cases SET ${updates.join(', ')} WHERE problem_id = ?`).run(...values);
+  }
+
+  const parts = [];
+  if (updates.length > 0) {
+    if (score !== undefined && score !== null && score !== '') parts.push('分数');
+    if (time_limit !== undefined && time_limit !== null && time_limit !== '') parts.push('时间限制');
+    if (memory_limit !== undefined && memory_limit !== null && memory_limit !== '') parts.push('内存限制');
+  }
+  res.json({ message: parts.length > 0 ? parts.join('、') + '已更新。' : '没有需要更新的内容。' });
 });
 
 router.get('/:id/solutions', (req, res) => {

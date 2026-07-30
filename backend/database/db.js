@@ -139,6 +139,11 @@ async function initDB() {
   if (!cols.includes('max_file_size')) sqlDb.exec("ALTER TABLE users ADD COLUMN max_file_size INTEGER DEFAULT 0");
   if (!cols.includes('max_storage')) sqlDb.exec("ALTER TABLE users ADD COLUMN max_storage INTEGER DEFAULT 0");
 
+  const tcColsResult = sqlDb.exec("PRAGMA table_info(test_cases)");
+  const tcCols = tcColsResult.length > 0 ? tcColsResult[0].values.map(r => r[1]) : [];
+  if (!tcCols.includes('time_limit')) sqlDb.exec("ALTER TABLE test_cases ADD COLUMN time_limit INTEGER");
+  if (!tcCols.includes('memory_limit')) sqlDb.exec("ALTER TABLE test_cases ADD COLUMN memory_limit INTEGER");
+
   const tagsTableExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'");
   if (tagsTableExists.length === 0 || tagsTableExists[0].values.length === 0) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS tags (

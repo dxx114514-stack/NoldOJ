@@ -13,7 +13,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
-  <style>.CodeMirror { height: auto; max-height: 400px; font-size: 13px; border-radius: 0.5rem; text-align: left; }
+  <style>.CodeMirror { height: 400px; font-size: 13px; border-radius: 0.5rem; text-align: left; overflow: hidden; }
   .CodeMirror-code { text-align: left !important; }</style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
@@ -27,6 +27,7 @@
     const sid = params.get('id');
     const currentUser = getUser();
     const isTeacher = currentUser && ['teacher', 'admin', 'su'].includes(currentUser.role);
+    let currentSourceCode = '';
 
     function errorDescription(status, stderr, exitCode, timeUsed, timeLimit) {
       const descs = {
@@ -37,6 +38,7 @@
         wrong_answer: '程序输出与标准答案不一致。请仔细检查逻辑和边界情况。',
         accepted: '程序正确通过了所有测试点。',
         system_error: '评测系统内部错误，请联系管理员。',
+        skipped: '因依赖的子任务未通过，本测试点跳过执行。',
         pending: '等待评测中...',
         running: '正在评测中...',
         judging: '正在评测中...',
@@ -50,6 +52,7 @@
       if (!sid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定提交 ID</p>'; return; }
       try {
         const s = await apiCall('GET', `/submissions/${sid}`);
+        currentSourceCode = s.source_code || '';
         document.title = `提交 #${s.id} - WinOJ`;
         const langModes = { c: 'text/x-csrc', cpp: 'text/x-c++src', python3: 'text/x-python', java: 'text/x-java', javascript: 'text/javascript' };
 
@@ -57,34 +60,97 @@
 
         let detailsHtml = '';
         if (s.details && s.details.length > 0) {
+          const groups = {};
+          const noGroup = [];
+          for (const d of s.details) {
+            const key = d.subtask_id || d.group_subtask_id || '';
+            if (key) {
+              if (!groups[key]) groups[key] = [];
+              groups[key].push(d);
+            } else {
+              noGroup.push(d);
+            }
+          }
+
+          function renderDetail(d, idx) {
+            let detailDesc = '';
+            const isSkipped = d.status === 'skipped';
+            if (isSkipped) detailDesc = `<div class="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">因依赖的子任务未通过，本测试点跳过执行</div>`;
+            else if (d.status === 'runtime_error') detailDesc = `<div class="text-xs text-red-500 mt-1 ml-6">退出码: ${d.exit_code}${d.stderr ? ' — ' + escapeHtml(d.stderr.slice(0, 200)) : ''}</div>`;
+            else if (d.status === 'time_limit_exceeded') detailDesc = `<div class="text-xs text-orange-500 mt-1 ml-6">耗时 ${d.time_used}ms 超出时限</div>`;
+            else if (d.status === 'memory_limit_exceeded') detailDesc = `<div class="text-xs text-orange-500 mt-1 ml-6">使用内存 ${d.memory_used}KB 超出限制</div>`;
+            else if (d.status === 'wrong_answer') detailDesc = `<div class="text-xs text-red-400 mt-1 ml-6">输出与期望不一致${d.stdout ? '（收到: ' + escapeHtml(d.stdout.slice(0, 100)) + '）' : ''}</div>`;
+            else if (d.status === 'system_error') detailDesc = `<div class="text-xs text-red-600 mt-1 ml-6">评测系统内部错误，请联系管理员</div>`;
+            else if (d.status === 'compile_error') detailDesc = `<div class="text-xs text-yellow-600 dark:text-yellow-400 mt-1 ml-6 whitespace-pre-wrap">${escapeHtml((d.stderr || '').slice(0, 300))}</div>`;
+            return `
+              <div class="p-3 ${isSkipped ? 'bg-gray-100 dark:bg-gray-800 opacity-60' : 'bg-gray-50 dark:bg-gray-700'} rounded-xl">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-3">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">测试点 #${idx}</span>
+                    <span class="px-2 py-0.5 text-xs rounded-full ${statusColor(d.status)}">${statusText(d.status)}</span>
+                  </div>
+                  <div class="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                    <span>得分: ${d.score}</span>
+                    <span>耗时: ${isSkipped ? '-' : d.time_used + 'ms'}</span>
+                    <span>内存: ${isSkipped ? '-' : d.memory_used + 'KB'}</span>
+                  </div>
+                </div>
+                ${detailDesc}
+              </div>
+            `;
+          }
+
+          let groupedHtml = '';
+          let idx = 1;
+          for (const [subtaskId, items] of Object.entries(groups)) {
+            const groupScore = s.test_groups && s.test_groups.find(g => g.subtask_id === subtaskId);
+            const groupMax = groupScore ? groupScore.score : 0;
+            const groupAllSkipped = items.every(d => d.status === 'skipped');
+            const groupAllAccepted = items.every(d => d.status === 'accepted');
+            const groupStatus = groupAllSkipped ? 'skipped'
+              : groupAllAccepted ? 'accepted'
+              : (items.some(d => d.status === 'time_limit_exceeded') ? 'time_limit_exceeded'
+                : items.some(d => d.status === 'memory_limit_exceeded') ? 'memory_limit_exceeded'
+                : items.some(d => d.status === 'runtime_error') ? 'runtime_error'
+                : items.some(d => d.status === 'system_error') ? 'system_error'
+                : items.some(d => d.status === 'compile_error') ? 'compile_error'
+                : 'wrong_answer');
+            const groupScoreEarned = groupAllAccepted ? items.reduce((s, d) => s + (d.score || 0), 0) : 0;
+            const groupBg = groupAllSkipped ? 'bg-gray-50 dark:bg-gray-800' : 'bg-indigo-50 dark:bg-indigo-900/30';
+            const groupTitleColor = groupAllSkipped ? 'text-gray-600 dark:text-gray-400' : 'text-indigo-700 dark:text-indigo-300';
+
+            groupedHtml += `
+              <div class="mb-4 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden ${groupAllSkipped ? 'opacity-70' : ''}">
+                <div class="px-4 py-3 ${groupBg} flex items-center justify-between">
+                  <div class="flex items-center space-x-3">
+                    <span class="text-sm font-semibold ${groupTitleColor}">子任务 ${escapeHtml(subtaskId)}</span>
+                    <span class="px-2 py-0.5 text-xs rounded-full ${statusColor(groupStatus)}">${statusText(groupStatus)}</span>
+                  </div>
+                  <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    ${groupAllSkipped ? '<span class="text-gray-500">依赖未通过</span>' : `得分: ${groupScoreEarned} / ${groupMax}`}
+                  </div>
+                </div>
+                <div class="p-2 space-y-2">
+                  ${items.map(d => renderDetail(d, idx++)).join('')}
+                </div>
+              </div>
+            `;
+          }
+
+          let noGroupHtml = '';
+          if (noGroup.length > 0) {
+            noGroupHtml = `
+              <div class="space-y-2">
+                ${noGroup.map(d => renderDetail(d, idx++)).join('')}
+              </div>
+            `;
+          }
+
           detailsHtml = `
             <div class="mt-6">
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">测试点详情</h3>
-              <div class="space-y-2">
-                ${s.details.map((d, i) => {
-                  let detailDesc = '';
-                  if (d.status === 'runtime_error') detailDesc = `<div class="text-xs text-red-500 mt-1 ml-6">退出码: ${d.exit_code}${d.stderr ? ' — ' + escapeHtml(d.stderr.slice(0, 200)) : ''}</div>`;
-                  else if (d.status === 'time_limit_exceeded') detailDesc = `<div class="text-xs text-orange-500 mt-1 ml-6">耗时 ${d.time_used}ms 超出时限</div>`;
-                  else if (d.status === 'wrong_answer') detailDesc = `<div class="text-xs text-red-400 mt-1 ml-6">输出与期望不一致${d.stdout ? '（收到: ' + escapeHtml(d.stdout.slice(0, 100)) + '）' : ''}</div>`;
-                  else if (d.status === 'compile_error') detailDesc = `<div class="text-xs text-yellow-600 dark:text-yellow-400 mt-1 ml-6 whitespace-pre-wrap">${escapeHtml((d.stderr || '').slice(0, 300))}</div>`;
-                  return `
-                    <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
-                      <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-3">
-                          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">测试点 #${i+1}</span>
-                          <span class="px-2 py-0.5 text-xs rounded-full ${statusColor(d.status)}">${statusText(d.status)}</span>
-                        </div>
-                        <div class="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
-                          <span>得分: ${d.score}</span>
-                          <span>耗时: ${d.time_used}ms</span>
-                          <span>内存: ${d.memory_used}KB</span>
-                        </div>
-                      </div>
-                      ${detailDesc}
-                    </div>
-                  `;
-                }).join('')}
-              </div>
+              ${groupedHtml}
+              ${noGroupHtml}
             </div>
           `;
         }
@@ -97,7 +163,7 @@
                 <div class="flex items-center space-x-3 mt-2 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
                   <span>用户: <a href="profile.html?id=${s.user_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(s.username||'-')}</a></span>
                   <span>|</span>
-                  <a href="/pages/problem.html?id=${s.problem_id}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800">${escapeHtml(s.problem_title||'未知')}</a>
+                  <a href="problem.html?id=${s.problem_id}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800">${escapeHtml(s.problem_title||'未知')}</a>
                   <span>|</span>
                   <span>${s.language}</span>
                   <span>|</span>
@@ -122,7 +188,10 @@
 
             ${s.source_code && s.source_code !== '[HIDDEN]' ? `
             <div class="mb-4">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">源代码</h3>
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">源代码</h3>
+                ${isTeacher ? `<button onclick="copyCode(this)" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="复制源代码">📋 复制代码</button>` : ''}
+              </div>
               <textarea id="codeArea">${escapeHtml(s.source_code)}</textarea>
             </div>
             ` : ''}
@@ -155,6 +224,15 @@
         alert('已加入重测队列');
         setTimeout(() => loadSubmission(), 2000);
       } catch (err) { alert(err.message); }
+    }
+
+    function copyCode(btn) {
+      if (!currentSourceCode) return;
+      navigator.clipboard.writeText(currentSourceCode).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = '✓ 已复制';
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
     }
 
     loadSubmission();

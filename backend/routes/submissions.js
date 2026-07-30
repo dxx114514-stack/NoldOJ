@@ -62,12 +62,21 @@ router.get('/:id', requireAuth, (req, res) => {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot view other users\' submissions.' });
   }
 
-  const details = db.prepare('SELECT * FROM submission_details WHERE submission_id = ? ORDER BY id').all(submission.id);
+  const details = db.prepare(`
+    SELECT sd.*, tg.subtask_id as group_subtask_id, tg.score as group_score
+    FROM submission_details sd
+    LEFT JOIN test_groups tg ON sd.group_id = tg.id
+    WHERE sd.submission_id = ?
+    ORDER BY COALESCE(sd.group_id, 0), sd.id
+  `).all(submission.id);
+
+  const testGroups = db.prepare('SELECT id, subtask_id, score FROM test_groups WHERE problem_id = ? ORDER BY id').all(submission.problem_id);
 
   res.json({
     ...submission,
     source_code: req.user.role !== 'user' || submission.user_id === req.user.id ? submission.source_code : '[HIDDEN]',
-    details
+    details,
+    test_groups: testGroups
   });
 });
 
@@ -145,15 +154,28 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
 });
 
 router.get('/:id/detail', requireAuth, (req, res) => {
-  const submission = db.prepare('SELECT * FROM submissions WHERE id = ?').get(req.params.id);
+  const submission = db.prepare(`
+    SELECT s.*, u.username, p.title as problem_title, p.time_limit, p.memory_limit
+    FROM submissions s
+    LEFT JOIN users u ON s.user_id = u.id
+    LEFT JOIN problems p ON s.problem_id = p.id
+    WHERE s.id = ?
+  `).get(req.params.id);
   if (!submission) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Submission not found.' });
   }
   if (req.user.role === 'user' && submission.user_id !== req.user.id) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Access denied.' });
   }
-  const details = db.prepare('SELECT * FROM submission_details WHERE submission_id = ? ORDER BY id').all(submission.id);
-  res.json({ submission, details });
+  const details = db.prepare(`
+    SELECT sd.*, tg.subtask_id as group_subtask_id, tg.score as group_score
+    FROM submission_details sd
+    LEFT JOIN test_groups tg ON sd.group_id = tg.id
+    WHERE sd.submission_id = ?
+    ORDER BY COALESCE(sd.group_id, 0), sd.id
+  `).all(submission.id);
+  const testGroups = db.prepare('SELECT id, subtask_id, score FROM test_groups WHERE problem_id = ? ORDER BY id').all(submission.problem_id);
+  res.json({ submission, details, test_groups });
 });
 
 router.post('/:id/rejudge', requireAuth, requireRole('teacher'), (req, res) => {

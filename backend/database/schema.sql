@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS test_cases (
   score REAL DEFAULT 0,
   input_file TEXT DEFAULT '',
   output_file TEXT DEFAULT '',
+  time_limit INTEGER,
+  memory_limit INTEGER,
   sort_order INTEGER DEFAULT 0,
   FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
   FOREIGN KEY (group_id) REFERENCES test_groups(id) ON DELETE SET NULL

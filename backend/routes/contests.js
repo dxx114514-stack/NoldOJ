@@ -202,7 +202,7 @@ router.get('/:id/leaderboard', (req, res) => {
     FROM submissions s
     LEFT JOIN users u ON s.user_id = u.id
     WHERE s.problem_id IN (${placeholders})
-      AND s.status IN ('accepted', 'wrong_answer')
+      AND s.status IN ('accepted', 'wrong_answer', 'time_limit_exceeded', 'memory_limit_exceeded', 'runtime_error', 'skipped')
   `).all(...problemIds);
 
   const userMap = {};

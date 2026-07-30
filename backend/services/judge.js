@@ -57,6 +57,7 @@ function statusToConstant(status) {
   if (status === 'accepted') return 1;
   if (status === 'time_limit_exceeded') return 3;
   if (status === 'memory_limit_exceeded') return 4;
+  if (status === 'skipped') return 0;
   return 2;
 }
 
@@ -66,11 +67,15 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
   const updateDetail = db.prepare(`UPDATE submission_details SET status=?, score=?, time_used=?, memory_used=?, stdout=?, stderr=?, exit_code=?, checker_output=? WHERE id=?`);
   const updateSubmission = db.prepare(`UPDATE submissions SET status=?, score=?, time_used=?, memory_used=?, compile_output=? WHERE id=?`);
+  const insertDetail = db.prepare('INSERT INTO submission_details (submission_id, test_case_id, group_id, subtask_id, status) VALUES (?, ?, ?, ?, ?)');
 
   const langConfig = sandbox.loadLanguageConfig();
   const lang = langConfig[submission.language] || { compile: '', run: '', ext: '.txt' };
   let workDir, srcFile, exeFile, isWindows;
   let compiled = false;
+
+  const groups = db.prepare('SELECT * FROM test_groups WHERE problem_id = ? ORDER BY id').all(problemId);
+  const hasGroups = groups.length > 0;
 
   try {
     const prepared = sandbox.prepareWorkDir(submission.language, submission.source_code);
@@ -81,9 +86,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
     const compileResult = sandbox.compile(workDir, srcFile, exeFile, lang, isWindows);
     if (!compileResult.success) {
-      const detail = db.prepare('INSERT INTO submission_details (submission_id, test_case_id, group_id, subtask_id, status) VALUES (?, ?, ?, ?, ?)').run(
-        submission.id, null, null, '', 'running'
-      );
+      const detail = insertDetail.run(submission.id, null, null, '', 'running');
       updateDetail.run('compile_error', 0, 0, 0, '', compileResult.output, -1, '', detail.lastInsertRowid);
       updateSubmission.run('compile_error', 0, 0, 0, compileResult.output, submission.id);
       sandbox.cleanupWorkDir(workDir);
@@ -93,59 +96,110 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
     const tcResults = [];
 
-    for (const tc of testCases) {
-      const detail = db.prepare('INSERT INTO submission_details (submission_id, test_case_id, group_id, subtask_id, status) VALUES (?, ?, ?, ?, ?)').run(
-        submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running'
-      );
-      const detailId = detail.lastInsertRowid;
+    if (hasGroups) {
+      const tcMap = new Map();
+      for (const tc of testCases) {
+        if (!tcMap.has(tc.group_id || 0)) tcMap.set(tc.group_id || 0, []);
+        tcMap.get(tc.group_id || 0).push(tc);
+      }
 
-      try {
-        const stdin = tc.input_data || (tc.input_file ? fs.readFileSync(tc.input_file, 'utf8') : '');
-        const expected = tc.output_data || (tc.output_file ? fs.readFileSync(tc.output_file, 'utf8') : '');
+      const failedGroups = new Set();
+      const topoOrder = topoSortGroups(groups);
 
-        const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, problem.memory_limit, isWindows);
+      for (const groupId of topoOrder) {
+        const group = groups.find(g => g.id === groupId);
+        let deps = [];
+        try { deps = JSON.parse(group.dependency || '[]'); } catch {}
 
-        const timeUsed = result.timeUsed;
-        const passed = compareOutput(expected, result.stdout, problem);
+        const depFailed = deps.some(d => failedGroups.has(d));
 
-        let status = passed ? 'accepted' : 'wrong_answer';
-        if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
-        else if (result.signal === 'SIGKILL' || timeUsed >= timeLimitMs) status = 'time_limit_exceeded';
-        else if (result.exitCode !== 0 && !passed) status = 'runtime_error';
+        if (depFailed) {
+          const groupTCs = tcMap.get(groupId) || [];
+          for (const tc of groupTCs) {
+            const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'skipped');
+            const detailId = detail.lastInsertRowid;
+            updateDetail.run('skipped', 0, 0, 0, '', '', -1, '', detailId);
+            tcResults.push({
+              tcId: tc.id,
+              groupId: tc.group_id,
+              subtaskId: tc.subtask_id || '',
+              status: 'skipped',
+              score: 0,
+              timeUsed: 0,
+              memoryUsed: 0,
+              detailId
+            });
+          }
+          failedGroups.add(groupId);
+          continue;
+        }
 
-        const memKB = result.memoryUsed || 0;
+        const groupTCs = tcMap.get(groupId) || [];
+        let groupAllAccepted = true;
 
-        updateDetail.run(status, 0, timeUsed, memKB, result.stdout.slice(0, 4096), result.stderr.slice(0, 4096), result.exitCode, '', detailId);
+        for (const tc of groupTCs) {
+          const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running');
+          const detailId = detail.lastInsertRowid;
 
-        tcResults.push({
-          tcId: tc.id,
-          groupId: tc.group_id,
-          subtaskId: tc.subtask_id || '',
-          status,
-          score: tc.score,
-          timeUsed,
-          memoryUsed: memKB,
-          detailId
-        });
-      } catch (err) {
-        updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
-        tcResults.push({
-          tcId: tc.id,
-          groupId: tc.group_id,
-          subtaskId: tc.subtask_id || '',
-          status: 'system_error',
-          score: 0,
-          timeUsed: 0,
-          memoryUsed: 0,
-          detailId
-        });
+          try {
+            const stdin = tc.input_data || (tc.input_file ? fs.readFileSync(tc.input_file, 'utf8') : '');
+            const expected = tc.output_data || (tc.output_file ? fs.readFileSync(tc.output_file, 'utf8') : '');
+            const tcTimeLimit = tc.time_limit || timeLimitMs;
+            const tcMemLimit = tc.memory_limit || problem.memory_limit;
+            const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
+
+            const timeUsed = result.timeUsed;
+            const passed = compareOutput(expected, result.stdout, problem);
+            let status = passed ? 'accepted' : 'wrong_answer';
+            if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
+            else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
+            else if (result.exitCode !== 0 && !passed) status = 'runtime_error';
+
+            if (status !== 'accepted') groupAllAccepted = false;
+            const memKB = result.memoryUsed || 0;
+            updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, 4096), (result.stderr || '').slice(0, 4096), result.exitCode, '', detailId);
+            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, detailId });
+          } catch (err) {
+            groupAllAccepted = false;
+            updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
+            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, detailId });
+          }
+        }
+
+        if (!groupAllAccepted) {
+          failedGroups.add(groupId);
+        }
+      }
+    } else {
+      for (const tc of testCases) {
+        const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running');
+        const detailId = detail.lastInsertRowid;
+
+        try {
+          const stdin = tc.input_data || (tc.input_file ? fs.readFileSync(tc.input_file, 'utf8') : '');
+          const expected = tc.output_data || (tc.output_file ? fs.readFileSync(tc.output_file, 'utf8') : '');
+          const tcTimeLimit = tc.time_limit || timeLimitMs;
+          const tcMemLimit = tc.memory_limit || problem.memory_limit;
+          const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
+
+          const timeUsed = result.timeUsed;
+          const passed = compareOutput(expected, result.stdout, problem);
+          let status = passed ? 'accepted' : 'wrong_answer';
+          if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
+          else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
+          else if (result.exitCode !== 0 && !passed) status = 'runtime_error';
+
+          const memKB = result.memoryUsed || 0;
+          updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, 4096), (result.stderr || '').slice(0, 4096), result.exitCode, '', detailId);
+          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, detailId });
+        } catch (err) {
+          updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
+          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, detailId });
+        }
       }
     }
 
     if (workDir) sandbox.cleanupWorkDir(workDir);
-
-    const groups = db.prepare('SELECT * FROM test_groups WHERE problem_id = ? ORDER BY id').all(problemId);
-    const hasGroups = groups.length > 0;
 
     let finalScore, finalStatus, finalTime, finalMemory;
 
@@ -164,8 +218,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
     }
 
     for (const tc of tcResults) {
-      updateDetail.run(tc.status, tc.score, tc.timeUsed, tc.memoryUsed,
-        '', '', 0, '', tc.detailId);
+      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, '', '', 0, '', tc.detailId);
     }
 
     updateSubmission.run(finalStatus, finalScore, finalTime, finalMemory, '', submission.id);
@@ -173,6 +226,37 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
     if (workDir && compiled) sandbox.cleanupWorkDir(workDir);
     updateSubmission.run('system_error', 0, 0, 0, err.message, submission.id);
   }
+}
+
+function topoSortGroups(groups) {
+  const groupMap = {};
+  for (const g of groups) groupMap[g.id] = g;
+
+  const validIds = new Set(Object.keys(groupMap).map(Number));
+
+  const visited = new Set();
+  const visiting = new Set();
+  const order = [];
+
+  function visit(id) {
+    if (visited.has(id)) return;
+    if (visiting.has(id)) return;
+    visiting.add(id);
+    const g = groupMap[id];
+    if (g) {
+      let deps = [];
+      try { deps = JSON.parse(g.dependency || '[]'); } catch {}
+      for (const d of deps) {
+        if (validIds.has(Number(d))) visit(d);
+      }
+    }
+    visiting.delete(id);
+    visited.add(id);
+    order.push(id);
+  }
+
+  for (const g of groups) visit(g.id);
+  return order;
 }
 
 function evaluateSimple(problem, tcResults) {
@@ -249,6 +333,21 @@ function evaluateWithGroups(problem, groups, tcResults) {
       const groupTCs = tcsByGroup[group.id] || [];
       const hasScript = group.scoring_script && group.scoring_script.trim();
 
+      const allSkipped = groupTCs.length > 0 && groupTCs.every(tc => tc.status === 'skipped');
+
+      if (allSkipped) {
+        groupResults[group.id] = {
+          score: 0,
+          status: 'skipped',
+          time: 0,
+          memory: 0,
+          maxScore: group.score
+        };
+        completedGroups.add(group.id);
+        madeProgress = true;
+        continue;
+      }
+
       if (hasScript) {
         const context = {};
         for (const tc of groupTCs) {
@@ -272,8 +371,9 @@ function evaluateWithGroups(problem, groups, tcResults) {
           maxScore: group.score
         };
       } else {
-        let score = 0, maxTime = 0, maxMem = 0, allPassed = true;
+        let score = 0, maxTime = 0, maxMem = 0, allPassed = true, allSkipped = true;
         for (const tc of groupTCs) {
+          if (tc.status !== 'skipped') allSkipped = false;
           score += tc.score;
           maxTime = Math.max(maxTime, tc.timeUsed);
           maxMem = Math.max(maxMem, tc.memoryUsed);
@@ -281,16 +381,15 @@ function evaluateWithGroups(problem, groups, tcResults) {
         }
         groupResults[group.id] = {
           score: allPassed ? score : 0,
-          status: allPassed ? 'accepted' : 'wrong_answer',
+          status: allSkipped ? 'skipped' : (allPassed ? 'accepted' : 'wrong_answer'),
           time: maxTime,
           memory: maxMem,
           maxScore: group.score
         };
       }
 
-      for (const tc of groupTCs) {
-        tc.score = 0;
-      }
+      // Keep individual test case scores for display
+      // Final score is calculated from group results, not individual test case scores
 
       completedGroups.add(group.id);
       madeProgress = true;
@@ -357,7 +456,7 @@ async function judgeSubmission(submissionId) {
     return;
   }
 
-  const timeLimitMs = problem.time_limit * 2;
+  const timeLimitMs = problem.time_limit;
   await evaluateTestCases(submission, submission.problem_id, testCases, timeLimitMs);
 
   try {
@@ -380,12 +479,14 @@ async function judgeSubmission(submissionId) {
 }
 
 const judgeQueue = [];
+const queuedIds = new Set();
 let isJudging = false;
 
 async function processQueue() {
   if (isJudging || judgeQueue.length === 0) return;
   isJudging = true;
   const submissionId = judgeQueue.shift();
+  queuedIds.delete(submissionId);
   try {
     await judgeSubmission(submissionId);
   } catch (err) {
@@ -399,6 +500,8 @@ async function processQueue() {
 }
 
 function enqueueSubmission(submissionId) {
+  if (queuedIds.has(submissionId)) return;
+  queuedIds.add(submissionId);
   judgeQueue.push(submissionId);
   setImmediate(processQueue);
 }

@@ -22,11 +22,13 @@
     const params = new URLSearchParams(window.location.search);
     const aid = params.get('id');
     const user = getUser();
+    let currentArticle = null;
 
     async function loadArticle() {
       if (!aid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定文章 ID</p>'; return; }
       try {
         const a = await apiCall('GET', `/articles/${aid}`);
+        currentArticle = a;
         document.title = `${a.title} - WinOJ`;
         const isAuthor = user && user.id === a.author_id;
         const canEdit = isAuthor || (user && ['admin', 'su'].includes(user.role));
@@ -46,10 +48,13 @@
               </div>
               ${canEdit ? `
                 <div class="flex space-x-2">
+                  <button onclick="copyArticleMarkdown(this)" class="px-4 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="复制为 Markdown">📋 复制 Markdown</button>
                   <a href="/pages/article-edit.html?id=${a.id}" class="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-sm rounded-lg hover:bg-indigo-200">编辑</a>
                   <button onclick="deleteArticle(${a.id})" class="px-4 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm rounded-lg hover:bg-red-200">删除</button>
                 </div>
-              ` : ''}
+              ` : `
+                <button onclick="copyArticleMarkdown(this)" class="px-4 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="复制为 Markdown">📋 复制 Markdown</button>
+              `}
             </div>
             <div id="articleContent">${renderMarkdown(a.content)}</div>
           </div>
@@ -63,6 +68,18 @@
     async function deleteArticle(id) {
       if (!confirm('确定删除此文章？')) return;
       try { await apiCall('DELETE', `/articles/${id}`); window.location.href = '/pages/articles.html'; } catch (err) { alert(err.message); }
+    }
+
+    function copyArticleMarkdown(btn) {
+      if (!currentArticle) return;
+      const a = currentArticle;
+      let md = `# ${a.title}\n\n`;
+      if (a.content) md += a.content + '\n';
+      navigator.clipboard.writeText(md).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = '✓ 已复制';
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
     }
 
     loadArticle();
