@@ -11,6 +11,9 @@ const { generateCaptcha, verifyCaptcha } = require('../services/captcha');
 
 const router = express.Router();
 const registerRateLimit = createRateLimit({ windowMs: 3600000, max: 1 });
+const loginRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
+const refreshRateLimit = createRateLimit({ windowMs: 60000, max: 30 });
+const changePasswordRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
 
 function generateAccessToken(userId) {
   return jwt.sign({ userId }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry });
@@ -18,7 +21,7 @@ function generateAccessToken(userId) {
 
 function generateRefreshToken(userId) {
   const token = jwt.sign({ userId }, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshExpiry });
-  const hash = bcrypt.hashSync(token, 4);
+  const hash = bcrypt.hashSync(token, 10);
   const expiresAt = new Date(Date.now() + config.jwt.refreshExpiryMs).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
   db.prepare('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(userId, hash, expiresAt);
   return token;
@@ -65,7 +68,7 @@ router.get('/email-enabled', (req, res) => {
   res.json({ enabled: config.email.enabled });
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginRateLimit, async (req, res) => {
   const { username, password, captcha_id, captcha_code } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
@@ -93,7 +96,7 @@ router.post('/login', async (req, res) => {
 
   res.cookie('refresh_token', refreshToken, {
     httpOnly: true,
-    secure: false,
+    secure: config.cookie.secure,
     sameSite: 'strict',
     maxAge: config.jwt.refreshExpiryMs
   });
@@ -156,7 +159,7 @@ router.post('/register', registerRateLimit, async (req, res) => {
 
   res.cookie('refresh_token', refreshToken, {
     httpOnly: true,
-    secure: false,
+    secure: config.cookie.secure,
     sameSite: 'strict',
     maxAge: config.jwt.refreshExpiryMs
   });
@@ -167,7 +170,7 @@ router.post('/register', registerRateLimit, async (req, res) => {
   });
 });
 
-router.post('/refresh', (req, res) => {
+router.post('/refresh', refreshRateLimit, (req, res) => {
   const refreshToken = req.cookies?.refresh_token;
   if (!refreshToken) {
     return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'No refresh token provided.' });
@@ -206,7 +209,7 @@ router.post('/refresh', (req, res) => {
 
     res.cookie('refresh_token', newRefreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: config.cookie.secure,
       sameSite: 'strict',
       maxAge: config.jwt.refreshExpiryMs
     });
@@ -229,7 +232,7 @@ router.post('/logout', (req, res) => {
   res.json({ message: 'Logged out successfully.' });
 });
 
-router.post('/change-password', requireAuth, (req, res) => {
+router.post('/change-password', requireAuth, changePasswordRateLimit, (req, res) => {
   const { old_password, new_password } = req.body;
   if (!old_password || !new_password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Old and new password are required.' });

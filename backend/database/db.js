@@ -44,7 +44,18 @@ function prepare(sql) {
   };
 }
 
+// 表名白名单: 防止 SQL 注入（findNextId 仅由内部代码调用，但显式校验更安全）
+const ALLOWED_TABLES = new Set([
+  'users', 'problems', 'submissions', 'submission_details', 'test_cases',
+  'test_groups', 'languages', 'contests', 'contest_problems', 'articles',
+  'uploaded_files', 'refresh_tokens', 'ide_runs', 'tags', 'problem_tags',
+  'categories', 'problem_categories', 'email_codes'
+]);
+
 function findNextId(table) {
+  if (!ALLOWED_TABLES.has(table)) {
+    throw new Error(`findNextId: invalid table name "${table}"`);
+  }
   const rows = sqlDb.exec(`SELECT id FROM ${table} ORDER BY id`);
   if (rows.length === 0 || rows[0].values.length === 0) return 1;
   const ids = rows[0].values.map(r => r[0]).sort((a, b) => a - b);

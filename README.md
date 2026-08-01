@@ -1,12 +1,31 @@
 # WinOJ - Windows 在线评测系统
 
+> ⚠️ **安全警告与免责声明**
+>
+> 本项目基于 Windows 原生 Job Objects 实现沙箱隔离，旨在提供轻量级的本地判题环境。但 Windows 桌面系统并非为绝对隔离设计，请勿在存有核心机密或敏感数据的个人主力机上以公网暴露的形式运行本项目。建议部署在虚拟机或专用测试机中。
+>
+> 沙箱安全特性：
+> - **进程隔离**：`CREATE_SUSPENDED` + Job Object 绑定，杜绝竞态逃逸
+> - **进程树清理**：`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，主进程结束则整棵进程树被系统强制秒杀
+> - **禁止脱离**：禁用 `BREAKAWAY`，子进程无法脱离沙箱
+> - **权限降级**：`CreateRestrictedToken` 剥离 `SeDebugPrivilege`、`SeImpersonatePrivilege` 等高危特权
+> - **资源限制**：内存上限、CPU 时间限制、进程数限制
+> - **数据隔离**：每次判题使用独立临时目录，判题结束后暴力删除；SQLite 启用 WAL 模式防止锁死
+>
+> 编译沙箱运行器（需要 MinGW）：
+> ```bat
+> cd backend\sandbox
+> build.bat
+> ```
+> 未编译时自动回退到传统模式（spawn + memwatch），安全性较低。
+
 专为 Windows 平台设计的在线评测系统，支持多语言代码评测、安全沙箱执行、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查、黑夜模式、SVG 图形验证码、模糊搜索等功能。
 
 ## 功能特性
 
 ### 评测核心
 - **多语言支持**：C、C++、Python 3、Java、JavaScript，可通过管理面板动态添加/禁用
-- **安全沙箱**：代码在隔离临时目录中执行，CPU/内存/IO 受限，Windows 下通过原生 memwatch.exe 监控峰值内存
+- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），受限令牌剥离高危特权，CPU/内存/进程数受限，每次判题使用独立临时目录；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn + memwatch）
 - **内存检测**：每个测试点和 IDE 运行均记录峰值内存使用量
 - **多种比较模式**：严格文本比较、宽松文本比较、浮点数容差比较、Special Judge
 - **自定义计分脚本**：支持变量、算术运算、位运算、逻辑运算、条件分支（支持括号）、min/max/abs 函数

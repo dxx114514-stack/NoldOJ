@@ -8,6 +8,11 @@ const db = require('../database/db');
 const MEMWATCH_PATH = path.join(__dirname, 'memwatch.exe');
 const hasMemwatch = process.platform === 'win32' && fs.existsSync(MEMWATCH_PATH);
 
+// ── 安全沙箱运行器 (sandbox_runner.exe) ─────────────────────
+// 当存在时优先使用，提供 Job Object + 受限令牌 + 进程树隔离
+const SANDBOX_RUNNER_PATH = path.join(__dirname, 'sandbox_runner.exe');
+const hasSandboxRunner = process.platform === 'win32' && fs.existsSync(SANDBOX_RUNNER_PATH);
+
 const LANG_MAP = {
   c: { compile: 'gcc -O2 -Wall -o "{exe}" "{src}"', run: '"{exe}"', ext: '.c', runUnix: './{exe}', compiled: true },
   cpp: { compile: 'g++ -O2 -Wall -std=c++17 -o "{exe}" "{src}"', run: '"{exe}"', ext: '.cpp', runUnix: './{exe}', compiled: true },
@@ -85,7 +90,111 @@ function killProc(proc, isWindows) {
   } catch {}
 }
 
-function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
+// ── 安全沙箱模式: 使用 sandbox_runner.exe ───────────────────
+// 流程: Node.js ↔ sandbox_runner.exe (Job Object 容器) ↔ 子进程
+// sandbox_runner.exe 负责: CREATE_SUSPENDED + Job 绑定 + 内存/时间监控 + 进程树清理
+function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
+  return new Promise((resolve) => {
+    const actualExe = isWindows ? exeFile + '.exe' : exeFile;
+    const runCmd = (!isWindows && lang.runUnix) ? lang.runUnix : lang.run;
+    const cmd = runCmd
+      .replace('{src}', srcFile)
+      .replace('{exe}', actualExe)
+      .replace('{workdir}', workDir);
+
+    const parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [cmd];
+    const execFile = parts[0].replace(/^"|"$/g, '');
+    const execArgs = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
+
+    // 元数据临时文件
+    const metaFile = path.join(workDir, '_meta.json');
+    const maxProcs = config.sandbox.maxProcesses || 64;
+
+    // sandbox_runner.exe <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]
+    const runnerArgs = [
+      String(timeLimitMs),
+      String(memoryLimitMb),
+      String(maxProcs),
+      metaFile,
+      execFile,
+      ...execArgs
+    ];
+
+    const startTime = Date.now();
+    let stdout = '';
+    let stderr = '';
+    let killed = false;
+
+    const proc = spawn(SANDBOX_RUNNER_PATH, runnerArgs, {
+      cwd: workDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true
+    });
+
+    // 超时保险: 即使 sandbox_runner.exe 自身卡住也要杀掉
+    const safetyTimer = setTimeout(() => {
+      killed = true;
+      killProc(proc, isWindows);
+    }, timeLimitMs + 5000);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+      if (stdout.length > config.sandbox.maxOutputSize) {
+        killed = true;
+        killProc(proc, isWindows);
+      }
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+      if (stderr.length > config.sandbox.maxOutputSize) {
+        killed = true;
+        killProc(proc, isWindows);
+      }
+    });
+
+    if (stdin) {
+      proc.stdin.write(stdin);
+    }
+    proc.stdin.end();
+
+    proc.on('close', (code) => {
+      clearTimeout(safetyTimer);
+      const timeUsed = Date.now() - startTime;
+
+      // 读取元数据文件
+      let meta = null;
+      try {
+        const metaRaw = fs.readFileSync(metaFile, 'utf8');
+        meta = JSON.parse(metaRaw);
+      } catch {}
+
+      resolve({
+        stdout,
+        stderr,
+        exitCode: meta ? meta.exit_code : (code !== null ? code : -1),
+        timeUsed: meta ? meta.time_used : timeUsed,
+        memoryUsed: meta ? meta.memory_used : 0,
+        signal: meta ? (meta.signal === 'null' ? null : meta.signal) : (killed ? 'SIGKILL' : null)
+      });
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(safetyTimer);
+      resolve({
+        stdout,
+        stderr: stderr + '\n' + (err.message || 'Process error'),
+        exitCode: -1,
+        timeUsed: Date.now() - startTime,
+        memoryUsed: 0,
+        signal: null
+      });
+    });
+  });
+}
+
+// ── 传统模式: 直接 spawn + memwatch (回退) ──────────────────
+function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
   return new Promise((resolve) => {
     const actualExe = isWindows ? exeFile + '.exe' : exeFile;
     const runCmd = (!isWindows && lang.runUnix) ? lang.runUnix : lang.run;
@@ -178,6 +287,14 @@ function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimi
       });
     });
   });
+}
+
+// ── 统一入口: 优先使用安全沙箱 ─────────────────────────────
+function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
+  if (hasSandboxRunner && isWindows) {
+    return runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows);
+  }
+  return runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows);
 }
 
 function cleanupWorkDir(workDir) {

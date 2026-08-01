@@ -242,6 +242,10 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
       const entryPath = entry.entryName;
       const parts = entryPath.split('/').filter(p => p);
       if (parts.length === 0) continue;
+      // Zip Slip 防御: 拒绝包含 .. 或绝对路径的条目
+      if (parts.some(p => p === '..') || path.isAbsolute(entryPath)) {
+        continue;
+      }
 
       const fileName = parts[parts.length - 1];
       const dirPath = parts.slice(0, -1).join('/');

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const db = require('../database/db');
 const sandbox = require('../sandbox/executor');
 const { runScoringScript } = require('../sandbox/scorer');
@@ -44,9 +45,33 @@ function compareOutput(expected, actual, problem) {
   return compareTextStrict(expected, actual);
 }
 
+// SPJ 执行: 使用 vm 沙箱隔离，剥离 require/process/fs 等危险全局对象
+// 注意: vm 并非绝对安全的沙箱，但相比 eval 已杜绝直接访问主进程上下文
 function runSPJ(spjCode, expected, actual) {
   try {
-    const result = eval(`(function(stdin, stdout, answer) { ${spjCode} })`)('', actual, expected);
+    const sandboxCtx = {
+      stdin: '',
+      stdout: actual,
+      answer: expected,
+      // 仅暴露安全的纯函数
+      Math,
+      String,
+      Number,
+      Boolean,
+      Array,
+      Object,
+      JSON,
+      parseInt,
+      parseFloat,
+      isNaN,
+      isFinite,
+      RegExp,
+      Date
+    };
+    const script = new vm.Script(`(function(stdin, stdout, answer) { ${spjCode} })`);
+    const fn = script.runInNewContext(sandboxCtx, { timeout: 1000 });
+    if (typeof fn !== 'function') return false;
+    const result = fn(sandboxCtx.stdin, sandboxCtx.stdout, sandboxCtx.answer);
     return result === true || result === 1 || result === 'AC';
   } catch {
     return false;

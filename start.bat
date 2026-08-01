@@ -25,6 +25,26 @@ if %errorlevel% neq 0 (
 for /f "tokens=*" %%i in ('node -v') do set NODE_VER=%%i
 echo [OK] Node.js: %NODE_VER%
 
+REM ── 安全沙箱编译 ──────────────────────────────────────────
+if not exist "backend\sandbox\sandbox_runner.exe" (
+    if exist "backend\sandbox\sandbox_runner.cpp" (
+        where g++ >nul 2>&1
+        if !errorlevel! equ 0 (
+            echo [..] Building sandbox_runner.exe (Job Object security)...
+            g++ -O2 -static -o "backend\sandbox\sandbox_runner.exe" "backend\sandbox\sandbox_runner.cpp" -lpsapi 2>nul
+            if exist "backend\sandbox\sandbox_runner.exe" (
+                echo [OK] sandbox_runner.exe built - Job Object isolation active
+            ) else (
+                echo [!!] sandbox_runner.exe build failed - using legacy mode
+            )
+        ) else (
+            echo [!!] g++ not found - sandbox_runner.exe not built, using legacy mode
+        )
+    )
+) else (
+    echo [OK] sandbox_runner.exe found - Job Object isolation active
+)
+
 if not exist "backend\node_modules" (
     echo [..] Installing dependencies...
     cd backend

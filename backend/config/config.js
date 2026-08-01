@@ -1,6 +1,7 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const crypto = require('crypto');
 
 function loadEmailConfig() {
   const emailPath = path.join(__dirname, '..', '..', 'config', 'email.txt');
@@ -39,14 +40,97 @@ function loadAiConfig() {
 
 const ai = loadAiConfig();
 
+// ── 验证码开关: 从 config/captcha.txt 读取，默认开启 ──
+function loadCaptchaConfig() {
+  const result = { enabled: true };
+  try {
+    const p = path.join(__dirname, '..', '..', 'config', 'captcha.txt');
+    const content = fs.readFileSync(p, 'utf8');
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('CAPTCHA_ENABLED=')) result.enabled = t.split('=')[1].trim() === 'true';
+    }
+  } catch {}
+  return result;
+}
+
+const captchaCfg = loadCaptchaConfig();
+
+// ── JWT 密钥: 从 config/jwt.txt 读取，首次启动自动生成强随机密钥 ──
+function loadJwtConfig() {
+  const jwtPath = path.join(__dirname, '..', '..', 'config', 'jwt.txt');
+  const read = () => {
+    const content = fs.readFileSync(jwtPath, 'utf8');
+    const obj = { accessSecret: '', refreshSecret: '' };
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('JWT_ACCESS_SECRET=')) obj.accessSecret = t.split('=').slice(1).join('=').trim();
+      if (t.startsWith('JWT_REFRESH_SECRET=')) obj.refreshSecret = t.split('=').slice(1).join('=').trim();
+    }
+    return obj;
+  };
+  try {
+    const obj = read();
+    if (obj.accessSecret && obj.refreshSecret) return obj;
+  } catch {}
+  // 首次启动: 生成 64 字节强随机密钥并写入文件
+  const generated = {
+    accessSecret: crypto.randomBytes(64).toString('hex'),
+    refreshSecret: crypto.randomBytes(64).toString('hex')
+  };
+  const fileContent =
+    `# JWT 密钥配置 - 自动生成，请勿提交到公开仓库\n` +
+    `# 修改后所有已签发的 token 将失效\n` +
+    `JWT_ACCESS_SECRET=${generated.accessSecret}\n` +
+    `JWT_REFRESH_SECRET=${generated.refreshSecret}\n`;
+  try {
+    fs.mkdirSync(path.dirname(jwtPath), { recursive: true });
+    fs.writeFileSync(jwtPath, fileContent, { mode: 0o600 });
+    console.log('[CONFIG] Generated config/jwt.txt with random secrets');
+  } catch (e) {
+    console.error('[CONFIG] Failed to write jwt.txt:', e.message);
+  }
+  return generated;
+}
+
+const jwt = loadJwtConfig();
+
+// ── CORS 白名单: 本地 OJ 默认允许本机各端口，可经 config/cors.txt 扩展 ──
+function loadCorsOrigins() {
+  const origins = new Set([
+    'http://localhost',
+    'http://localhost:3000',
+    'http://127.0.0.1',
+    'http://127.0.0.1:3000'
+  ]);
+  try {
+    const p = path.join(__dirname, '..', '..', 'config', 'cors.txt');
+    const content = fs.readFileSync(p, 'utf8');
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t && !t.startsWith('#')) origins.add(t.replace(/\/$/, ''));
+    }
+  } catch {}
+  return Array.from(origins);
+}
+
+const corsOrigins = loadCorsOrigins();
+
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
   jwt: {
-    accessSecret: process.env.JWT_ACCESS_SECRET || 'winoj-access-secret-key-2024',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'winoj-refresh-secret-key-2024',
+    accessSecret: jwt.accessSecret,
+    refreshSecret: jwt.refreshSecret,
     accessExpiry: '15m',
     refreshExpiry: '7d',
     refreshExpiryMs: 7 * 24 * 60 * 60 * 1000
+  },
+  cors: {
+    origins: corsOrigins
+  },
+  cookie: {
+    // 生产环境（HTTPS）应设为 true；本地 HTTP 部署保持 false
+    secure: process.env.COOKIE_SECURE === 'true' || false
   },
   database: {
     path: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'winoj.db')
@@ -56,7 +140,12 @@ module.exports = {
     maxProcesses: 64,
     tempDir: process.env.SANDBOX_TEMP || path.join(os.tmpdir(), 'winoj-sandbox'),
     maxOutputSize: 64 * 1024,
-    maxSourceSize: 64 * 1024
+    maxSourceSize: 64 * 1024,
+    // 安全沙箱: 编译 sandbox_runner.cpp 后自动启用 Job Object + 受限令牌隔离
+    // 未编译时自动回退到传统模式 (spawn + memwatch)
+    networkIsolation: true,   // 断网: 通过受限令牌剥离网络相关特权
+    killOnJobClose: true,     // Job 关闭时杀死整棵进程树
+    noBreakaway: true          // 禁止子进程脱离沙箱
   },
   rateLimit: {
     submissions: { windowMs: 60000, max: 10 },
@@ -70,7 +159,7 @@ module.exports = {
     codeLengthLimit: ai.codeLengthLimit
   },
   captcha: {
-    enabled: true
+    enabled: captchaCfg.enabled
   },
   email: {
     enabled: email.enabled,
