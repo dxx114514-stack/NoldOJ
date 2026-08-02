@@ -176,7 +176,47 @@
         el.innerHTML = `<p class="text-red-500 text-center py-8">${err.message || '加载公告失败'}</p>`;
       }
     }
+
+    // Socket.io 实时排行榜更新
+    function onContestRankingUpdate(msg) {
+      if (msg.contest_id !== parseInt(cid)) return;
+      // 高亮闪烁后刷新排行榜
+      const lbTab = document.getElementById('contest-tab-leaderboard');
+      if (lbTab) {
+        lbTab.style.transition = 'background-color 1s';
+        lbTab.style.backgroundColor = '#fef3c7';
+        setTimeout(() => { lbTab.style.backgroundColor = ''; }, 1000);
+        // 局部刷新排行榜数据
+        refreshLeaderboard();
+      }
+    }
+    window.onContestRankingUpdate = onContestRankingUpdate;
+
+    async function refreshLeaderboard() {
+      try {
+        const lb = await apiCall('GET', `/contests/${cid}/leaderboard`);
+        const tbody = document.querySelector('#contest-tab-leaderboard tbody');
+        if (!tbody || !lb.leaderboard) return;
+        tbody.innerHTML = lb.leaderboard.map(u => `
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">
+            <td class="px-4 py-3 text-center">
+              ${u.rank <= 3 ? `<span class="inline-block w-7 h-7 rounded-full text-center leading-7 text-sm font-bold ${u.rank===1?'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300':u.rank===2?'bg-gray-200 text-gray-600 dark:text-gray-400 dark:text-gray-500':'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'}">${u.rank}</span>` : `<span class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">${u.rank}</span>`}
+            </td>
+            <td class="px-4 py-3 text-sm font-medium"><a href="profile.html?id=${u.user_id}" class="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">${escapeHtml(u.nickname || u.username)}</a></td>
+            ${lb.problem_ids.map(pid => {
+              const p = u.problems[pid];
+              return `<td class="px-4 py-3 text-center text-sm">${p ? (p.status==='accepted'?`<span class="text-green-600 dark:text-green-400">${p.score}</span>`:`<span class="text-red-400">X</span>`) : '<span class="text-gray-300">-</span>'}</td>`;
+            }).join('')}
+            <td class="px-4 py-3 text-center text-sm font-bold text-gray-900 dark:text-white">${u.total_score}</td>
+            <td class="px-4 py-3 text-center text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">${u.total_time}ms</td>
+          </tr>
+        `).join('');
+      } catch {}
+    }
+
     loadContest();
+    // 加入比赛排行榜房间
+    setTimeout(() => { joinContestRankingRoom(parseInt(cid)); }, 1000);
   </script>
 </body>
 </html>

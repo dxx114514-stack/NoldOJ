@@ -178,6 +178,10 @@ async function main() {
   logInfo('CONFIG', `Sandbox Temp: ${config.sandbox.tempDir}`);
 
   const server = http.createServer(app);
+  // 初始化 Socket.io 实时推送
+  const { initSocket } = require('../services/socket');
+  initSocket(server);
+
   server.listen(config.port, () => {
     logStartup('READY', `==========================================`);
     logStartup('READY', `  WinOJ Server is READY`);

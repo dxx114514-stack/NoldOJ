@@ -4,6 +4,7 @@ const vm = require('vm');
 const db = require('../database/db');
 const sandbox = require('../sandbox/executor');
 const { runScoringScript } = require('../sandbox/scorer');
+const { emitJudgeStatus, emitContestRanking } = require('./socket');
 
 function compareTextStrict(expected, actual) {
   return expected.trimEnd() === actual.trimEnd();
@@ -477,16 +478,19 @@ async function judgeSubmission(submissionId) {
   if (!submission) return;
 
   db.prepare("UPDATE submissions SET status = 'judging' WHERE id = ?").run(submissionId);
+  emitJudgeStatus(submissionId, submission.user_id, 'judging');
 
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(submission.problem_id);
   if (!problem) {
     db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(submissionId);
+    emitJudgeStatus(submissionId, submission.user_id, 'system_error');
     return;
   }
 
   const testCases = db.prepare('SELECT * FROM test_cases WHERE problem_id = ? ORDER BY sort_order, id').all(submission.problem_id);
   if (testCases.length === 0) {
     db.prepare("UPDATE submissions SET status = 'accepted', score = 0 WHERE id = ?").run(submissionId);
+    emitJudgeStatus(submissionId, submission.user_id, 'accepted');
     return;
   }
 
@@ -496,6 +500,9 @@ async function judgeSubmission(submissionId) {
   try {
     const updated = db.prepare('SELECT status, score FROM submissions WHERE id = ?').get(submissionId);
     if (!updated) return;
+
+    // 推送最终评测状态
+    emitJudgeStatus(submissionId, submission.user_id, updated.status);
 
     if (updated.status === 'compile_error') {
       db.prepare('UPDATE users SET rating = rating - 2 WHERE id = ?').run(submission.user_id);
@@ -507,6 +514,16 @@ async function judgeSubmission(submissionId) {
       ).c;
       if (prevAccepted === 0) {
         db.prepare('UPDATE users SET rating = rating + 10 WHERE id = ?').run(submission.user_id);
+      }
+      // 推送比赛排行榜更新（若该题目属于某比赛）
+      const contestProblem = db.prepare('SELECT cp.contest_id FROM contest_problems cp WHERE cp.problem_id = ?').get(submission.problem_id);
+      if (contestProblem) {
+        emitContestRanking(contestProblem.contest_id, {
+          user_id: submission.user_id,
+          submission_id: submissionId,
+          problem_id: submission.problem_id,
+          status: 'accepted'
+        });
       }
     }
   } catch {}

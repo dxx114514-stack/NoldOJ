@@ -263,6 +263,10 @@ function renderNav(activePage) {
             <button onclick="toggleDarkMode()" class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="切换主题">
               ${sunIcon}${moonIcon}
             </button>
+            <a href="/pages/announcements.html" onclick="clearAnnouncementUnread()" class="relative p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="公告">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+              <span id="annBadge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 min-w-[18px] text-center">0</span>
+            </a>
             ${user ? `
               <div class="flex items-center space-x-3">
                 <span class="text-sm text-gray-700 dark:text-gray-300">${escapeHtml(user.nickname || user.username || '')}</span>
@@ -325,4 +329,143 @@ async function logout() {
   }
   clearToken();
   window.location.href = '/pages/index.html';
+}
+
+// ── WebSocket 实时推送 (Socket.io) ──────────────────────────
+let winojSocket = null;
+let announcementUnread = parseInt(localStorage.getItem('winoj_ann_unread') || '0');
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function showToast(message, type = 'info') {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'fixed top-16 right-4 z-50 space-y-2';
+    document.body.appendChild(container);
+  }
+  const colors = {
+    info: 'bg-indigo-600',
+    success: 'bg-green-600',
+    warning: 'bg-yellow-600',
+    error: 'bg-red-600'
+  };
+  const toast = document.createElement('div');
+  toast.className = `${colors[type] || colors.info} text-white px-4 py-3 rounded-xl shadow-lg max-w-sm animate-pulse`;
+  toast.innerHTML = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = 'opacity 0.5s';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 500);
+  }, 4000);
+}
+
+function updateAnnouncementBadge() {
+  const badge = document.getElementById('annBadge');
+  if (badge) {
+    if (announcementUnread > 0) {
+      badge.textContent = announcementUnread > 99 ? '99+' : announcementUnread;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+}
+
+async function initSocket() {
+  const token = getToken();
+  if (!token) return;
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js');
+    winojSocket = io({
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    winojSocket.on('connect', () => {
+      console.log('[Socket] Connected');
+    });
+
+    winojSocket.on('connect_error', (err) => {
+      console.warn('[Socket] Connection error:', err.message);
+    });
+
+    winojSocket.on('disconnect', () => {
+      console.log('[Socket] Disconnected');
+    });
+
+    // 公告推送
+    winojSocket.on('announcement', (msg) => {
+      if (msg && msg.data) {
+        announcementUnread++;
+        localStorage.setItem('winoj_ann_unread', announcementUnread);
+        updateAnnouncementBadge();
+        showToast(`📢 新公告: ${escapeHtml(msg.data.title)}`, 'info');
+      }
+    });
+
+    // 评测状态推送 (全局监听, 页面可覆盖 onJudgeStatus)
+    winojSocket.on('judge_status', (msg) => {
+      if (typeof window.onJudgeStatus === 'function') {
+        window.onJudgeStatus(msg);
+      }
+    });
+
+    // 比赛排行榜推送
+    winojSocket.on('contest_ranking_update', (msg) => {
+      if (typeof window.onContestRankingUpdate === 'function') {
+        window.onContestRankingUpdate(msg);
+      }
+    });
+
+    updateAnnouncementBadge();
+  } catch (err) {
+    console.warn('[Socket] Init failed:', err.message);
+  }
+}
+
+function joinSubmissionRoom(submissionId) {
+  if (winojSocket && winojSocket.connected) {
+    winojSocket.emit('join_submission', { submission_id: submissionId });
+  }
+}
+
+function leaveSubmissionRoom(submissionId) {
+  if (winojSocket && winojSocket.connected) {
+    winojSocket.emit('leave_submission', { submission_id: submissionId });
+  }
+}
+
+function joinContestRankingRoom(contestId) {
+  if (winojSocket && winojSocket.connected) {
+    winojSocket.emit('join_contest_ranking', { contest_id: contestId });
+  }
+}
+
+function leaveContestRankingRoom(contestId) {
+  if (winojSocket && winojSocket.connected) {
+    winojSocket.emit('leave_contest_ranking', { contest_id: contestId });
+  }
+}
+
+function clearAnnouncementUnread() {
+  announcementUnread = 0;
+  localStorage.setItem('winoj_ann_unread', '0');
+  updateAnnouncementBadge();
+}
+
+// 页面加载后初始化 socket
+if (getToken()) {
+  initSocket();
 }

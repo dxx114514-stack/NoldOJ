@@ -188,7 +188,7 @@
                 </div>
               </div>
               <div class="flex items-center space-x-3">
-                <span class="px-4 py-2 text-sm rounded-full font-semibold ${statusColor(s.status)}">${statusText(s.status)}</span>
+                <span data-status-badge class="px-4 py-2 text-sm rounded-full font-semibold ${statusColor(s.status)}">${statusText(s.status)}</span>
                 ${isTeacher ? `<button onclick="rejudge(${s.id})" class="px-4 py-2 bg-orange-50 dark:bg-orange-900/300 text-white text-sm rounded-xl hover:bg-orange-600 font-semibold">重测</button>` : ''}
               </div>
             </div>
@@ -275,6 +275,22 @@
           }
         }
         loadDiff();
+        // 加入 socket 房间监听评测状态
+        if (s.status === 'pending' || s.status === 'running' || s.status === 'judging' || s.status === 'compiling' || s.status === 'pending_review' || s.status === 'pending_rejudge') {
+          joinSubmissionRoom(s.id);
+          window.onJudgeStatus = function(msg) {
+            if (msg.submission_id !== s.id) return;
+            const badge = document.querySelector('[data-status-badge]');
+            if (badge) {
+              badge.className = `px-4 py-2 text-sm rounded-full font-semibold ${statusColor(msg.status)}`;
+              badge.textContent = statusText(msg.status);
+            }
+            if (['accepted', 'wrong_answer', 'time_limit_exceeded', 'memory_limit_exceeded', 'runtime_error', 'compile_error', 'system_error'].includes(msg.status)) {
+              leaveSubmissionRoom(s.id);
+              setTimeout(() => loadSubmission(), 1500);
+            }
+          };
+        }
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载提交详情失败'}</p>`;
       }

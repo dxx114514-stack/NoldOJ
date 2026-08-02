@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { emitAnnouncement } = require('../services/socket');
 
 const router = express.Router();
 
@@ -59,6 +60,10 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     'INSERT INTO announcements (title, content, type, contest_id, pinned, author_id) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(title.trim(), content.trim(), type, type === 'contest' ? contest_id : null, pinned ? 1 : 0, req.user.id);
   const ann = db.prepare('SELECT * FROM announcements WHERE id = ?').get(result.lastInsertRowid);
+  // 广播新公告给所有在线用户
+  if (ann.type === 'global') {
+    emitAnnouncement(ann);
+  }
   res.status(201).json(ann);
 });
 
