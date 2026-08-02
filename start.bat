@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
 title WinOJ
 
 echo ==========================================
@@ -25,7 +26,7 @@ if %errorlevel% neq 0 (
 for /f "tokens=*" %%i in ('node -v') do set NODE_VER=%%i
 echo [OK] Node.js: %NODE_VER%
 
-REM ── 安全沙箱编译 ──────────────────────────────────────────
+REM == 安全沙箱编译 ==================================================
 if not exist "backend\sandbox\sandbox_runner.exe" (
     if exist "backend\sandbox\sandbox_runner.cpp" (
         where g++ >nul 2>&1
