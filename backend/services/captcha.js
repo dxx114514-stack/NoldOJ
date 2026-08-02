@@ -1,8 +1,11 @@
 const svgCaptcha = require('svg-captcha');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const sessions = new Map();
 const CAPTCHA_TTL = 5 * 60 * 1000;
+const DEBUG_ANSWERS_FILE = path.join(__dirname, '..', '..', 'config', 'captcha_answers.json');
 
 function darkenSvg(svg) {
   return svg.replace(/(fill|stroke)="([^"]+)"/g, (match, attr, color) => {
@@ -54,6 +57,14 @@ function generateCaptcha() {
   const expiresAt = Date.now() + CAPTCHA_TTL;
   sessions.set(id, { text: captcha.text.toLowerCase(), expiresAt });
   cleanup();
+  // 临时调试: 将验证码答案写入文件供测试读取
+  try {
+    const answers = {};
+    for (const [k, v] of sessions) {
+      answers[k] = v.text;
+    }
+    fs.writeFileSync(DEBUG_ANSWERS_FILE, JSON.stringify(answers, null, 2));
+  } catch {}
   return { id, svg: darkenSvg(captcha.data) };
 }
 
@@ -61,6 +72,14 @@ function verifyCaptcha(id, text) {
   const session = sessions.get(id);
   if (!session) return false;
   sessions.delete(id);
+  // 同步更新调试文件
+  try {
+    const answers = {};
+    for (const [k, v] of sessions) {
+      answers[k] = v.text;
+    }
+    fs.writeFileSync(DEBUG_ANSWERS_FILE, JSON.stringify(answers, null, 2));
+  } catch {}
   if (Date.now() > session.expiresAt) return false;
   if (!text) return false;
   return session.text === text.toLowerCase();

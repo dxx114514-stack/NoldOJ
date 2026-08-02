@@ -63,16 +63,22 @@ async function main() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'blob:'],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'",
+                     "https://cdn.tailwindcss.com",
+                     "https://cdnjs.cloudflare.com"],
+        scriptSrcAttr: ["'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'",
+                    "https://cdnjs.cloudflare.com"],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
         connectSrc: ["'self'"],
-        fontSrc: ["'self'", 'data:'],
+        fontSrc: ["'self'", 'data:', "https://cdnjs.cloudflare.com"],
         objectSrc: ["'none'"],
+        frameSrc: ["https://player.bilibili.com"],
         frameAncestors: ["'none'"]
       }
     },
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: false
   }));
 
   // CORS 白名单: 仅允许配置的源携带凭据访问
