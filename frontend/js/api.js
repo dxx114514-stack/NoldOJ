@@ -248,6 +248,7 @@ function renderNav(activePage) {
             </a>
             <div class="hidden md:flex space-x-1">
               <a href="/pages/problems.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='problems'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题库</a>
+              <a href="/pages/problem-sets.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='problem-sets'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题单</a>
               <a href="/pages/submissions.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='submissions'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">提交记录</a>
               <a href="/pages/articles.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='articles'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">文章</a>
               <a href="/pages/announcements.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='announcements'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">公告</a>

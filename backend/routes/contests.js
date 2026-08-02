@@ -49,11 +49,12 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description, start_time, end_time, is_virtual } = req.body;
+  const { title, description, start_time, end_time, is_virtual, freeze_minutes } = req.body;
   if (!title || !start_time || !end_time) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'title, start_time, and end_time are required.' });
   }
-  const result = db.prepare('INSERT INTO contests (title, description, start_time, end_time, is_virtual, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(title, description || '', start_time, end_time, is_virtual ? 1 : 0, req.user.id);
+  const fm = Math.max(0, parseInt(freeze_minutes) || 0);
+  const result = db.prepare('INSERT INTO contests (title, description, start_time, end_time, is_virtual, freeze_minutes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(title, description || '', start_time, end_time, is_virtual ? 1 : 0, fm, req.user.id);
   const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(contest);
 });
@@ -63,7 +64,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
-  const { title, description, start_time, end_time, is_virtual } = req.body;
+  const { title, description, start_time, end_time, is_virtual, freeze_minutes } = req.body;
   const updates = [];
   const values = [];
   if (title !== undefined) { updates.push('title = ?'); values.push(title); }
@@ -71,6 +72,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (start_time !== undefined) { updates.push('start_time = ?'); values.push(start_time); }
   if (end_time !== undefined) { updates.push('end_time = ?'); values.push(end_time); }
   if (is_virtual !== undefined) { updates.push('is_virtual = ?'); values.push(is_virtual ? 1 : 0); }
+  if (freeze_minutes !== undefined) { updates.push('freeze_minutes = ?'); values.push(Math.max(0, parseInt(freeze_minutes) || 0)); }
 
   if (updates.length === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
@@ -191,11 +193,34 @@ router.get('/:id/leaderboard', (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
 
+  // 判断冻结状态: freeze_minutes>0 且当前时间已过冻结时刻 且 未手动解冻
+  let frozen = false;
+  let freezeAt = null;
+  if (contest.freeze_minutes > 0 && !contest.unfrozen) {
+    const startMs = new Date(contest.start_time).getTime();
+    const endMs = new Date(contest.end_time).getTime();
+    const durMin = (endMs - startMs) / 60000;
+    if (contest.freeze_minutes < durMin) {
+      freezeAt = new Date(endMs - contest.freeze_minutes * 60000);
+      if (Date.now() >= freezeAt.getTime()) {
+        frozen = true;
+      }
+    }
+  }
+
   const contestProblems = db.prepare('SELECT problem_id FROM contest_problems WHERE contest_id = ?').all(contest.id);
-  if (contestProblems.length === 0) return res.json({ leaderboard: [] });
+  if (contestProblems.length === 0) return res.json({ leaderboard: [], problem_ids: [], frozen, freeze_at: freezeAt ? freezeAt.toISOString() : null });
 
   const problemIds = contestProblems.map(p => p.problem_id);
   const placeholders = problemIds.map(() => '?').join(',');
+
+  // 冻结期间只统计冻结时刻之前的提交
+  let timeFilter = '';
+  const params = [...problemIds];
+  if (frozen) {
+    timeFilter = 'AND s.created_at <= ?';
+    params.push(freezeAt.toISOString().replace('T', ' ').substring(0, 19));
+  }
 
   const submissions = db.prepare(`
     SELECT s.user_id, s.problem_id, s.score, s.time_used, s.status, u.username, u.nickname
@@ -203,7 +228,8 @@ router.get('/:id/leaderboard', (req, res) => {
     LEFT JOIN users u ON s.user_id = u.id
     WHERE s.problem_id IN (${placeholders})
       AND s.status IN ('accepted', 'wrong_answer', 'time_limit_exceeded', 'memory_limit_exceeded', 'runtime_error', 'skipped')
-  `).all(...problemIds);
+      ${timeFilter}
+  `).all(...params);
 
   const userMap = {};
   for (const s of submissions) {
@@ -236,7 +262,23 @@ router.get('/:id/leaderboard', (req, res) => {
     leaderboard[i].rank = i + 1;
   }
 
-  res.json({ leaderboard, problem_ids: problemIds });
+  res.json({ leaderboard, problem_ids: problemIds, frozen, freeze_at: freezeAt ? freezeAt.toISOString() : null });
+});
+
+// 手动解冻排行榜 (admin)
+router.post('/:id/unfreeze', requireAuth, requireRole('admin'), (req, res) => {
+  const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(req.params.id);
+  if (!contest) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  db.prepare("UPDATE contests SET unfrozen = 1, unfrozen_at = datetime('now') WHERE id = ?").run(contest.id);
+  const updated = db.prepare('SELECT * FROM contests WHERE id = ?').get(contest.id);
+  // 解冻后广播给该比赛房间
+  try {
+    const { emitContestRanking } = require('../services/socket');
+    if (emitContestRanking) emitContestRanking(contest.id, { type: 'unfrozen' });
+  } catch {}
+  res.json(updated);
 });
 
 // 比赛内公告
@@ -253,6 +295,52 @@ router.get('/:id/announcements', (req, res) => {
     ORDER BY a.pinned DESC, a.id DESC
   `).all(req.params.id);
   res.json({ announcements: items });
+});
+
+// 功能9：发起虚拟参加
+router.post('/:id/virtual-start', requireAuth, (req, res) => {
+  const { virtualStart } = require('../routes/virtual-contests');
+  virtualStart(req, res);
+});
+
+// 功能10：比赛一键全部查重（admin/teacher，异步）
+// POST /api/v1/contests/:id/plagiarism-check  对比赛所有题目依次发起查重
+router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), (req, res) => {
+  const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
+  if (!contest) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  const problems = db.prepare('SELECT problem_id FROM contest_problems WHERE contest_id = ?').all(req.params.id);
+  const { createTask } = require('../services/plagiarism');
+  const tasks = [];
+  for (const p of problems) {
+    const taskId = createTask(p.problem_id, req.user.id);
+    tasks.push({ problem_id: p.problem_id, task_id: taskId });
+  }
+  res.status(202).json({ tasks, total: tasks.length, message: 'Plagiarism checks started for all contest problems.' });
+});
+
+// 功能8：比赛讨论列表
+router.get('/:id/discussions', (req, res) => {
+  const { page = 1, size = 20 } = req.query;
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const sizeNum = Math.min(50, Math.max(1, parseInt(size) || 20));
+  const offset = (pageNum - 1) * sizeNum;
+  const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
+  if (!contest) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  const total = db.prepare('SELECT COUNT(*) as c FROM discussions WHERE contest_id = ?').get(req.params.id).c;
+  const items = db.prepare(`
+    SELECT d.id, d.title, d.is_official, d.pinned, d.locked, d.created_at,
+           u.username, u.nickname, u.role,
+           (SELECT COUNT(*) FROM discussion_replies WHERE discussion_id = d.id) as reply_count
+    FROM discussions d LEFT JOIN users u ON d.author_id = u.id
+    WHERE d.contest_id = ?
+    ORDER BY d.pinned DESC, d.is_official DESC, d.id DESC
+    LIMIT ? OFFSET ?
+  `).all(req.params.id, sizeNum, offset);
+  res.json({ total, page: pageNum, size: sizeNum, discussions: items });
 });
 
 module.exports = router;

@@ -144,10 +144,48 @@ CREATE TABLE IF NOT EXISTS contests (
   start_time TEXT NOT NULL,
   end_time TEXT NOT NULL,
   is_virtual INTEGER DEFAULT 0,
+  freeze_minutes INTEGER DEFAULT 0,
+  unfrozen INTEGER DEFAULT 0,
+  unfrozen_at TEXT,
   created_by INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS problem_sets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  creator_id INTEGER NOT NULL,
+  is_public INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (creator_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS problem_set_items (
+  set_id INTEGER NOT NULL,
+  problem_id INTEGER NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  PRIMARY KEY (set_id, problem_id),
+  FOREIGN KEY (set_id) REFERENCES problem_sets(id) ON DELETE CASCADE,
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS problem_set_progress (
+  user_id INTEGER NOT NULL,
+  set_id INTEGER NOT NULL,
+  problem_id INTEGER NOT NULL,
+  solved INTEGER DEFAULT 0,
+  solved_at TEXT,
+  PRIMARY KEY (user_id, set_id, problem_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (set_id) REFERENCES problem_sets(id) ON DELETE CASCADE,
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_problem_sets_public ON problem_sets(is_public);
+CREATE INDEX IF NOT EXISTS idx_problem_set_items_set ON problem_set_items(set_id);
+CREATE INDEX IF NOT EXISTS idx_problem_set_progress_user ON problem_set_progress(user_id);
 
 CREATE TABLE IF NOT EXISTS contest_problems (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -289,3 +327,38 @@ CREATE TABLE IF NOT EXISTS announcements (
 CREATE INDEX IF NOT EXISTS idx_announcements_type ON announcements(type);
 CREATE INDEX IF NOT EXISTS idx_announcements_contest ON announcements(contest_id);
 CREATE INDEX IF NOT EXISTS idx_announcements_pinned ON announcements(pinned);
+
+-- 功能8：讨论 / 题解区
+CREATE TABLE IF NOT EXISTS discussions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  problem_id INTEGER,
+  contest_id INTEGER,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  author_id INTEGER NOT NULL,
+  is_official INTEGER DEFAULT 0,
+  pinned INTEGER DEFAULT 0,
+  locked INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT (datetime('now')),
+  updated_at DATETIME DEFAULT (datetime('now')),
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
+  FOREIGN KEY (contest_id) REFERENCES contests(id) ON DELETE CASCADE,
+  FOREIGN KEY (author_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS discussion_replies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  discussion_id INTEGER NOT NULL,
+  parent_id INTEGER,
+  content TEXT NOT NULL,
+  author_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT (datetime('now')),
+  FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES discussion_replies(id) ON DELETE CASCADE,
+  FOREIGN KEY (author_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussions_problem ON discussions(problem_id);
+CREATE INDEX IF NOT EXISTS idx_discussions_contest ON discussions(contest_id);
+CREATE INDEX IF NOT EXISTS idx_discussions_pinned ON discussions(pinned);
+CREATE INDEX IF NOT EXISTS idx_discussion_replies_discussion ON discussion_replies(discussion_id);

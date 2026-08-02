@@ -92,7 +92,7 @@ function defaultFilename(language) {
 }
 
 router.post('/', requireAuth, rateLimit, async (req, res) => {
-  const { problem_id, language, source_code, code, answer_data, files } = req.body;
+  const { problem_id, language, source_code, code, answer_data, files, virtual_contest_id } = req.body;
 
   if (!problem_id) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problem_id is required.' });
@@ -111,6 +111,25 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(problem_id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+
+  // 功能9：虚拟比赛提交校验
+  if (virtual_contest_id) {
+    const vc = db.prepare('SELECT * FROM virtual_contests WHERE id = ?').get(virtual_contest_id);
+    if (!vc) {
+      return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Virtual contest not found.' });
+    }
+    if (vc.user_id !== req.user.id) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '无权向他人虚拟比赛提交。' });
+    }
+    if (new Date(vc.end_time).getTime() < Date.now()) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '虚拟比赛已结束，无法提交。' });
+    }
+    // 题目必须在原比赛的题目列表中
+    const inContest = db.prepare('SELECT 1 FROM contest_problems WHERE contest_id = ? AND problem_id = ?').get(vc.contest_id, problem_id);
+    if (!inContest) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '此题目不在该虚拟比赛中。' });
+    }
   }
 
   // 兼容三种格式：files 数组 / code（旧别名）/ source_code（旧字段）
@@ -142,8 +161,8 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
   }
 
   const newId = db.findNextId('submissions');
-  db.prepare('INSERT INTO submissions (id, user_id, problem_id, language, source_code, answer_data, status) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-    newId, req.user.id, problem_id, language, mainCode, answer_data || '', 'pending_review'
+  db.prepare('INSERT INTO submissions (id, user_id, problem_id, language, source_code, answer_data, status, virtual_contest_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+    newId, req.user.id, problem_id, language, mainCode, answer_data || '', 'pending_review', virtual_contest_id || null
   );
 
   // 写入多文件记录

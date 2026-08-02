@@ -110,6 +110,10 @@ async function main() {
   const tagRoutes = require('../routes/tags');
   const categoryRoutes = require('../routes/categories');
   const announcementRoutes = require('../routes/announcements');
+  const problemSetRoutes = require('../routes/problem-sets');
+  const discussionRoutes = require('../routes/discussions');
+  const { router: virtualContestRoutes } = require('../routes/virtual-contests');
+  const plagiarismRoutes = require('../routes/plagiarism');
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/problems', problemRoutes);
@@ -123,6 +127,10 @@ async function main() {
   app.use('/api/v1/tags', tagRoutes);
   app.use('/api/v1/categories', categoryRoutes);
   app.use('/api/v1/announcements', announcementRoutes);
+  app.use('/api/v1/problem-sets', problemSetRoutes);
+  app.use('/api/v1/discussions', discussionRoutes);
+  app.use('/api/v1/virtual-contests', virtualContestRoutes);
+  app.use('/api/v1/plagiarism', plagiarismRoutes);
 
   const routeList = [
     ['/api/v1/auth', '认证'],
@@ -137,6 +145,10 @@ async function main() {
     ['/api/v1/tags', '标签'],
     ['/api/v1/categories', '分类'],
     ['/api/v1/announcements', '公告'],
+    ['/api/v1/problem-sets', '题单'],
+    ['/api/v1/discussions', '讨论'],
+    ['/api/v1/virtual-contests', '虚拟比赛'],
+    ['/api/v1/plagiarism', '查重'],
   ];
   logInfo('ROUTER', `Registered ${routeList.length} route groups:`);
   for (const [path, name] of routeList) {

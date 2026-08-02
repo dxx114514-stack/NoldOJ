@@ -668,4 +668,50 @@ router.delete('/:id/solutions/:sid', requireAuth, requireRole('teacher'), (req, 
   res.json({ message: 'Solution removed.' });
 });
 
+// 功能8：题目讨论列表
+router.get('/:id/discussions', (req, res) => {
+  const { page = 1, size = 20 } = req.query;
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const sizeNum = Math.min(50, Math.max(1, parseInt(size) || 20));
+  const offset = (pageNum - 1) * sizeNum;
+  const problem = db.prepare('SELECT id FROM problems WHERE id = ?').get(req.params.id);
+  if (!problem) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  const total = db.prepare('SELECT COUNT(*) as c FROM discussions WHERE problem_id = ?').get(req.params.id).c;
+  const items = db.prepare(`
+    SELECT d.id, d.title, d.is_official, d.pinned, d.locked, d.created_at, d.updated_at,
+           u.username, u.nickname, u.role,
+           (SELECT COUNT(*) FROM discussion_replies WHERE discussion_id = d.id) as reply_count
+    FROM discussions d LEFT JOIN users u ON d.author_id = u.id
+    WHERE d.problem_id = ?
+    ORDER BY d.pinned DESC, d.is_official DESC, d.id DESC
+    LIMIT ? OFFSET ?
+  `).all(req.params.id, sizeNum, offset);
+  res.json({ total, page: pageNum, size: sizeNum, discussions: items });
+});
+
+// 功能10：发起查重（admin/teacher，异步）
+// POST /api/v1/problems/:id/plagiarism-check  返回 {task_id}
+router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), (req, res) => {
+  const problem = db.prepare('SELECT id FROM problems WHERE id = ?').get(req.params.id);
+  if (!problem) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  const { createTask } = require('../services/plagiarism');
+  const taskId = createTask(parseInt(req.params.id), req.user.id);
+  res.status(202).json({ task_id: taskId, message: 'Plagiarism check started.' });
+});
+
+// 功能10：获取题目最近一次查重报告
+// GET /api/v1/problems/:id/plagiarism-report
+router.get('/:id/plagiarism-report', requireAuth, requireRole('teacher'), (req, res) => {
+  const { getLatestTaskForProblem } = require('../services/plagiarism');
+  const task = getLatestTaskForProblem(parseInt(req.params.id));
+  if (!task) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'No plagiarism task found for this problem.' });
+  }
+  res.json(task);
+});
+
 module.exports = router;

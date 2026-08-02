@@ -50,6 +50,13 @@
       <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 dark:bg-gray-800 rounded-xl p-6 shadow-sm dark:shadow-gray-900/30" id="stat-users"><div class="text-3xl font-bold text-purple-600 dark:text-purple-400">-</div><div class="text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">用户</div></div>
       <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 dark:bg-gray-800 rounded-xl p-6 shadow-sm dark:shadow-gray-900/30" id="stat-languages"><div class="text-3xl font-bold text-orange-600 dark:text-orange-400">-</div><div class="text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">语言</div></div>
     </div>
+    <div class="mt-16">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">推荐题单</h2>
+        <a href="/pages/problem-sets.html" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">查看全部 →</a>
+      </div>
+      <div id="recommendSets" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+    </div>
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('home');
@@ -63,6 +70,33 @@
       } catch {}
     }
     loadStats();
+    async function loadRecommendSets() {
+      try {
+        const data = await apiCall('GET', '/problem-sets?page=1&size=3');
+        const el = document.getElementById('recommendSets');
+        if (!data.problem_sets || data.problem_sets.length === 0) {
+          el.innerHTML = '<div class="col-span-3 text-center text-gray-400 py-8">暂无题单</div>';
+          return;
+        }
+        el.innerHTML = data.problem_sets.map(ps => {
+          const pct = ps.problem_count > 0 ? Math.round((ps.solved_count / ps.problem_count) * 100) : 0;
+          return `
+            <a href="/pages/problem-set.html?id=${ps.id}" class="block bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all">
+              <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">${escapeHtml(ps.title)}</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 line-clamp-2 mb-4 min-h-[2.5rem]">${escapeHtml(ps.description || '暂无描述')}</p>
+              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-2">
+                <span>${ps.problem_count} 题</span>
+                <span>已做 ${ps.solved_count || 0}</span>
+              </div>
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                <div class="bg-indigo-600 dark:bg-indigo-400 h-2 rounded-full" style="width:${pct}%"></div>
+              </div>
+            </a>
+          `;
+        }).join('');
+      } catch {}
+    }
+    loadRecommendSets();
     async function loadAnnouncementBanner() {
       try {
         const data = await apiCall('GET', '/announcements?type=global&page=1&size=1');

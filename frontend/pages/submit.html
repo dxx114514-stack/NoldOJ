@@ -50,6 +50,7 @@
     document.getElementById('nav').innerHTML = renderNav('problems');
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('id');
+    const vcId = params.get('vc'); // 功能9：虚拟比赛提交时携带
     let editor;
     let problemData = null;
 
@@ -176,7 +177,8 @@
         const data = await apiCall('POST', '/submissions', {
           problem_id: parseInt(pid) || 0,
           language: document.getElementById('language').value,
-          files: files
+          files: files,
+          ...(vcId ? { virtual_contest_id: parseInt(vcId) } : {})
         });
         window.location.href = `/pages/submission.html?id=${data.submission_id}`;
       } catch (err) {

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>发帖 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-3xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6" id="pageTitle">发帖</h1>
+    <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">标题</label>
+        <input id="dTitle" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white" placeholder="讨论标题">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">内容（Markdown）</label>
+        <div class="grid grid-cols-2 gap-4">
+          <textarea id="dContent" rows="14" oninput="renderPreview()" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white font-mono text-sm" placeholder="支持 Markdown 语法..."></textarea>
+          <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 overflow-y-auto bg-gray-50 dark:bg-gray-900" style="max-height: 360px;">
+            <div id="dPreview" class="prose dark:prose-invert max-w-none text-sm"></div>
+          </div>
+        </div>
+      </div>
+      <div id="officialField" class="hidden flex items-center">
+        <input id="dOfficial" type="checkbox" class="w-4 h-4 text-indigo-600 rounded">
+        <label for="dOfficial" class="ml-2 text-sm text-gray-700 dark:text-gray-300">标记为官方题解/公告</label>
+      </div>
+      <div class="flex justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
+        <a href="javascript:history.back()" class="px-4 py-2 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm">返回</a>
+        <button onclick="save()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">发布</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('problems');
+    const params = new URLSearchParams(window.location.search);
+    const did = params.get('id');
+    const problemId = params.get('problem_id');
+    const contestId = params.get('contest_id');
+    const user = getUser();
+    const isTeacher = user && ['teacher','admin','su'].includes(user.role);
+
+    if (isTeacher) document.getElementById('officialField').classList.remove('hidden');
+    document.getElementById('officialField').className = document.getElementById('officialField').className.replace('flex', 'flex').replace('hidden', '');
+
+    (async function init() {
+      if (did) {
+        try {
+          const d = await apiCall('GET', `/discussions/${did}`);
+          document.getElementById('pageTitle').textContent = `编辑 - ${d.title}`;
+          document.getElementById('dTitle').value = d.title;
+          document.getElementById('dContent').value = d.content;
+          document.getElementById('dOfficial').checked = !!d.is_official;
+          renderPreview();
+        } catch (err) {
+          alert(err.message || '加载失败');
+          window.history.back();
+        }
+      } else {
+        document.getElementById('pageTitle').textContent = problemId ? '发帖（题目讨论）' : contestId ? '发帖（比赛讨论）' : '发帖';
+      }
+    })();
+
+    function renderPreview() {
+      const text = document.getElementById('dContent').value;
+      try {
+        const html = marked.parse(text || '*预览区*');
+        document.getElementById('dPreview').innerHTML = DOMPurify.sanitize(html);
+      } catch {
+        document.getElementById('dPreview').textContent = text;
+      }
+    }
+    renderPreview();
+
+    async function save() {
+      const title = document.getElementById('dTitle').value.trim();
+      const content = document.getElementById('dContent').value.trim();
+      if (!title) { alert('请输入标题'); return; }
+      if (!content) { alert('请输入内容'); return; }
+      try {
+        if (did) {
+          await apiCall('PUT', `/discussions/${did}`, { title, content });
+          window.location.href = `/pages/discussion.html?id=${did}`;
+        } else {
+          const body = { title, content };
+          if (problemId) body.problem_id = parseInt(problemId);
+          if (contestId) body.contest_id = parseInt(contestId);
+          if (isTeacher) body.is_official = document.getElementById('dOfficial').checked ? 1 : 0;
+          const created = await apiCall('POST', '/discussions', body);
+          window.location.href = `/pages/discussion.html?id=${created.id}`;
+        }
+      } catch (err) { alert(err.message || '保存失败'); }
+    }
+  </script>
+</body>
+</html>

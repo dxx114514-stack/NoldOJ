@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>查重报告 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <div id="content" class="text-center py-12 text-gray-400 dark:text-gray-500">加载中...</div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('admin');
+    const params = new URLSearchParams(window.location.search);
+    const problemId = params.get('problem');
+    const taskId = params.get('task');
+    let pollTimer = null;
+
+    function levelBadge(level) {
+      if (level === 'high') return '<span class="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">高度相似</span>';
+      if (level === 'medium') return '<span class="px-2 py-0.5 text-xs rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">疑似相似</span>';
+      return '<span class="px-2 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">低</span>';
+    }
+
+    function simColor(sim) {
+      if (sim >= 0.85) return 'text-red-600 dark:text-red-400 font-bold';
+      if (sim >= 0.7) return 'text-orange-600 dark:text-orange-400 font-semibold';
+      return 'text-gray-600 dark:text-gray-400';
+    }
+
+    function statusText(status) {
+      return { pending: '等待中', running: '运行中', done: '已完成', failed: '失败' }[status] || status;
+    }
+
+    async function loadProblemTitle(pid) {
+      try {
+        const p = await apiCall('GET', `/problems/${pid}`);
+        return p ? p.title : `#${pid}`;
+      } catch { return `#${pid}`; }
+    }
+
+    async function loadTask() {
+      const el = document.getElementById('content');
+      if (!taskId) {
+        // 没指定 task_id：拉取最新报告
+        try {
+          const task = await apiCall('GET', `/problems/${problemId}/plagiarism-report`);
+          renderTask(task);
+          // 已完成的不再轮询
+          if (task.status === 'running' || task.status === 'pending') {
+            pollTimer = setTimeout(loadTask, 1500);
+          }
+        } catch (err) {
+          const title = await loadProblemTitle(problemId);
+          el.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-8 text-center">
+              <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">题目 #${problemId} ${escapeHtml(title)}</h1>
+              <p class="text-gray-500 dark:text-gray-400 mb-6">暂无查重报告</p>
+              <button onclick="startCheck()" class="px-6 py-2.5 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700">立即发起查重</button>
+            </div>
+          `;
+        }
+        return;
+      }
+      try {
+        const task = await apiCall('GET', `/plagiarism/${taskId}`);
+        renderTask(task);
+        if (task.status === 'running' || task.status === 'pending') {
+          pollTimer = setTimeout(loadTask, 1500);
+        }
+      } catch (err) {
+        el.innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
+      }
+    }
+
+    async function startCheck() {
+      try {
+        const res = await apiCall('POST', `/problems/${problemId}/plagiarism-check`);
+        window.location.href = `/pages/plagiarism-report.html?problem=${problemId}&task=${res.task_id}`;
+      } catch (err) {
+        alert(err.message || '发起查重失败');
+      }
+    }
+    window.startCheck = startCheck;
+
+    async function renderTask(task) {
+      const title = await loadProblemTitle(problemId);
+      const pct = task.total_pairs > 0 ? Math.min(100, Math.round(task.checked_pairs / task.total_pairs * 100)) : (task.status === 'done' ? 100 : 0);
+      const statusBadge = task.status === 'done'
+        ? '<span class="px-2 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">已完成</span>'
+        : task.status === 'failed'
+        ? '<span class="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">失败</span>'
+        : '<span class="px-2 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 animate-pulse">运行中</span>';
+
+      // 统计
+      const highCount = (task.pairs || []).filter(p => p.level === 'high').length;
+      const medCount = (task.pairs || []).filter(p => p.level === 'medium').length;
+
+      // 表格行
+      const rowsHtml = (task.pairs || []).length === 0
+        ? '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">暂无相似对</td></tr>'
+        : task.pairs.map(p => `
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">
+            <td class="px-4 py-3 text-sm">${p.id}</td>
+            <td class="px-4 py-3 text-sm">
+              <a href="/pages/profile.html?id=${p.user_a}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(p.user_a_nick || p.user_a_name || ('#'+p.user_a))}</a>
+              <div class="text-xs text-gray-400">提交 #${p.sub_a_id}</div>
+            </td>
+            <td class="px-4 py-3 text-sm">
+              <a href="/pages/profile.html?id=${p.user_b}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(p.user_b_nick || p.user_b_name || ('#'+p.user_b))}</a>
+              <div class="text-xs text-gray-400">提交 #${p.sub_b_id}</div>
+            </td>
+            <td class="px-4 py-3 text-center text-sm ${simColor(p.similarity)}">${(p.similarity * 100).toFixed(1)}%</td>
+            <td class="px-4 py-3 text-center">${levelBadge(p.level)}</td>
+            <td class="px-4 py-3 text-center">
+              <a href="/pages/plagiarism-detail.html?pair=${p.id}" class="text-purple-600 dark:text-purple-400 text-sm hover:underline">查看详情</a>
+            </td>
+          </tr>
+        `).join('');
+
+      document.getElementById('content').innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900 dark:text-white">查重报告 · 题目 #${problemId} ${escapeHtml(title)}</h1>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                任务 #${task.id} · 创建于 ${new Date(task.created_at).toLocaleString()} · ${task.finished_at ? '完成于 ' + new Date(task.finished_at).toLocaleString() : ''}
+              </p>
+            </div>
+            <div class="flex items-center space-x-2">
+              ${statusBadge}
+              <button onclick="startCheck()" class="px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200">重新查重</button>
+              <a href="/pages/admin.html" class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">返回管理</a>
+            </div>
+          </div>
+
+          ${(task.status === 'running' || task.status === 'pending') ? `
+            <div class="mb-4">
+              <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                <span>进度: ${task.checked_pairs} / ${task.total_pairs}</span>
+                <span>${pct}%</span>
+              </div>
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
+                <div class="bg-purple-600 h-2.5 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          ` : ''}
+
+          <div class="grid grid-cols-3 gap-3">
+            <div class="bg-red-50 dark:bg-red-900/20 rounded-xl p-3 text-center">
+              <div class="text-2xl font-bold text-red-600 dark:text-red-400">${highCount}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">高度相似 (≥85%)</div>
+            </div>
+            <div class="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-3 text-center">
+              <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">${medCount}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">疑似相似 (70%~85%)</div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 text-center">
+              <div class="text-2xl font-bold text-gray-600 dark:text-gray-300">${task.total_pairs || 0}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">比较对总数</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">相似提交对</h2>
+          </div>
+          <table class="w-full">
+            <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">ID</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">用户 A</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">用户 B</th>
+                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">相似度</th>
+                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">等级</th>
+                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">${rowsHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // 页面卸载时清理轮询
+    window.addEventListener('beforeunload', () => { if (pollTimer) clearTimeout(pollTimer); });
+
+    loadTask();
+  </script>
+</body>
+</html>

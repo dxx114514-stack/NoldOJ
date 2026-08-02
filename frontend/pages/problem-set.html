@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>题单详情 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+  <script src="/js/markdown.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div id="content" class="text-center py-12 text-gray-400">加载中...</div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('problem-sets');
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('id');
+
+    function difficultyStars(d) {
+      d = Math.max(0, Math.min(5, d || 0));
+      let html = '';
+      for (let i = 0; i < 5; i++) {
+        html += i < d ? '<span class="text-yellow-400">★</span>' : '<span class="text-gray-300 dark:text-gray-600">★</span>';
+      }
+      return html;
+    }
+
+    async function load() {
+      if (!sid) { document.getElementById('content').innerHTML = '<p class="text-red-500 text-center">未指定题单 ID</p>'; return; }
+      try {
+        const ps = await apiCall('GET', `/problem-sets/${sid}`);
+        document.title = `${ps.title} - WinOJ`;
+        const pct = ps.total_count > 0 ? Math.round((ps.solved_count / ps.total_count) * 100) : 0;
+        const user = getUser();
+        const isTeacher = user && (user.id === ps.creator_id || ['admin','su'].includes(user.role));
+
+        document.getElementById('content').innerHTML = `
+          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
+            <div class="flex items-start justify-between mb-4">
+              <div class="flex-1 min-w-0">
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">${escapeHtml(ps.title)}</h1>
+                ${ps.description ? `<div class="prose dark:prose-invert max-w-none text-gray-600 dark:text-gray-300 dark:text-gray-400 mt-3 text-sm">${renderMarkdown(ps.description)}</div>` : ''}
+              </div>
+              ${isTeacher ? `<a href="/pages/problem-set-edit.html?id=${ps.id}" class="ml-4 px-3 py-2 text-sm bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50">编辑</a>` : ''}
+            </div>
+            <div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-4">
+              <span>by ${escapeHtml(ps.creator_name || '匿名')} · ${new Date(ps.created_at).toLocaleString()}</span>
+              <span>已做 ${ps.solved_count} / ${ps.total_count}</span>
+            </div>
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+              <div class="bg-green-500 h-3 rounded-full transition-all" style="width:${pct}%"></div>
+            </div>
+          </div>
+
+          <div class="mt-6 bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">题目列表</h2>
+            </div>
+            ${ps.problems && ps.problems.length > 0 ? `
+              <div class="divide-y divide-gray-100 dark:divide-gray-700">
+                ${ps.problems.map((p, i) => `
+                  <div class="flex items-center justify-between px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <div class="flex items-center gap-4 min-w-0">
+                      <span class="text-sm font-mono text-gray-400 dark:text-gray-500 w-6">${i+1}</span>
+                      ${p.solved
+                        ? '<svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>'
+                        : '<svg class="w-5 h-5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/></svg>'}
+                      <a href="/pages/problem.html?id=${p.id}" class="text-sm font-medium text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 truncate">${escapeHtml(p.title)}</a>
+                    </div>
+                    <div class="flex items-center gap-3 flex-shrink-0">
+                      <span class="text-xs">${difficultyStars(p.difficulty)}</span>
+                      <a href="/pages/submit.html?id=${p.id}" class="px-3 py-1 text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50">去提交</a>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<div class="px-6 py-12 text-center text-gray-400 dark:text-gray-500">暂无题目</div>'}
+          </div>
+        `;
+      } catch (err) {
+        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

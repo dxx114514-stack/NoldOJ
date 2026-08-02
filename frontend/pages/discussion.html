@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>讨论 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/markdown.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div id="content" class="text-center py-12 text-gray-400">加载中...</div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('problems');
+    const params = new URLSearchParams(window.location.search);
+    const did = params.get('id');
+
+    // 安全渲染 Markdown：先 marked 再 DOMPurify
+    function safeMarkdown(text) {
+      if (!text) return '';
+      try {
+        const html = marked.parse(text);
+        return DOMPurify.sanitize(html);
+      } catch {
+        return escapeHtml(text);
+      }
+    }
+
+    async function loadDiscussion() {
+      if (!did) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定讨论 ID</p>'; return; }
+      try {
+        const d = await apiCall('GET', `/discussions/${did}`);
+        document.title = `${d.title} - WinOJ`;
+        const user = getUser();
+        const isAdmin = user && ['admin','su'].includes(user.role);
+        const isTeacher = user && ['teacher','admin','su'].includes(user.role);
+        const isAuthor = user && user.id === d.author_id;
+        const canManage = isAuthor || isAdmin;
+        const canModerate = isTeacher;
+
+        const repliesHtml = (d.replies || []).map(r => `
+          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 mb-3">
+            <div class="flex items-center gap-2 mb-2">
+              <a href="profile.html?id=${r.user_id}" class="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(r.nickname || r.username)}</a>
+              ${r.role==='admin'||r.role==='su'?'<span class="px-1.5 py-0.5 text-xs rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">管理员</span>':r.role==='teacher'?'<span class="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">教师</span>':''}
+              <span class="text-xs text-gray-400">${new Date(r.created_at).toLocaleString()}</span>
+              ${(user.id === r.author_id || isAdmin) ? `<button onclick="deleteReply(${r.id})" class="ml-auto text-xs text-red-500 hover:underline">删除</button>` : ''}
+            </div>
+            <div class="prose dark:prose-invert max-w-none text-sm">${safeMarkdown(r.content)}</div>
+            <div class="mt-2">
+              <button onclick="toggleReply(${r.id})" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">回复</button>
+              <div id="reply-box-${r.id}" class="hidden mt-2">
+                <textarea id="reply-input-${r.id}" rows="2" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm" placeholder="回复 @${escapeHtml(r.nickname || r.username)}..."></textarea>
+                <div class="flex justify-end mt-1">
+                  <button onclick="postReply(${r.id})" class="px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">发送</button>
+                </div>
+              </div>
+            </div>
+            ${r.children && r.children.length > 0 ? `
+              <div class="mt-3 pl-4 border-l-2 border-gray-100 dark:border-gray-700 space-y-2">
+                ${r.children.map(c => `
+                  <div class="bg-gray-50 dark:bg-gray-700 dark:bg-gray-700 rounded-lg p-3">
+                    <div class="flex items-center gap-2 mb-1">
+                      <a href="profile.html?id=${c.user_id}" class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(c.nickname || c.username)}</a>
+                      <span class="text-xs text-gray-400">${new Date(c.created_at).toLocaleString()}</span>
+                      ${(user.id === c.author_id || isAdmin) ? `<button onclick="deleteReply(${c.id})" class="ml-auto text-xs text-red-500 hover:underline">删除</button>` : ''}
+                    </div>
+                    <div class="text-sm text-gray-700 dark:text-gray-200 dark:text-gray-300">${safeMarkdown(c.content)}</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `).join('');
+
+        document.getElementById('content').innerHTML = `
+          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border ${d.is_official ? 'border-yellow-400 dark:border-yellow-600' : 'border-gray-100 dark:border-gray-700'} p-6 mb-4">
+            <div class="flex items-start justify-between mb-4">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap mb-2">
+                  ${d.pinned ? '<span class="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">置顶</span>' : ''}
+                  ${d.is_official ? '<span class="px-2 py-0.5 text-xs rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">官方</span>' : ''}
+                  ${d.locked ? '<span class="px-2 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">已锁定</span>' : ''}
+                  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">${escapeHtml(d.title)}</h1>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">by <a href="profile.html?id=${d.author_id}" class="hover:underline">${escapeHtml(d.nickname || d.username)}</a> · ${new Date(d.created_at).toLocaleString()}</p>
+              </div>
+              <div class="flex flex-col gap-1 items-end ml-4">
+                ${d.problem_id ? `<a href="/pages/problem.html?id=${d.problem_id}" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">查看题目 →</a>` : ''}
+                ${canManage ? `<a href="/pages/discussion-edit.html?id=${d.id}" class="text-xs text-gray-500 hover:underline">编辑</a>
+                <button onclick="deleteDiscussion()" class="text-xs text-red-500 hover:underline">删除</button>` : ''}
+                ${canModerate ? `
+                  <button onclick="togglePin()" class="text-xs text-gray-500 hover:underline">${d.pinned ? '取消置顶' : '置顶'}</button>
+                  <button onclick="toggleLock()" class="text-xs text-gray-500 hover:underline">${d.locked ? '解锁' : '锁定'}</button>
+                  <button onclick="toggleOfficial()" class="text-xs text-gray-500 hover:underline">${d.is_official ? '取消官方' : '设为官方'}</button>
+                ` : ''}
+              </div>
+            </div>
+            <div class="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-200 dark:text-gray-300">${safeMarkdown(d.content)}</div>
+          </div>
+
+          ${!d.locked || canModerate ? `
+            <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4 mb-4">
+              <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">发表回复</h3>
+              <textarea id="topReplyInput" rows="3" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm font-mono" placeholder="支持 Markdown..."></textarea>
+              <div class="flex justify-end mt-2">
+                <button onclick="postReply(null)" class="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">发送</button>
+              </div>
+            </div>
+          ` : '<div class="bg-gray-100 dark:bg-gray-700 dark:bg-gray-700 text-center text-gray-500 py-4 rounded-xl mb-4">🔒 该讨论已锁定，无法回复</div>'}
+
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">回复 (${(d.replies || []).length})</h3>
+          <div>${repliesHtml || '<p class="text-gray-400 text-center py-8">暂无回复，快来说点什么～</p>'}</div>
+        `;
+        if (window.renderMathInElement) {
+          try { renderMathInElement(document.getElementById('content'), { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
+        }
+      } catch (err) {
+        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载讨论失败'}</p>`;
+      }
+    }
+
+    function toggleReply(id) {
+      const box = document.getElementById(`reply-box-${id}`);
+      box.classList.toggle('hidden');
+      if (!box.classList.contains('hidden')) document.getElementById(`reply-input-${id}`).focus();
+    }
+
+    async function postReply(parentId) {
+      const input = parentId ? document.getElementById(`reply-input-${parentId}`) : document.getElementById('topReplyInput');
+      const content = input.value.trim();
+      if (!content) { alert('请输入回复内容'); return; }
+      try {
+        await apiCall('POST', `/discussions/${did}/replies`, { content, parent_id: parentId });
+        loadDiscussion();
+      } catch (err) { alert(err.message || '回复失败'); }
+    }
+
+    async function deleteReply(rid) {
+      if (!confirm('确定删除该回复？')) return;
+      try {
+        await apiCall('DELETE', `/discussions/${did}/replies/${rid}`);
+        loadDiscussion();
+      } catch (err) { alert(err.message || '删除失败'); }
+    }
+
+    async function deleteDiscussion() {
+      if (!confirm('确定删除该讨论？删除后无法恢复。')) return;
+      try {
+        const d = await apiCall('GET', `/discussions/${did}`);
+        await apiCall('DELETE', `/discussions/${did}`);
+        if (d.problem_id) window.location.href = `/pages/problem.html?id=${d.problem_id}`;
+        else if (d.contest_id) window.location.href = `/pages/contest.html?id=${d.contest_id}`;
+        else window.location.href = '/pages/problems.html';
+      } catch (err) { alert(err.message || '删除失败'); }
+    }
+
+    async function togglePin() {
+      try {
+        const d = await apiCall('GET', `/discussions/${did}`);
+        await apiCall('PUT', `/discussions/${did}/pin`, { pinned: !d.pinned });
+        loadDiscussion();
+      } catch (err) { alert(err.message || '操作失败'); }
+    }
+    async function toggleLock() {
+      try {
+        const d = await apiCall('GET', `/discussions/${did}`);
+        await apiCall('PUT', `/discussions/${did}/lock`, { locked: !d.locked });
+        loadDiscussion();
+      } catch (err) { alert(err.message || '操作失败'); }
+    }
+    async function toggleOfficial() {
+      try {
+        const d = await apiCall('GET', `/discussions/${did}`);
+        await apiCall('PUT', `/discussions/${did}/official`, { is_official: !d.is_official });
+        loadDiscussion();
+      } catch (err) { alert(err.message || '操作失败'); }
+    }
+
+    loadDiscussion();
+  </script>
+</body>
+</html>

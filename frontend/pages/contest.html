@@ -63,8 +63,12 @@
         try {
           const lb = await apiCall('GET', `/contests/${cid}/leaderboard`);
           if (lb.leaderboard.length > 0) {
+            const frozenBanner = lb.frozen
+              ? `<div class="bg-yellow-100 dark:bg-yellow-900/40 border-l-4 border-yellow-500 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded-xl mb-3 text-sm font-medium">🔒 排行榜已冻结，最终排名赛后公布</div>`
+              : '';
             leaderboardHtml = `
               <div id="contest-tab-leaderboard" class="mt-6">
+                ${frozenBanner}
                 <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
                   <table class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
@@ -113,6 +117,15 @@
           </div>
         `;
 
+        // 功能9：已结束比赛显示"虚拟参加"按钮
+        const ended = new Date(c.end_time).getTime() < Date.now();
+        const virtualBtn = ended
+          ? `<button onclick="startVirtual(${c.id})" class="ml-3 px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 font-semibold">⏱ 虚拟参加</button>`
+          : '';
+        const myVirtualLink = ended
+          ? `<a href="/pages/my-virtual-contests.html" class="ml-2 text-sm text-purple-600 dark:text-purple-400 hover:underline">我的虚拟比赛</a>`
+          : '';
+
         document.getElementById('content').innerHTML = `
           <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
             <div class="flex items-start justify-between mb-4">
@@ -121,6 +134,7 @@
                 <p class="text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-2">${escapeHtml(c.description || '暂无描述')}</p>
               </div>
               <span class="px-3 py-1 text-xs rounded-full font-medium ${statusColor}">${status}</span>
+              ${virtualBtn}${myVirtualLink}
             </div>
             <div class="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-4">
               <span>题目: ${c.problems?.length || 0} 道</span>
@@ -217,6 +231,30 @@
     loadContest();
     // 加入比赛排行榜房间
     setTimeout(() => { joinContestRankingRoom(parseInt(cid)); }, 1000);
+
+    // 功能9：发起虚拟参加
+    async function startVirtual(contestId) {
+      try {
+        const contest = await apiCall('GET', `/contests/${contestId}`);
+        const start = new Date(contest.start_time);
+        const end = new Date(contest.end_time);
+        const durMin = Math.round((end - start) / 60000);
+        const hours = Math.floor(durMin / 60);
+        const mins = durMin % 60;
+        const durText = hours > 0 ? `${hours} 小时${mins > 0 ? mins + ' 分钟' : ''}` : `${durMin} 分钟`;
+        if (!confirm(`将开始虚拟比赛。\n时长: ${durText}\n开始后不可暂停，服务端时间为准。\n确定开始？`)) return;
+        const vc = await apiCall('POST', `/contests/${contestId}/virtual-start`);
+        window.location.href = `/pages/virtual-contest.html?id=${vc.id}`;
+      } catch (err) {
+        if (err.virtual_contest_id) {
+          if (confirm('你已经虚拟参加过此比赛，是否前往查看？')) {
+            window.location.href = `/pages/virtual-contest.html?id=${err.virtual_contest_id}`;
+          }
+        } else {
+          alert(err.message || '启动失败');
+        }
+      }
+    }
   </script>
 </body>
 </html>

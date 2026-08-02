@@ -94,6 +94,14 @@
             </div>
           </div>
           <div id="solutions"></div>
+          <div id="discussionsSection" class="mt-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">💬 讨论</h3>
+              <a href="/pages/discussion-edit.html?problem_id=${p.id}" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">+ 发帖</a>
+            </div>
+            <div id="discussionsList" class="space-y-3">加载中...</div>
+            <div id="discussionsPager" class="mt-4 flex justify-center gap-2"></div>
+          </div>
         `;
 
         try {
@@ -113,6 +121,8 @@
           }
         } catch {}
         renderMathInElement(document.getElementById('content'));
+        // 加载讨论列表
+        loadDiscussions(1);
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载题目失败'}</p>`;
       }
@@ -144,6 +154,46 @@
         btn.textContent = '✓ 已复制';
         setTimeout(() => btn.textContent = orig, 1500);
       });
+    }
+    // 功能8：讨论列表加载
+    let discussionPage = 1;
+    async function loadDiscussions(page) {
+      discussionPage = page;
+      const listEl = document.getElementById('discussionsList');
+      const pagerEl = document.getElementById('discussionsPager');
+      if (!listEl) return;
+      try {
+        const data = await apiCall('GET', `/problems/${pid}/discussions?page=${page}&size=10`);
+        if (!data.discussions || data.discussions.length === 0) {
+          listEl.innerHTML = '<p class="text-gray-400 text-center py-4">暂无讨论，快来抢沙发！</p>';
+          pagerEl.innerHTML = '';
+          return;
+        }
+        listEl.innerHTML = data.discussions.map(d => `
+          <a href="/pages/discussion.html?id=${d.id}" class="block bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-xl border ${d.is_official ? 'border-yellow-400 dark:border-yellow-600 shadow-sm' : 'border-gray-100 dark:border-gray-700'} p-4 hover:shadow-md transition">
+            <div class="flex items-start justify-between">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap mb-1">
+                  ${d.pinned ? '<span class="px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">置顶</span>' : ''}
+                  ${d.is_official ? '<span class="px-1.5 py-0.5 text-xs rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">官方</span>' : ''}
+                  ${d.locked ? '<span class="px-1.5 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">已锁定</span>' : ''}
+                  <h4 class="font-semibold text-gray-900 dark:text-white truncate">${escapeHtml(d.title)}</h4>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">by ${escapeHtml(d.nickname || d.username)} · ${new Date(d.created_at).toLocaleString()}</p>
+              </div>
+              <span class="text-xs text-gray-400 ml-2 whitespace-nowrap">${d.reply_count} 回复</span>
+            </div>
+          </a>
+        `).join('');
+        const totalPages = Math.ceil(data.total / 10) || 1;
+        let ph = '';
+        for (let i = 1; i <= totalPages; i++) {
+          ph += `<button onclick="loadDiscussions(${i})" class="px-3 py-1 text-sm rounded-lg ${i===page?'bg-indigo-600 text-white':'bg-white dark:bg-gray-800 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'}">${i}</button>`;
+        }
+        pagerEl.innerHTML = ph;
+      } catch (err) {
+        listEl.innerHTML = `<p class="text-red-500 text-center py-4">${err.message || '加载讨论失败'}</p>`;
+      }
     }
   </script>
 </body>

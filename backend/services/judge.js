@@ -525,6 +525,18 @@ async function judgeSubmission(submissionId) {
           status: 'accepted'
         });
       }
+      // 自动更新题单进度（功能7）：将该题所在的题单中标记为已解决
+      try {
+        const sets = db.prepare('SELECT DISTINCT set_id FROM problem_set_items WHERE problem_id = ?').all(submission.problem_id);
+        if (sets.length > 0) {
+          const upsert = db.prepare(`
+            INSERT INTO problem_set_progress (user_id, set_id, problem_id, solved, solved_at)
+            VALUES (?, ?, ?, 1, datetime('now'))
+            ON CONFLICT(user_id, set_id, problem_id) DO UPDATE SET solved = 1, solved_at = datetime('now')
+          `);
+          for (const s of sets) upsert.run(submission.user_id, s.set_id, submission.problem_id);
+        }
+      } catch {}
     }
   } catch {}
 }

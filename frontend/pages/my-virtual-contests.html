@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的虚拟比赛 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-5xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">我的虚拟比赛</h1>
+    <div id="list"></div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('contests');
+
+    async function load() {
+      try {
+        const data = await apiCall('GET', '/users/me/virtual-contests');
+        const list = document.getElementById('list');
+        if (!data.virtual_contests || data.virtual_contests.length === 0) {
+          list.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-12 text-center">
+              <p class="text-gray-400 mb-4">你还没有参加过虚拟比赛</p>
+              <a href="/pages/contests.html" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">浏览已结束比赛</a>
+            </div>
+          `;
+          return;
+        }
+        list.innerHTML = data.virtual_contests.map(vc => {
+          const statusBadge = vc.status === 'running'
+            ? '<span class="px-2 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">进行中</span>'
+            : '<span class="px-2 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">已结束</span>';
+          return `
+            <a href="/pages/virtual-contest.html?id=${vc.id}" class="block bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5 mb-3 hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600 transition">
+              <div class="flex items-start justify-between">
+                <div>
+                  <h3 class="text-lg font-bold text-gray-900 dark:text-white">${escapeHtml(vc.contest_title || '原比赛已删除')}</h3>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${new Date(vc.start_time).toLocaleString()} ~ ${new Date(vc.end_time).toLocaleString()}</p>
+                </div>
+                ${statusBadge}
+              </div>
+            </a>
+          `;
+        }).join('');
+      } catch (err) {
+        document.getElementById('list').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

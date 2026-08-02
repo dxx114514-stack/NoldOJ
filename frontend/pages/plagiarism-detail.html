@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>查重详情 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+  <style>
+    /* 代码区域：等宽 + 保留空白 */
+    pre.code-block {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre;
+      overflow-x: auto;
+      tab-size: 4;
+      padding: 12px;
+      margin: 0;
+      text-align: left;
+    }
+    /* 高亮：两份代码中相同的 token 用金色背景标记 */
+    .tok-shared {
+      background-color: rgba(250, 204, 21, 0.45);
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+    .dark .tok-shared {
+      background-color: rgba(250, 204, 21, 0.30);
+      color: #fde047;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <div id="content" class="text-center py-12 text-gray-400 dark:text-gray-500">加载中...</div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('admin');
+    const params = new URLSearchParams(window.location.search);
+    const pairId = params.get('pair');
+
+    function levelBadge(level) {
+      if (level === 'high') return '<span class="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">高度相似</span>';
+      if (level === 'medium') return '<span class="px-2 py-0.5 text-xs rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">疑似相似</span>';
+      return '<span class="px-2 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">低</span>';
+    }
+
+    // 渲染代码：将源代码转义后，对在 shared 集合中的 token 包裹 <span class="tok-shared">
+    // 不做语法分析，直接用与后端相同的简单 token 正则拆分
+    function renderCodeWithHighlights(code, language, sharedSet) {
+      const txt = String(code || '');
+      const cleaned = stripCommentsForRender(txt, language);
+      // 用与后端一致的正则提取 token，其余文本原样保留
+      const pattern = /[A-Za-z_]\w*|\d+(?:\.\d+)?|[^\sA-Za-z0-9_]/g;
+      let result = '';
+      let lastIdx = 0;
+      let m;
+      while ((m = pattern.exec(cleaned)) !== null) {
+        const token = m[0];
+        // 将这段未匹配的空白/普通文本转义后追加
+        result += escapeHtml(cleaned.slice(lastIdx, m.index));
+        if (sharedSet.has(token)) {
+          result += `<span class="tok-shared">${escapeHtml(token)}</span>`;
+        } else {
+          result += escapeHtml(token);
+        }
+        lastIdx = m.index + token.length;
+      }
+      result += escapeHtml(cleaned.slice(lastIdx));
+      return result;
+    }
+
+    // 与后端 stripComments 保持一致的简化版（仅用于前端展示）
+    function stripCommentsForRender(code, language) {
+      let s = String(code || '');
+      if (language === 'python3' || language === 'python') {
+        s = s.replace(/"""[\s\S]*?"""/g, ' ');
+        s = s.replace(/'''[\s\S]*?'''/g, ' ');
+        s = s.replace(/#[^\n]*/g, ' ');
+        return s;
+      }
+      s = s.replace(/\/\*[\s\S]*?\*\//g, ' ');
+      s = s.replace(/\/\/[^\n]*/g, ' ');
+      return s;
+    }
+
+    async function loadPair() {
+      const el = document.getElementById('content');
+      if (!pairId) {
+        el.innerHTML = '<p class="text-red-500 text-center">未指定 pair ID</p>';
+        return;
+      }
+      try {
+        const pair = await apiCall('GET', `/plagiarism/pairs/${pairId}`);
+        const sharedSet = new Set(pair.shared_tokens || []);
+        const simPct = (pair.similarity * 100).toFixed(1);
+        const simColor = pair.similarity >= 0.85 ? 'text-red-600 dark:text-red-400' : pair.similarity >= 0.7 ? 'text-orange-600 dark:text-orange-400' : 'text-gray-600 dark:text-gray-400';
+
+        document.getElementById('content').innerHTML = `
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
+            <div class="flex items-start justify-between">
+              <div>
+                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">查重对比详情</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  题目 #${pair.problem_id} · 相似对 #${pair.id}
+                </p>
+              </div>
+              <div class="flex items-center space-x-3">
+                ${levelBadge(pair.level)}
+                <span class="text-2xl font-bold ${simColor}">${simPct}%</span>
+                <a href="/pages/plagiarism-report.html?problem=${pair.problem_id}" class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">返回报告</a>
+              </div>
+            </div>
+            <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl text-sm text-yellow-800 dark:text-yellow-200">
+              <strong>说明:</strong> 黄色高亮标记的是两份代码中相同的 token（变量名、运算符、数字等）。变量名保留未做归一化，便于人工判读。
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                <div>
+                  <a href="/pages/profile.html?id=${pair.user_a}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">${escapeHtml(pair.user_a_nick || pair.user_a_name || ('用户 #'+pair.user_a))}</a>
+                  <span class="ml-2 text-xs text-gray-400">提交 #${pair.sub_a_id} · ${escapeHtml(pair.lang_a || '')}</span>
+                </div>
+              </div>
+              <pre class="code-block bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">${renderCodeWithHighlights(pair.code_a, pair.lang_a, sharedSet)}</pre>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                <div>
+                  <a href="/pages/profile.html?id=${pair.user_b}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">${escapeHtml(pair.user_b_nick || pair.user_b_name || ('用户 #'+pair.user_b))}</a>
+                  <span class="ml-2 text-xs text-gray-400">提交 #${pair.sub_b_id} · ${escapeHtml(pair.lang_b || '')}</span>
+                </div>
+              </div>
+              <pre class="code-block bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">${renderCodeWithHighlights(pair.code_b, pair.lang_b, sharedSet)}</pre>
+            </div>
+          </div>
+
+          <div class="mt-4 flex justify-center">
+            <a href="/pages/submission.html?id=${pair.sub_a_id}" class="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg text-sm hover:bg-indigo-200 mr-2">查看 A 完整提交</a>
+            <a href="/pages/submission.html?id=${pair.sub_b_id}" class="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg text-sm hover:bg-indigo-200 mr-2">查看 B 完整提交</a>
+          </div>
+        `;
+      } catch (err) {
+        el.innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
+      }
+    }
+
+    loadPair();
+  </script>
+</body>
+</html>

@@ -307,6 +307,7 @@
           <input id="cTitle" placeholder="比赛标题" class="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
           <input id="cStart" type="datetime-local" class="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
           <input id="cEnd" type="datetime-local" class="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+          <input id="cFreeze" type="number" min="0" placeholder="冻结时长(分钟，0=不冻结)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
         </div>
         <div class="flex justify-end space-x-3">
           <button onclick="hideCreateContest()" class="px-4 py-2 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl">取消</button>
@@ -613,6 +614,7 @@
               <a href="/pages/problem.html?id=${p.id}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline mr-2">查看</a>
               <button onclick="editProblem(${p.id})" class="text-blue-600 dark:text-blue-400 text-sm hover:underline mr-2">编辑</button>
               <button onclick="openTestManager(${p.id}, '${escapeHtml(p.title)}')" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">测试点</button>
+              <button onclick="startPlagiarismCheck(${p.id})" class="text-purple-600 dark:text-purple-400 text-sm hover:underline mr-2" title="代码查重">查重</button>
               <button onclick="deleteProblem(${p.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
             </td>
           </tr>
@@ -1359,19 +1361,33 @@
     async function loadContests() {
       try {
         const data = await apiCall('GET', '/contests?limit=100');
-        document.getElementById('adminContests').innerHTML = data.contests.map(c => `
+        const user = getUser();
+        const isAdmin = user && ['admin', 'su'].includes(user.role);
+        document.getElementById('adminContests').innerHTML = data.contests.map(c => {
+          const ended = new Date(c.end_time).getTime() < Date.now();
+          const frozen = c.freeze_minutes > 0 && !c.unfrozen && ended;
+          const freezeBadge = c.freeze_minutes > 0
+            ? (c.unfrozen
+                ? '<span class="ml-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">已解冻</span>'
+                : (frozen
+                    ? '<span class="ml-1 px-1.5 py-0.5 text-xs rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">冻结中</span>'
+                    : '<span class="ml-1 px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">冻结' + c.freeze_minutes + 'min</span>'))
+            : '';
+          return `
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">
             <td class="px-4 py-3 text-sm">${c.id}</td>
-            <td class="px-4 py-3 text-sm font-medium">${escapeHtml(c.title)}</td>
+            <td class="px-4 py-3 text-sm font-medium">${escapeHtml(c.title)}${freezeBadge}</td>
             <td class="px-4 py-3 text-center text-sm">${c.problem_count || 0}</td>
             <td class="px-4 py-3 text-center text-sm">${new Date(c.start_time).toLocaleString()}</td>
             <td class="px-4 py-3 text-center text-sm">${new Date(c.end_time).toLocaleString()}</td>
             <td class="px-4 py-3 text-center">
               <button onclick="showContestProblemManager(${c.id}, '${escapeHtml(c.title)}')" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">管理题目</button>
+              <button onclick="startContestPlagiarismCheck(${c.id})" class="text-purple-600 dark:text-purple-400 text-sm hover:underline mr-2" title="一键全部查重">一键查重</button>
+              ${isAdmin && c.freeze_minutes > 0 && !c.unfrozen ? `<button onclick="unfreezeContest(${c.id})" class="text-yellow-600 dark:text-yellow-400 text-sm hover:underline mr-2">解冻</button>` : ''}
               <button onclick="deleteContest(${c.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
             </td>
           </tr>
-        `).join('');
+        `;}).join('');
       } catch (err) { console.error(err); }
     }
 
@@ -1381,6 +1397,7 @@
           title: document.getElementById('cTitle').value,
           start_time: document.getElementById('cStart').value,
           end_time: document.getElementById('cEnd').value,
+          freeze_minutes: parseInt(document.getElementById('cFreeze').value) || 0,
         });
         hideCreateContest();
         loadContests();
@@ -1390,6 +1407,15 @@
     async function deleteContest(id) {
       if (!confirm('确定删除此比赛？')) return;
       try { await apiCall('DELETE', `/contests/${id}`); loadContests(); } catch (err) { alert(err.message); }
+    }
+
+    async function unfreezeContest(id) {
+      if (!confirm('确定解冻此比赛排行榜？解冻后将展示最终排名。')) return;
+      try {
+        await apiCall('POST', `/contests/${id}/unfreeze`);
+        alert('已解冻');
+        loadContests();
+      } catch (err) { alert(err.message); }
     }
 
     async function showContestProblemManager(cid, title) {
@@ -1523,6 +1549,28 @@
         alert('批量设置已应用');
       } catch (err) {
         alert(err.message);
+      }
+    }
+
+    // 功能10：单题查重 - 发起后跳转到报告页轮询进度
+    async function startPlagiarismCheck(problemId) {
+      if (!confirm(`确定对题目 #${problemId} 发起代码查重？将比较所有用户的最新提交。`)) return;
+      try {
+        const res = await apiCall('POST', `/problems/${problemId}/plagiarism-check`);
+        window.location.href = `/pages/plagiarism-report.html?problem=${problemId}&task=${res.task_id}`;
+      } catch (err) {
+        alert(err.message || '发起查重失败');
+      }
+    }
+
+    // 功能10：比赛一键查重 - 对比赛所有题目发起查重
+    async function startContestPlagiarismCheck(contestId) {
+      if (!confirm(`确定对比赛 #${contestId} 的所有题目一键查重？将在后台异步执行。`)) return;
+      try {
+        const res = await apiCall('POST', `/contests/${contestId}/plagiarism-check`);
+        alert(`已对 ${res.total} 道题目发起查重，可在题目管理点击"查重"查看各题进度。`);
+      } catch (err) {
+        alert(err.message || '发起查重失败');
       }
     }
 

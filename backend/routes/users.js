@@ -39,6 +39,12 @@ router.get('/me', requireAuth, (req, res) => {
   res.json(user);
 });
 
+// 功能9：我的虚拟比赛列表
+router.get('/me/virtual-contests', requireAuth, (req, res) => {
+  const { myVirtualContests } = require('./virtual-contests');
+  myVirtualContests(req, res);
+});
+
 router.put('/me', requireAuth, (req, res) => {
   const { nickname, signature, bio, hide_rating, preferred_language } = req.body;
   const updates = [];

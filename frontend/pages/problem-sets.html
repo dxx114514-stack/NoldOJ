@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>题单 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-5xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">题单</h1>
+      <div id="createBtnSlot"></div>
+    </div>
+    <div id="list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+    <div id="pager" class="mt-6 flex justify-center gap-2"></div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('problem-sets');
+    const params = new URLSearchParams(window.location.search);
+    let page = parseInt(params.get('page')) || 1;
+    const user = getUser();
+    const isTeacher = user && ['teacher','admin','su'].includes(user.role);
+
+    if (isTeacher) {
+      document.getElementById('createBtnSlot').innerHTML = `<a href="/pages/problem-set-edit.html" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 新建题单</a>`;
+    }
+
+    async function load() {
+      try {
+        const data = await apiCall('GET', `/problem-sets?page=${page}&size=12`);
+        const list = document.getElementById('list');
+        if (!data.problem_sets || data.problem_sets.length === 0) {
+          list.innerHTML = '<div class="col-span-2 text-center text-gray-400 dark:text-gray-500 py-12">暂无题单</div>';
+          return;
+        }
+        list.innerHTML = data.problem_sets.map(ps => {
+          const pct = ps.problem_count > 0 ? Math.round((ps.solved_count / ps.problem_count) * 100) : 0;
+          return `
+            <a href="/pages/problem-set.html?id=${ps.id}" class="block bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all">
+              <div class="flex items-start justify-between mb-3">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">${escapeHtml(ps.title)}</h3>
+                <span class="text-xs text-gray-400 dark:text-gray-500">${ps.problem_count} 题</span>
+              </div>
+              <p class="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 line-clamp-2 mb-4 min-h-[2.5rem]">${escapeHtml(ps.description || '暂无描述')}</p>
+              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-2">
+                <span>已做 ${ps.solved_count || 0} / ${ps.problem_count || 0}</span>
+                <span>${pct}%</span>
+              </div>
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                <div class="bg-indigo-600 dark:bg-indigo-400 h-2 rounded-full transition-all" style="width:${pct}%"></div>
+              </div>
+              <div class="mt-3 text-xs text-gray-400">by ${escapeHtml(ps.creator_name || '匿名')} · ${new Date(ps.created_at).toLocaleDateString()}</div>
+            </a>
+          `;
+        }).join('');
+
+        // 简单分页
+        const totalPages = Math.ceil(data.total / 12) || 1;
+        const pager = document.getElementById('pager');
+        let html = '';
+        for (let i = 1; i <= totalPages; i++) {
+          html += `<button onclick="gotoPage(${i})" class="px-3 py-1 text-sm rounded-lg ${i===page?'bg-indigo-600 text-white':'bg-white dark:bg-gray-800 dark:bg-gray-800 text-gray-600 dark:text-gray-300 dark:text-gray-500 border border-gray-200 dark:border-gray-700'}">${i}</button>`;
+        }
+        pager.innerHTML = html;
+      } catch (err) {
+        document.getElementById('list').innerHTML = `<p class="col-span-2 text-center text-red-500 py-12">${err.message || '加载失败'}</p>`;
+      }
+    }
+
+    function gotoPage(p) {
+      page = p;
+      window.history.replaceState({}, '', `?page=${p}`);
+      load();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    load();
+  </script>
+</body>
+</html>

@@ -50,7 +50,8 @@ const ALLOWED_TABLES = new Set([
   'test_groups', 'languages', 'contests', 'contest_problems', 'articles',
   'uploaded_files', 'refresh_tokens', 'ide_runs', 'tags', 'problem_tags',
   'categories', 'problem_categories', 'email_codes', 'announcements',
-  'submission_files'
+  'submission_files', 'problem_sets', 'problem_set_items', 'problem_set_progress',
+  'discussions', 'discussion_replies', 'virtual_contests', 'plagiarism_tasks', 'plagiarism_pairs'
 ]);
 
 function findNextId(table) {
@@ -228,6 +229,135 @@ async function initDB() {
       created_at TEXT DEFAULT (datetime('now'))
     )`);
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_email_codes_email ON email_codes(email)');
+  }
+
+  // 功能6：contests 表添加冻结字段
+  const contestColsResult = sqlDb.exec("PRAGMA table_info(contests)");
+  const contestCols = contestColsResult.length > 0 ? contestColsResult[0].values.map(r => r[1]) : [];
+  if (!contestCols.includes('freeze_minutes')) sqlDb.exec("ALTER TABLE contests ADD COLUMN freeze_minutes INTEGER DEFAULT 0");
+  if (!contestCols.includes('unfrozen')) sqlDb.exec("ALTER TABLE contests ADD COLUMN unfrozen INTEGER DEFAULT 0");
+  if (!contestCols.includes('unfrozen_at')) sqlDb.exec("ALTER TABLE contests ADD COLUMN unfrozen_at TEXT");
+
+  // 功能7：题单表
+  const psExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='problem_sets'");
+  if (psExists.length === 0 || psExists[0].values.length === 0) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS problem_sets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      creator_id INTEGER NOT NULL,
+      is_public INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (creator_id) REFERENCES users(id)
+    )`);
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS problem_set_items (
+      set_id INTEGER NOT NULL,
+      problem_id INTEGER NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      PRIMARY KEY (set_id, problem_id),
+      FOREIGN KEY (set_id) REFERENCES problem_sets(id) ON DELETE CASCADE,
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+    )`);
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS problem_set_progress (
+      user_id INTEGER NOT NULL,
+      set_id INTEGER NOT NULL,
+      problem_id INTEGER NOT NULL,
+      solved INTEGER DEFAULT 0,
+      solved_at TEXT,
+      PRIMARY KEY (user_id, set_id, problem_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (set_id) REFERENCES problem_sets(id) ON DELETE CASCADE,
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+    )`);
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_sets_public ON problem_sets(is_public)');
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_set_items_set ON problem_set_items(set_id)');
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_set_progress_user ON problem_set_progress(user_id)');
+  }
+
+  // 功能8：讨论 / 题解区
+  const discExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='discussions'");
+  if (discExists.length === 0 || discExists[0].values.length === 0) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS discussions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER,
+      contest_id INTEGER,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      author_id INTEGER NOT NULL,
+      is_official INTEGER DEFAULT 0,
+      pinned INTEGER DEFAULT 0,
+      locked INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
+      FOREIGN KEY (contest_id) REFERENCES contests(id) ON DELETE CASCADE,
+      FOREIGN KEY (author_id) REFERENCES users(id)
+    )`);
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS discussion_replies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      discussion_id INTEGER NOT NULL,
+      parent_id INTEGER,
+      content TEXT NOT NULL,
+      author_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_id) REFERENCES discussion_replies(id) ON DELETE CASCADE,
+      FOREIGN KEY (author_id) REFERENCES users(id)
+    )`);
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_discussions_problem ON discussions(problem_id)');
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_discussions_contest ON discussions(contest_id)');
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_discussions_pinned ON discussions(pinned)');
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_discussion_replies_discussion ON discussion_replies(discussion_id)');
+  }
+
+  // 功能9：虚拟比赛
+  const vcExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='virtual_contests'");
+  if (vcExists.length === 0 || vcExists[0].values.length === 0) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS virtual_contests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contest_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      status TEXT DEFAULT 'running',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (contest_id) REFERENCES contests(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(contest_id, user_id)
+    )`);
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_virtual_contests_user ON virtual_contests(user_id)');
+  }
+  // submissions 表添加 virtual_contest_id 列
+  const subColsResult2 = sqlDb.exec("PRAGMA table_info(submissions)");
+  const subCols2 = subColsResult2.length > 0 ? subColsResult2[0].values.map(r => r[1]) : [];
+  if (!subCols2.includes('virtual_contest_id')) sqlDb.exec("ALTER TABLE submissions ADD COLUMN virtual_contest_id INTEGER");
+
+  // 功能10：代码查重任务表
+  const plgExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='plagiarism_tasks'");
+  if (plgExists.length === 0 || plgExists[0].values.length === 0) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS plagiarism_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      total_pairs INTEGER DEFAULT 0,
+      checked_pairs INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      finished_at TEXT,
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+    )`);
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS plagiarism_pairs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      user_a INTEGER NOT NULL,
+      user_b INTEGER NOT NULL,
+      sub_a_id INTEGER NOT NULL,
+      sub_b_id INTEGER NOT NULL,
+      similarity REAL NOT NULL,
+      level TEXT DEFAULT 'low',
+      FOREIGN KEY (task_id) REFERENCES plagiarism_tasks(id) ON DELETE CASCADE
+    )`);
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_plagiarism_pairs_task ON plagiarism_pairs(task_id)');
   }
 
   const langCount = prepare('SELECT COUNT(*) as c FROM languages').get()?.c || 0;
