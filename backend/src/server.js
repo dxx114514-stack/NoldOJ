@@ -65,7 +65,8 @@ async function main() {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'",
                      "https://cdn.tailwindcss.com",
-                     "https://cdnjs.cloudflare.com"],
+                     "https://cdnjs.cloudflare.com",
+                     "https://cdn.jsdelivr.net"],
         scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'",
                     "https://cdnjs.cloudflare.com"],
@@ -108,6 +109,7 @@ async function main() {
   const uploadRoutes = require('../routes/uploads');
   const tagRoutes = require('../routes/tags');
   const categoryRoutes = require('../routes/categories');
+  const announcementRoutes = require('../routes/announcements');
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/problems', problemRoutes);
@@ -120,6 +122,7 @@ async function main() {
   app.use('/api/v1/uploads', uploadRoutes);
   app.use('/api/v1/tags', tagRoutes);
   app.use('/api/v1/categories', categoryRoutes);
+  app.use('/api/v1/announcements', announcementRoutes);
 
   const routeList = [
     ['/api/v1/auth', '认证'],
@@ -133,6 +136,7 @@ async function main() {
     ['/api/v1/uploads', '上传'],
     ['/api/v1/tags', '标签'],
     ['/api/v1/categories', '分类'],
+    ['/api/v1/announcements', '公告'],
   ];
   logInfo('ROUTER', `Registered ${routeList.length} route groups:`);
   for (const [path, name] of routeList) {

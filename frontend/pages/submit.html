@@ -14,7 +14,12 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
   <script src="/js/api.js"></script>
   <style>.CodeMirror { height: 400px; border-radius: 0.75rem; font-size: 14px; text-align: left; }
-  .CodeMirror-code { text-align: left !important; }</style>
+  .CodeMirror-code { text-align: left !important; }
+  .file-tab { cursor: pointer; user-select: none; }
+  .file-tab.active { background: #6366f1; color: white; }
+  .file-tab:not(.active) { background: #e5e7eb; color: #374151; }
+  .dark .file-tab:not(.active) { background: #374151; color: #d1d5db; }
+  </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
@@ -33,6 +38,7 @@
       </div>
       <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">源代码</label>
+        <div id="fileTabsBar" class="flex items-center space-x-1 mb-2 flex-wrap"></div>
         <textarea id="sourceCode"></textarea>
       </div>
       <div class="flex justify-end">
@@ -48,6 +54,13 @@
     let problemData = null;
 
     const langModes = { c: 'text/x-csrc', cpp: 'text/x-c++src', python3: 'text/x-python', java: 'text/x-java', javascript: 'text/javascript' };
+    const defaultFilenames = { c: 'main.c', cpp: 'main.cpp', python3: 'main.py', java: 'Main.java', javascript: 'main.js' };
+    let fileTabs = [];
+    let activeTabIndex = 0;
+
+    function defaultFilename(lang) {
+      return defaultFilenames[lang] || 'main.txt';
+    }
 
     async function init() {
       editor = CodeMirror.fromTextArea(document.getElementById('sourceCode'), {
@@ -62,6 +75,13 @@
           sel.value = user.preferred_language;
         }
       } catch {}
+      // 初始化默认文件 tab
+      const lang = document.getElementById('language').value || 'cpp';
+      fileTabs = [{ filename: defaultFilename(lang), content: '' }];
+      activeTabIndex = 0;
+      renderTabs();
+      editor.setOption('mode', langModes[lang] || 'text/plain');
+
       if (pid) {
         try {
           problemData = await apiCall('GET', `/problems/${pid}`);
@@ -74,9 +94,74 @@
       }
     }
 
+    function renderTabs() {
+      const bar = document.getElementById('fileTabsBar');
+      bar.innerHTML = fileTabs.map((f, i) => `
+        <div class="file-tab ${i === activeTabIndex ? 'active' : ''} px-3 py-1.5 rounded-t-lg text-sm font-medium flex items-center space-x-2" onclick="switchTab(${i})">
+          <span ondblclick="event.stopPropagation();renameTab(${i})">${escapeHtml(f.filename)}</span>
+          ${fileTabs.length > 1 ? `<button onclick="event.stopPropagation();removeTab(${i})" class="text-xs hover:text-red-500" title="删除">×</button>` : ''}
+        </div>
+      `).join('') + `
+        <button onclick="addTab()" class="px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-t-lg" title="添加文件">+ 添加</button>
+      `;
+    }
+
+    function saveCurrentTab() {
+      if (fileTabs[activeTabIndex]) {
+        fileTabs[activeTabIndex].content = editor.getValue();
+      }
+    }
+
+    function switchTab(i) {
+      if (i < 0 || i >= fileTabs.length) return;
+      saveCurrentTab();
+      activeTabIndex = i;
+      editor.setValue(fileTabs[i].content);
+      renderTabs();
+    }
+
+    function addTab() {
+      const lang = document.getElementById('language').value || 'cpp';
+      const name = prompt('请输入文件名:', defaultFilename(lang).replace(/(\.\w+)$/, '_new$1'));
+      if (!name) return;
+      if (fileTabs.some(f => f.filename === name)) {
+        alert('文件名已存在');
+        return;
+      }
+      saveCurrentTab();
+      fileTabs.push({ filename: name, content: '' });
+      activeTabIndex = fileTabs.length - 1;
+      editor.setValue('');
+      renderTabs();
+    }
+
+    function removeTab(i) {
+      if (fileTabs.length <= 1) { alert('至少保留一个文件'); return; }
+      fileTabs.splice(i, 1);
+      if (activeTabIndex >= fileTabs.length) activeTabIndex = fileTabs.length - 1;
+      editor.setValue(fileTabs[activeTabIndex].content);
+      renderTabs();
+    }
+
+    function renameTab(i) {
+      const name = prompt('请输入新文件名:', fileTabs[i].filename);
+      if (!name) return;
+      if (fileTabs.some((f, idx) => idx !== i && f.filename === name)) {
+        alert('文件名已存在');
+        return;
+      }
+      fileTabs[i].filename = name;
+      renderTabs();
+    }
+
     function changeLang() {
       const lang = document.getElementById('language').value;
       editor.setOption('mode', langModes[lang] || 'text/plain');
+      // 若当前只有一个空默认文件，跟随语言更新文件名
+      if (fileTabs.length === 1 && fileTabs[0].content === '') {
+        fileTabs[0].filename = defaultFilename(lang);
+        renderTabs();
+      }
     }
 
     async function submitCode() {
@@ -86,10 +171,12 @@
       btn.disabled = true; btn.textContent = '提交中...';
       errDiv.classList.add('hidden');
       try {
+        saveCurrentTab();
+        const files = fileTabs.map(f => ({ filename: f.filename, content: f.content }));
         const data = await apiCall('POST', '/submissions', {
           problem_id: parseInt(pid) || 0,
           language: document.getElementById('language').value,
-          source_code: editor.getValue()
+          files: files
         });
         window.location.href = `/pages/submission.html?id=${data.submission_id}`;
       } catch (err) {

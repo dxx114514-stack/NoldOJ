@@ -12,160 +12,171 @@
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
   <div class="max-w-5xl mx-auto px-4 py-8">
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">题库</h1>
       <div class="flex items-center space-x-3">
-        <input id="search" type="text" placeholder="搜索题目..." class="px-4 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-800 dark:text-white" onkeyup="loadProblems()">
+        <input id="search" type="text" placeholder="搜索题目..." class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-800 dark:text-white" onkeyup="onSearchInput()">
+        <select id="difficultySelect" onchange="onFilterChange()" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white">
+          <option value="">全部难度</option>
+          <option value="0">☆ 入门</option>
+          <option value="1">★ 简单</option>
+          <option value="2">★★ 普通</option>
+          <option value="3">★★★ 中等</option>
+          <option value="4">★★★★ 较难</option>
+          <option value="5">★★★★★ 困难</option>
+        </select>
+        <select id="sortSelect" onchange="onFilterChange()" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white">
+          <option value="">默认排序</option>
+          <option value="created_at">最新</option>
+          <option value="accept_rate">通过率</option>
+          <option value="submissions">提交数</option>
+        </select>
       </div>
     </div>
     <div id="categoryFilter" class="mb-3 flex flex-wrap gap-2"></div>
     <div id="tagFilter" class="mb-4 flex flex-wrap gap-2"></div>
-    <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
       <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">题号</th>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">标题</th>
-            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">标签</th>
-            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">时限</th>
-            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">内存</th>
-            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">类型</th>
-            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">操作</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">题号</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">标题</th>
+            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">难度</th>
+            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">标签</th>
+            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">通过率</th>
+            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">时限</th>
+            <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">操作</th>
           </tr>
         </thead>
         <tbody id="problemList" class="divide-y divide-gray-100 dark:divide-gray-700"></tbody>
       </table>
-      <div id="empty" class="hidden text-center py-12 text-gray-400 dark:text-gray-500 dark:text-gray-400">暂无题目</div>
+      <div id="empty" class="hidden text-center py-12 text-gray-400">暂无题目</div>
     </div>
     <div id="pagination" class="flex justify-center mt-6 space-x-2"></div>
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('problems');
     let currentPage = 1;
-    let selectedTag = '';
+    let selectedTags = new Set();
     let selectedCategory = '';
     let allTags = [];
     let allCategories = [];
+    let searchDebounce = null;
+
+    function difficultyStars(d) {
+      d = d || 0;
+      return '★'.repeat(d) + '☆'.repeat(5 - d);
+    }
+    function difficultyColor(d) {
+      const colors = ['text-gray-400', 'text-green-500', 'text-blue-500', 'text-yellow-500', 'text-orange-500', 'text-red-500'];
+      return colors[d] || colors[0];
+    }
+
+    function syncUrl() {
+      const p = new URLSearchParams();
+      p.set('page', currentPage);
+      const s = document.getElementById('search').value;
+      if (s) p.set('search', s);
+      if (selectedTags.size > 0) p.set('tags', [...selectedTags].join(','));
+      if (selectedCategory) p.set('category', selectedCategory);
+      const d = document.getElementById('difficultySelect').value;
+      if (d) p.set('difficulty', d);
+      const so = document.getElementById('sortSelect').value;
+      if (so) p.set('sort', so);
+      history.replaceState(null, '', '?' + p.toString());
+    }
+
+    function readUrl() {
+      const p = new URLSearchParams(window.location.search);
+      currentPage = parseInt(p.get('page')) || 1;
+      if (p.get('search')) document.getElementById('search').value = p.get('search');
+      selectedTags = new Set((p.get('tags') || '').split(',').map(s => s.trim()).filter(Boolean));
+      selectedCategory = p.get('category') || '';
+      if (p.get('difficulty')) document.getElementById('difficultySelect').value = p.get('difficulty');
+      if (p.get('sort')) document.getElementById('sortSelect').value = p.get('sort');
+    }
 
     async function loadCategories() {
-      try {
-        allCategories = await apiCall('GET', '/categories');
-        renderCategoryFilter();
-      } catch (err) {
-        console.error('Failed to load categories:', err);
-      }
+      try { allCategories = await apiCall('GET', '/categories'); renderCategoryFilter(); } catch {}
     }
-
     function renderCategoryFilter() {
       const container = document.getElementById('categoryFilter');
-      if (allCategories.length === 0) {
-        container.innerHTML = '';
-        return;
-      }
+      if (allCategories.length === 0) { container.innerHTML = ''; return; }
       container.innerHTML = `
         <span class="text-xs text-gray-500 dark:text-gray-400 self-center mr-1">分类:</span>
-        <button onclick="filterByCategory('')" class="px-3 py-1 text-xs rounded-full transition ${!selectedCategory ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}">全部</button>
+        <button onclick="filterByCategory('')" class="px-3 py-1 text-xs rounded-full transition ${!selectedCategory ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">全部</button>
         ${allCategories.map(c => `
-          <button onclick="filterByCategory('${escapeHtml(c.name)}')" class="px-3 py-1 text-xs rounded-full transition ${selectedCategory === c.name ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}">
-            ${escapeHtml(c.name)}
-          </button>
-        `).join('')}
-      `;
+          <button onclick="filterByCategory('${escapeHtml(c.name)}')" class="px-3 py-1 text-xs rounded-full transition ${selectedCategory === c.name ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">${escapeHtml(c.name)}</button>
+        `).join('')}`;
     }
-
-    function filterByCategory(category) {
-      selectedCategory = category;
-      currentPage = 1;
-      renderCategoryFilter();
-      loadProblems();
-    }
+    function filterByCategory(category) { selectedCategory = category; currentPage = 1; renderCategoryFilter(); loadProblems(); }
 
     async function loadTags() {
-      try {
-        allTags = await apiCall('GET', '/tags');
-        renderTagFilter();
-      } catch (err) {
-        console.error('Failed to load tags:', err);
-      }
+      try { allTags = await apiCall('GET', '/tags'); renderTagFilter(); } catch {}
     }
-
     function renderTagFilter() {
       const container = document.getElementById('tagFilter');
-      if (allTags.length === 0) {
-        container.innerHTML = '';
-        return;
-      }
+      if (allTags.length === 0) { container.innerHTML = ''; return; }
       container.innerHTML = `
         <span class="text-xs text-gray-500 dark:text-gray-400 self-center mr-1">标签:</span>
-        <button onclick="filterByTag('')" class="px-3 py-1 text-xs rounded-full transition ${!selectedTag ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}">全部</button>
-        ${allTags.map(t => `
-          <button onclick="filterByTag('${escapeHtml(t.name)}')" class="px-3 py-1 text-xs rounded-full transition ${selectedTag === t.name ? 'text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}" ${selectedTag === t.name ? `style="background-color: ${t.color}"` : ''}>
-            ${escapeHtml(t.name)}
-          </button>
-        `).join('')}
-      `;
+        <button onclick="clearTags()" class="px-3 py-1 text-xs rounded-full transition ${selectedTags.size === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">全部</button>
+        ${allTags.map(t => {
+          const active = selectedTags.has(t.name);
+          return `<button onclick="toggleTag('${escapeHtml(t.name)}')" class="px-3 py-1 text-xs rounded-full transition ${active ? 'text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}" ${active ? `style="background-color: ${t.color}"` : ''}>${escapeHtml(t.name)}</button>`;
+        }).join('')}`;
     }
+    function toggleTag(tag) {
+      if (selectedTags.has(tag)) selectedTags.delete(tag); else selectedTags.add(tag);
+      currentPage = 1; renderTagFilter(); loadProblems();
+    }
+    function clearTags() { selectedTags.clear(); currentPage = 1; renderTagFilter(); loadProblems(); }
 
-    function filterByTag(tag) {
-      selectedTag = tag;
-      currentPage = 1;
-      renderTagFilter();
-      loadProblems();
+    function onSearchInput() {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => { currentPage = 1; loadProblems(); }, 300);
     }
+    function onFilterChange() { currentPage = 1; loadProblems(); }
 
     async function loadProblems() {
+      syncUrl();
       const search = document.getElementById('search').value;
       try {
-        const params = new URLSearchParams({
-          page: currentPage,
-          limit: 20,
-          search: search
-        });
-        if (selectedTag) params.append('tag', selectedTag);
+        const params = new URLSearchParams({ page: currentPage, limit: 20, search: search });
+        if (selectedTags.size > 0) params.append('tags', [...selectedTags].join(','));
         if (selectedCategory) params.append('category', selectedCategory);
+        const d = document.getElementById('difficultySelect').value;
+        if (d) params.append('difficulty', d);
+        const so = document.getElementById('sortSelect').value;
+        if (so) { params.append('sort', so); params.append('order', 'desc'); }
         const data = await apiCall('GET', `/problems?${params.toString()}`);
         const tbody = document.getElementById('problemList');
         const empty = document.getElementById('empty');
-        if (data.problems.length === 0) {
-          tbody.innerHTML = '';
-          empty.classList.remove('hidden');
-          return;
-        }
+        if (data.problems.length === 0) { tbody.innerHTML = ''; empty.classList.remove('hidden'); document.getElementById('pagination').innerHTML = ''; return; }
         empty.classList.add('hidden');
         tbody.innerHTML = data.problems.map(p => `
-          <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700 transition">
-            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">${p.id}</td>
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">${p.id}</td>
             <td class="px-6 py-4">
               <a href="/pages/problem.html?id=${p.id}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium">${escapeHtml(p.title)}</a>
               ${(p.categories || []).length > 0 ? `<span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">${escapeHtml(p.categories.map(c => c.name).join(', '))}</span>` : ''}
             </td>
+            <td class="px-6 py-4 text-center"><span class="text-xs ${difficultyColor(p.difficulty)}">${difficultyStars(p.difficulty)}</span></td>
             <td class="px-6 py-4 text-center">
               <div class="flex flex-wrap justify-center gap-1">
-                ${(p.tags || []).map(t => `
-                  <span class="px-2 py-0.5 text-xs rounded-full" style="background-color: ${t.color}20; color: ${t.color}">${escapeHtml(t.name)}</span>
-                `).join('')}
+                ${(p.tags || []).map(t => `<span class="px-2 py-0.5 text-xs rounded-full" style="background-color: ${t.color}20; color: ${t.color}">${escapeHtml(t.name)}</span>`).join('')}
               </div>
             </td>
-            <td class="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">${p.time_limit}ms</td>
-            <td class="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">${p.memory_limit}MB</td>
-            <td class="px-6 py-4 text-center">
-              <span class="px-2 py-1 text-xs rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">${p.problem_type === 'traditional' ? '传统题' : p.problem_type === 'interactive' ? '交互题' : p.problem_type === 'submit_answer' ? '提交答案' : p.problem_type}</span>
-            </td>
-            <td class="px-6 py-4 text-center">
-              <a href="/pages/submit.html?id=${p.id}" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">提交</a>
-            </td>
-          </tr>
-        `).join('');
+            <td class="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400">${p.accept_rate != null ? p.accept_rate + '%' : '-'}</td>
+            <td class="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400">${p.time_limit}ms</td>
+            <td class="px-6 py-4 text-center"><a href="/pages/submit.html?id=${p.id}" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">提交</a></td>
+          </tr>`).join('');
         const totalPages = Math.ceil(data.total / 20);
-        const pag = document.getElementById('pagination');
-        pag.innerHTML = Array.from({length: totalPages}, (_, i) => `
-          <button onclick="currentPage=${i+1};loadProblems()" class="px-3 py-1 rounded-lg text-sm ${i+1===currentPage?'bg-indigo-600 text-white':'bg-white border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700'}">${i+1}</button>
-        `).join('');
-      } catch (err) {
-        console.error(err);
-      }
+        document.getElementById('pagination').innerHTML = Array.from({length: totalPages}, (_, i) => `
+          <button onclick="currentPage=${i+1};loadProblems()" class="px-3 py-1 rounded-lg text-sm ${i+1===currentPage?'bg-indigo-600 text-white':'bg-white border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}">${i+1}</button>`).join('');
+      } catch (err) { console.error(err); }
     }
 
+    readUrl();
     loadCategories();
     loadTags();
     loadProblems();

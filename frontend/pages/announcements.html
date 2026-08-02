@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>公告 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+  <script src="/js/markdown.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">公告</h1>
+    <div id="list" class="space-y-3">
+      <p class="text-gray-400 text-center py-12">加载中...</p>
+    </div>
+    <div id="pager" class="flex justify-center items-center gap-2 mt-6"></div>
+  </div>
+
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('announcements');
+    const params = new URLSearchParams(window.location.search);
+    let page = parseInt(params.get('page')) || 1;
+
+    function renderMath(root) {
+      if (window.renderMathInElement) {
+        try { renderMathInElement(root, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
+      }
+    }
+
+    async function loadList() {
+      const list = document.getElementById('list');
+      try {
+        const data = await apiCall('GET', `/announcements?type=global&page=${page}&size=10`);
+        if (!data.announcements || data.announcements.length === 0) {
+          list.innerHTML = '<p class="text-gray-400 dark:text-gray-500 text-center py-12">暂无公告</p>';
+          document.getElementById('pager').innerHTML = '';
+          return;
+        }
+        list.innerHTML = data.announcements.map(a => `
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="location.href='/pages/announcement.html?id=${a.id}'">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  ${a.pinned ? '<span class="px-2 py-0.5 text-xs rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium">置顶</span>' : ''}
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white truncate">${escapeHtml(a.title)}</h3>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">${escapeHtml(a.nickname || a.username || '系统')} · ${new Date(a.created_at).toLocaleString()}</p>
+              </div>
+              <svg class="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        `).join('');
+        renderPager(data.total, data.page, data.size);
+      } catch (err) {
+        list.innerHTML = `<p class="text-red-500 text-center py-12">${err.message || '加载失败'}</p>`;
+      }
+    }
+
+    function renderPager(total, cur, size) {
+      const pages = Math.ceil(total / size) || 1;
+      const pager = document.getElementById('pager');
+      if (pages <= 1) { pager.innerHTML = ''; return; }
+      let html = '';
+      const go = (p) => `onclick="goPage(${p})"`;
+      html += `<button ${go(Math.max(1, cur-1))} class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 ${cur===1?'opacity-40 pointer-events-none':'hover:bg-gray-100 dark:hover:bg-gray-700'}">上一页</button>`;
+      html += `<span class="text-sm text-gray-500 dark:text-gray-400">${cur} / ${pages}</span>`;
+      html += `<button ${go(Math.min(pages, cur+1))} class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 ${cur===pages?'opacity-40 pointer-events-none':'hover:bg-gray-100 dark:hover:bg-gray-700'}">下一页</button>`;
+      pager.innerHTML = html;
+    }
+
+    function goPage(p) {
+      page = p;
+      history.replaceState(null, '', `?page=${p}`);
+      loadList();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    loadList();
+  </script>
+</body>
+</html>

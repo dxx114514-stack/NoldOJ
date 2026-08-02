@@ -49,7 +49,8 @@ const ALLOWED_TABLES = new Set([
   'users', 'problems', 'submissions', 'submission_details', 'test_cases',
   'test_groups', 'languages', 'contests', 'contest_problems', 'articles',
   'uploaded_files', 'refresh_tokens', 'ide_runs', 'tags', 'problem_tags',
-  'categories', 'problem_categories', 'email_codes'
+  'categories', 'problem_categories', 'email_codes', 'announcements',
+  'submission_files'
 ]);
 
 function findNextId(table) {
@@ -102,6 +103,7 @@ async function initDB() {
   if (!probCols.includes('provider')) sqlDb.exec("ALTER TABLE problems ADD COLUMN provider TEXT DEFAULT ''");
   if (!probCols.includes('sample_input')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_input TEXT DEFAULT ''");
   if (!probCols.includes('sample_output')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_output TEXT DEFAULT ''");
+  if (!probCols.includes('difficulty')) sqlDb.exec("ALTER TABLE problems ADD COLUMN difficulty INTEGER DEFAULT 0");
 
   const artColsResult = sqlDb.exec("PRAGMA table_info(articles)");
   const artCols = artColsResult.length > 0 ? artColsResult[0].values.map(r => r[1]) : [];
@@ -172,6 +174,18 @@ async function initDB() {
     )`);
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_tags_problem ON problem_tags(problem_id)');
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_tags_tag ON problem_tags(tag_id)');
+  }
+
+  // 预置标签
+  const presetTagCount = prepare('SELECT COUNT(*) as c FROM tags').get()?.c || 0;
+  if (presetTagCount === 0) {
+    const presetTags = [
+      ['模拟', '#6366f1'], ['贪心', '#10b981'], ['DP', '#f59e0b'], ['图论', '#3b82f6'],
+      ['数据结构', '#8b5cf6'], ['数学', '#ef4444'], ['字符串', '#14b8a6'],
+      ['搜索', '#ec4899'], ['二分', '#0ea5e9'], ['构造', '#84cc16']
+    ];
+    const ins = prepare('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)');
+    for (const [name, color] of presetTags) ins.run(name, color);
   }
 
   const categoriesExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='categories'");

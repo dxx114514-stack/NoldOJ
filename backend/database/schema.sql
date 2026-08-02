@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS problems (
   scoring_script TEXT DEFAULT '',
   sample_input TEXT DEFAULT '',
   sample_output TEXT DEFAULT '',
+  difficulty INTEGER DEFAULT 0,
   is_public INTEGER DEFAULT 1,
   provider TEXT DEFAULT '',
   created_by INTEGER,
@@ -126,6 +127,15 @@ CREATE TABLE IF NOT EXISTS submission_details (
   FOREIGN KEY (test_case_id) REFERENCES test_cases(id) ON DELETE SET NULL,
   FOREIGN KEY (group_id) REFERENCES test_groups(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS submission_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  content TEXT NOT NULL,
+  FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_submission_files_submission ON submission_files(submission_id);
 
 CREATE TABLE IF NOT EXISTS contests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,3 +271,21 @@ CREATE TABLE IF NOT EXISTS email_codes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_codes_email ON email_codes(email);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  type TEXT DEFAULT 'global' CHECK(type IN ('global','contest')),
+  contest_id INTEGER,
+  pinned INTEGER DEFAULT 0,
+  author_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (author_id) REFERENCES users(id),
+  FOREIGN KEY (contest_id) REFERENCES contests(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_announcements_type ON announcements(type);
+CREATE INDEX IF NOT EXISTS idx_announcements_contest ON announcements(contest_id);
+CREATE INDEX IF NOT EXISTS idx_announcements_pinned ON announcements(pinned);

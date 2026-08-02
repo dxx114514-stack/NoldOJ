@@ -8,6 +8,10 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={darkMode:'class'}</script>
   <script src="/js/api.js"></script>
+  <script src="/js/markdown.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
@@ -60,8 +64,7 @@
           const lb = await apiCall('GET', `/contests/${cid}/leaderboard`);
           if (lb.leaderboard.length > 0) {
             leaderboardHtml = `
-              <div class="mt-8">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">排行榜</h3>
+              <div id="contest-tab-leaderboard" class="mt-6">
                 <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
                   <table class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
@@ -96,6 +99,20 @@
           }
         } catch {}
 
+        let announcementsHtml = `
+          <div id="contest-tab-announcements" class="hidden mt-6">
+            <p class="text-gray-400 text-center py-8">加载中...</p>
+          </div>
+        `;
+
+        const tabBtns = `
+          <div class="flex space-x-2 mt-6 border-b border-gray-200 dark:border-gray-700">
+            <button onclick="switchContestTab('problems')" id="ctab-problems" class="px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400">题目</button>
+            ${leaderboardHtml ? `<button onclick="switchContestTab('leaderboard')" id="ctab-leaderboard" class="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-700">排行榜</button>` : ''}
+            <button onclick="switchContestTab('announcements')" id="ctab-announcements" class="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-700">公告</button>
+          </div>
+        `;
+
         document.getElementById('content').innerHTML = `
           <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
             <div class="flex items-start justify-between mb-4">
@@ -110,12 +127,53 @@
               <span>参赛: ${c.participant_count || 0} 人</span>
               <span>${new Date(c.start_time).toLocaleString()} ~ ${new Date(c.end_time).toLocaleString()}</span>
             </div>
-            ${problemsHtml}
+            ${tabBtns}
+            <div id="contest-tab-problems" class="mt-6">${problemsHtml ? problemsHtml.replace(/<div class="mt-6">/, '<div>') : '<p class="text-gray-400 text-center py-8">暂无题目</p>'}</div>
             ${leaderboardHtml}
+            ${announcementsHtml}
           </div>
         `;
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载比赛失败'}</p>`;
+      }
+    }
+
+    function switchContestTab(tab) {
+      ['problems','leaderboard','announcements'].forEach(t => {
+        const el = document.getElementById(`contest-tab-${t}`);
+        if (el) el.classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById(`ctab-${t}`);
+        if (btn) {
+          const active = t === tab;
+          btn.className = `px-4 py-2 text-sm font-medium border-b-2 ${active ? 'text-indigo-600 dark:text-indigo-400 border-indigo-600 dark:border-indigo-400' : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700'}`;
+        }
+      });
+      if (tab === 'announcements') loadContestAnnouncements();
+    }
+
+    async function loadContestAnnouncements() {
+      const el = document.getElementById('contest-tab-announcements');
+      try {
+        const data = await apiCall('GET', `/contests/${cid}/announcements`);
+        if (!data.announcements || data.announcements.length === 0) {
+          el.innerHTML = '<p class="text-gray-400 text-center py-8">暂无比赛公告</p>';
+          return;
+        }
+        el.innerHTML = data.announcements.map(a => `
+          <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-3">
+            <div class="flex items-center gap-2 flex-wrap mb-2">
+              ${a.pinned ? '<span class="px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">置顶</span>' : ''}
+              <h4 class="font-semibold text-gray-900 dark:text-white">${escapeHtml(a.title)}</h4>
+            </div>
+            <div class="text-sm text-gray-600 dark:text-gray-300">${renderMarkdown(a.content)}</div>
+            <p class="text-xs text-gray-400 mt-2">${escapeHtml(a.nickname || a.username || '')} · ${new Date(a.created_at).toLocaleString()}</p>
+          </div>
+        `).join('');
+        if (window.renderMathInElement) {
+          try { renderMathInElement(el, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
+        }
+      } catch (err) {
+        el.innerHTML = `<p class="text-red-500 text-center py-8">${err.message || '加载公告失败'}</p>`;
       }
     }
     loadContest();

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>公告详情 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+  <script src="/js/markdown.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div id="content" class="text-center py-12 text-gray-400">加载中...</div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('announcements');
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+
+    async function loadDetail() {
+      if (!id) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定公告 ID</p>'; return; }
+      try {
+        const a = await apiCall('GET', `/announcements/${id}`);
+        document.title = `${a.title} - WinOJ`;
+        document.getElementById('content').innerHTML = `
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-8">
+            <a href="/pages/announcements.html" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4 inline-block">&larr; 返回公告列表</a>
+            <div class="flex items-center gap-2 flex-wrap mb-2">
+              ${a.pinned ? '<span class="px-2 py-0.5 text-xs rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium">置顶</span>' : ''}
+              ${a.type==='contest' ? '<span class="px-2 py-0.5 text-xs rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">比赛公告</span>' : '<span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-medium">全局公告</span>'}
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-3">${escapeHtml(a.title)}</h1>
+            <p class="text-sm text-gray-400 dark:text-gray-500 mb-6">${escapeHtml(a.nickname || a.username || '系统')} · ${new Date(a.created_at).toLocaleString()}${a.updated_at && a.updated_at !== a.created_at ? ' · 更新于 ' + new Date(a.updated_at).toLocaleString() : ''}</p>
+            <div class="border-t border-gray-100 dark:border-gray-700 pt-6" id="mdBody">${renderMarkdown(a.content)}</div>
+          </div>`;
+        if (window.renderMathInElement) {
+          try { renderMathInElement(document.getElementById('mdBody'), { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
+        }
+      } catch (err) {
+        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
+      }
+    }
+    loadDetail();
+  </script>
+</body>
+</html>

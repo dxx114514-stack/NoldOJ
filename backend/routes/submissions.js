@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
@@ -72,16 +73,26 @@ router.get('/:id', requireAuth, (req, res) => {
 
   const testGroups = db.prepare('SELECT id, subtask_id, score FROM test_groups WHERE problem_id = ? ORDER BY id').all(submission.problem_id);
 
+  const files = db.prepare('SELECT filename, content FROM submission_files WHERE submission_id = ? ORDER BY id').all(submission.id);
+  const canViewCode = req.user.role !== 'user' || submission.user_id === req.user.id;
+
   res.json({
     ...submission,
-    source_code: req.user.role !== 'user' || submission.user_id === req.user.id ? submission.source_code : '[HIDDEN]',
+    source_code: canViewCode ? submission.source_code : '[HIDDEN]',
     details,
-    test_groups: testGroups
+    test_groups: testGroups,
+    files: canViewCode ? files : (files.map(f => ({ filename: f.filename, content: '[HIDDEN]' })))
   });
 });
 
+// 根据语言推断默认主文件名
+function defaultFilename(language) {
+  const map = { c: 'main.c', cpp: 'main.cpp', python3: 'main.py', java: 'Main.java', javascript: 'main.js' };
+  return map[language] || 'main.txt';
+}
+
 router.post('/', requireAuth, rateLimit, async (req, res) => {
-  const { problem_id, language, source_code, answer_data } = req.body;
+  const { problem_id, language, source_code, code, answer_data, files } = req.body;
 
   if (!problem_id) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problem_id is required.' });
@@ -102,11 +113,21 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
 
-  if (problem.problem_type !== 'submit_answer' && !source_code) {
+  // 兼容三种格式：files 数组 / code（旧别名）/ source_code（旧字段）
+  let normalizedFiles = [];
+  let mainCode = source_code || code || '';
+  if (Array.isArray(files) && files.length > 0) {
+    normalizedFiles = files.map(f => ({ filename: f.filename || defaultFilename(language), content: f.content || '' }));
+    mainCode = normalizedFiles[0].content;
+  } else if (mainCode) {
+    normalizedFiles = [{ filename: defaultFilename(language), content: mainCode }];
+  }
+
+  if (problem.problem_type !== 'submit_answer' && normalizedFiles.length === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'source_code is required for this problem type.' });
   }
 
-  if (source_code && source_code.length > CODE_LENGTH_LIMIT) {
+  if (mainCode && mainCode.length > CODE_LENGTH_LIMIT) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `源代码超过 ${CODE_LENGTH_LIMIT} 字符限制。` });
   }
 
@@ -122,16 +143,22 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
 
   const newId = db.findNextId('submissions');
   db.prepare('INSERT INTO submissions (id, user_id, problem_id, language, source_code, answer_data, status) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-    newId, req.user.id, problem_id, language, source_code || '', answer_data || '', 'pending_review'
+    newId, req.user.id, problem_id, language, mainCode, answer_data || '', 'pending_review'
   );
+
+  // 写入多文件记录
+  if (normalizedFiles.length > 0) {
+    const insFile = db.prepare('INSERT INTO submission_files (submission_id, filename, content) VALUES (?, ?, ?)');
+    for (const f of normalizedFiles) insFile.run(newId, f.filename, f.content);
+  }
 
   res.status(201).json({
     submission_id: newId,
     message: 'Submission received and queued for judging.'
   });
 
-  if (source_code && source_code.length >= 50) {
-    reviewCode(source_code, language).then(result => {
+  if (mainCode && mainCode.length >= 50) {
+    reviewCode(mainCode, language).then(result => {
       if (!result.safe) {
         console.log(`[Security] Malicious code detected in submission #${newId} by user #${req.user.id}: ${result.reason}`);
         db.prepare('UPDATE users SET banned = 1, updated_at = datetime(\'now\') WHERE id = ?').run(req.user.id);
@@ -176,6 +203,51 @@ router.get('/:id/detail', requireAuth, (req, res) => {
   `).all(submission.id);
   const testGroups = db.prepare('SELECT id, subtask_id, score FROM test_groups WHERE problem_id = ? ORDER BY id').all(submission.problem_id);
   res.json({ submission, details, test_groups });
+});
+
+// 代码 Diff View：返回同用户同题的上一次提交代码 + 当前代码；WA 时附带期望/实际输出
+router.get('/:id/diff', requireAuth, (req, res) => {
+  const submission = db.prepare('SELECT id, user_id, problem_id, source_code, status FROM submissions WHERE id = ?').get(req.params.id);
+  if (!submission) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Submission not found.' });
+  }
+  if (req.user.role === 'user' && submission.user_id !== req.user.id) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Access denied.' });
+  }
+
+  const prev = db.prepare(`
+    SELECT id, source_code FROM submissions
+    WHERE user_id = ? AND problem_id = ? AND id < ?
+    ORDER BY id DESC LIMIT 1
+  `).get(submission.user_id, submission.problem_id, submission.id);
+
+  const result = {
+    prev_id: prev ? prev.id : null,
+    prev_code: prev ? prev.source_code : null,
+    curr_code: submission.source_code
+  };
+
+  // WA 时附带首个 WA 测试点的期望输出 vs 实际输出
+  if (submission.status === 'wrong_answer') {
+    const waDetail = db.prepare(`
+      SELECT sd.stdout, sd.test_case_id, tc.output_data, tc.output_file
+      FROM submission_details sd
+      LEFT JOIN test_cases tc ON sd.test_case_id = tc.id
+      WHERE sd.submission_id = ? AND sd.status = 'wrong_answer'
+      ORDER BY sd.id LIMIT 1
+    `).get(submission.id);
+    if (waDetail) {
+      let expected = waDetail.output_data || '';
+      if (!expected && waDetail.output_file) {
+        try { expected = fs.readFileSync(waDetail.output_file, 'utf8'); } catch {}
+      }
+      result.expected_output = expected;
+      result.actual_output = waDetail.stdout || '';
+      result.wa_test_case_id = waDetail.test_case_id;
+    }
+  }
+
+  res.json(result);
 });
 
 router.post('/:id/rejudge', requireAuth, requireRole('teacher'), (req, res) => {

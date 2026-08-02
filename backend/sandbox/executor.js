@@ -57,11 +57,58 @@ function prepareWorkDir(language, sourceCode) {
   return { workDir, srcFile, exeFile, lang, isWindows };
 }
 
-function compile(workDir, srcFile, exeFile, lang, isWindows) {
+// 多文件提交：将所有文件写入工作目录，返回主文件路径用于编译/运行
+function prepareWorkDirMulti(language, files) {
+  const id = uuidv4();
+  const workDir = path.join(config.sandbox.tempDir, id);
+  fs.mkdirSync(workDir, { recursive: true });
+
+  const langConfig = loadLanguageConfig();
+  const lang = langConfig[language];
+  if (!lang) {
+    throw new Error(`Unsupported language: ${language}`);
+  }
+
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error('No files provided for multi-file submission');
+  }
+
+  // 写入所有文件
+  for (const f of files) {
+    const safeName = path.basename(f.filename).replace(/[<>:"/\\|?*]/g, '_');
+    const filePath = path.join(workDir, safeName);
+    fs.writeFileSync(filePath, f.content, 'utf8');
+  }
+
+  // 确定主文件（用于运行入口）
+  const defaultMain = defaultMainFilename(language);
+  let mainFile = files.find(f => path.basename(f.filename).toLowerCase() === defaultMain.toLowerCase());
+  if (!mainFile) mainFile = files[0];
+  const srcFile = path.join(workDir, path.basename(mainFile.filename));
+
+  const isWindows = process.platform === 'win32';
+  const exeFile = path.join(workDir, 'Main');
+
+  return { workDir, srcFile, exeFile, lang, isWindows, isMultiFile: files.length > 1 };
+}
+
+function defaultMainFilename(language) {
+  const map = { c: 'main.c', cpp: 'main.cpp', python3: 'main.py', java: 'Main.java', javascript: 'main.js' };
+  return map[language] || 'main.txt';
+}
+
+function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
   if (!lang.compile) return { success: true, output: '' };
 
   const actualExe = isWindows ? exeFile + '.exe' : exeFile;
-  const cmd = lang.compile
+  let cmd = lang.compile;
+
+  // 多文件 C++: 使用通配符编译所有 .cpp 文件
+  if (isMultiFile && lang.ext === '.cpp') {
+    cmd = 'g++ -O2 -Wall -std=c++17 -o "{exe}" *.cpp';
+  }
+
+  cmd = cmd
     .replace('{src}', srcFile)
     .replace('{exe}', actualExe)
     .replace('{workdir}', workDir);
@@ -303,4 +350,4 @@ function cleanupWorkDir(workDir) {
   } catch {}
 }
 
-module.exports = { prepareWorkDir, compile, runCode, cleanupWorkDir, loadLanguageConfig };
+module.exports = { prepareWorkDir, prepareWorkDirMulti, compile, runCode, cleanupWorkDir, loadLanguageConfig };

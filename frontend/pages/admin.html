@@ -8,6 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={darkMode:'class'}</script>
   <script src="/js/api.js"></script>
+  <script src="/js/markdown.js"></script>
   <style>
     .CodeMirror { height: 200px; border-radius: 0.5rem; font-size: 13px; }
     textarea.script-editor { font-family: monospace; font-size: 13px; tab-size: 4; }
@@ -28,6 +29,7 @@
       <button onclick="showTab('files')" id="tab-files" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">文件管理</button>
       <button onclick="showTab('contests')" id="tab-contests" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">比赛管理</button>
       <button onclick="showTab('categories')" id="tab-categories" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">分类管理</button>
+      <button onclick="showTab('announcements')" id="tab-announcements" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">公告管理</button>
     </div>
 
     <div id="panel-problems">
@@ -58,6 +60,14 @@
             <option value="simple">简单模式</option>
             <option value="advanced">分组模式</option>
           </select>
+          <select id="pDifficulty" class="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+            <option value="0">☆ 入门</option>
+            <option value="1">★ 简单</option>
+            <option value="2">★★ 普通</option>
+            <option value="3">★★★ 中等</option>
+            <option value="4">★★★★ 较难</option>
+            <option value="5">★★★★★ 困难</option>
+          </select>
         </div>
         <textarea id="pDesc" rows="3" placeholder="题目描述（支持 Markdown 和 KaTeX 公式）" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl mb-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
         <textarea id="pInput" rows="2" placeholder="输入格式" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl mb-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
@@ -68,6 +78,10 @@
         <div class="mb-3">
           <label class="text-xs text-gray-500 dark:text-gray-400 mb-1 block">分类归属 (按住 Ctrl/Cmd 多选)</label>
           <select id="pCategories" multiple class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white min-h-[80px]"></select>
+        </div>
+        <div class="mb-3">
+          <label class="text-xs text-gray-500 dark:text-gray-400 mb-1 block">标签 (按住 Ctrl/Cmd 多选)</label>
+          <select id="pTags" multiple class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white min-h-[80px]"></select>
         </div>
         <div class="grid grid-cols-2 gap-3 mb-3">
           <div>
@@ -409,6 +423,39 @@
         </table>
       </div>
     </div>
+
+    <div id="panel-announcements" class="hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold">公告管理</h2>
+        <button onclick="showCreateAnnouncement()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 发布公告</button>
+      </div>
+      <div id="createAnnouncementForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-4">
+        <h3 class="font-semibold mb-3" id="announcementFormTitle">发布公告</h3>
+        <input id="annTitle" placeholder="公告标题" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl mb-3 focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <select id="annType" onchange="toggleAnnContest()" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+            <option value="global">全局公告</option>
+            <option value="contest">比赛公告</option>
+          </select>
+          <select id="annContestId" class="hidden px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white"></select>
+        </div>
+        <div class="flex items-center mb-3">
+          <input id="annPinned" type="checkbox" class="mr-2">
+          <label for="annPinned" class="text-sm text-gray-600 dark:text-gray-300">置顶</label>
+        </div>
+        <div class="grid grid-cols-2 gap-4 mb-3">
+          <textarea id="annContent" rows="10" placeholder="公告内容（支持 Markdown 和 KaTeX）" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" oninput="previewAnnouncement()"></textarea>
+          <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 overflow-auto max-h-80 text-sm" id="annPreview">
+            <p class="text-gray-400">预览区...</p>
+          </div>
+        </div>
+        <div class="flex justify-end space-x-3">
+          <button onclick="hideCreateAnnouncement()" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl">取消</button>
+          <button onclick="saveAnnouncement()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700" id="announcementSaveBtn">创建</button>
+        </div>
+      </div>
+      <div id="adminAnnouncements" class="space-y-3"></div>
+    </div>
   </div>
 
   <script>
@@ -419,7 +466,7 @@
     let editingTcId = null;
 
     function showTab(tab) {
-      ['problems','users','online','articles','files','contests','categories'].forEach(t => {
+      ['problems','users','online','articles','files','contests','categories','announcements'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
         const btn = document.getElementById(`tab-${t}`);
         btn.className = t === tab ? 'px-4 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white' : 'px-4 py-2 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50';
@@ -431,9 +478,124 @@
       if (tab === 'contests') loadContests();
       if (tab === 'problems') loadAdminProblems();
       if (tab === 'categories') loadAdminCategories();
+      if (tab === 'announcements') loadAdminAnnouncements();
     }
     function showCreateContest() { document.getElementById('createContestForm').classList.remove('hidden'); }
     function hideCreateContest() { document.getElementById('createContestForm').classList.add('hidden'); }
+
+    let editingAnnouncementId = null;
+    async function loadAdminAnnouncements() {
+      try {
+        const data = await apiCall('GET', '/announcements?type=global&page=1&size=50');
+        const el = document.getElementById('adminAnnouncements');
+        if (!data.announcements || data.announcements.length === 0) {
+          el.innerHTML = '<p class="text-gray-400 text-center py-8">暂无公告</p>';
+          return;
+        }
+        el.innerHTML = data.announcements.map(a => `
+          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                ${a.pinned ? '<span class="px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">置顶</span>' : ''}
+                <span class="font-medium text-gray-900 dark:text-white truncate">${escapeHtml(a.title)}</span>
+              </div>
+              <p class="text-xs text-gray-400 mt-1">${escapeHtml(a.nickname || a.username || '')} · ${new Date(a.created_at).toLocaleString()}</p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <button onclick="toggleAnnPinned(${a.id}, ${a.pinned ? 0 : 1})" class="text-xs px-2 py-1 rounded ${a.pinned?'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300':'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'} hover:opacity-80">${a.pinned?'取消置顶':'置顶'}</button>
+              <button onclick="editAnnouncement(${a.id})" class="text-blue-600 dark:text-blue-400 text-sm hover:underline">编辑</button>
+              <button onclick="deleteAnnouncement(${a.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('adminAnnouncements').innerHTML = `<p class="text-red-500 text-center py-8">${err.message || '加载失败'}</p>`;
+      }
+    }
+    function showCreateAnnouncement() {
+      editingAnnouncementId = null;
+      document.getElementById('announcementFormTitle').textContent = '发布公告';
+      document.getElementById('announcementSaveBtn').textContent = '创建';
+      document.getElementById('annTitle').value = '';
+      document.getElementById('annType').value = 'global';
+      document.getElementById('annPinned').checked = false;
+      document.getElementById('annContent').value = '';
+      document.getElementById('annPreview').innerHTML = '<p class="text-gray-400">预览区...</p>';
+      toggleAnnContest();
+      document.getElementById('createAnnouncementForm').classList.remove('hidden');
+    }
+    function hideCreateAnnouncement() { document.getElementById('createAnnouncementForm').classList.add('hidden'); }
+    async function toggleAnnContest() {
+      const type = document.getElementById('annType').value;
+      const sel = document.getElementById('annContestId');
+      if (type === 'contest') {
+        sel.classList.remove('hidden');
+        try {
+          const data = await apiCall('GET', '/contests?page=1&limit=100');
+          const contests = data.contests || data.data || [];
+          sel.innerHTML = contests.map(c => `<option value="${c.id}">${escapeHtml(c.title)}</option>`).join('') || '<option value="">无可用比赛</option>';
+        } catch { sel.innerHTML = '<option value="">加载比赛失败</option>'; }
+      } else {
+        sel.classList.add('hidden');
+      }
+    }
+    function previewAnnouncement() {
+      const content = document.getElementById('annContent').value;
+      document.getElementById('annPreview').innerHTML = renderMarkdown(content);
+    }
+    async function saveAnnouncement() {
+      const title = document.getElementById('annTitle').value.trim();
+      const content = document.getElementById('annContent').value.trim();
+      const type = document.getElementById('annType').value;
+      const contest_id = document.getElementById('annContestId').value;
+      const pinned = document.getElementById('annPinned').checked ? 1 : 0;
+      if (!title) { alert('请输入标题'); return; }
+      if (!content) { alert('请输入内容'); return; }
+      const btn = document.getElementById('announcementSaveBtn');
+      btn.disabled = true; btn.textContent = '保存中...';
+      try {
+        if (editingAnnouncementId) {
+          await apiCall('PUT', `/announcements/${editingAnnouncementId}`, { title, content, type, contest_id, pinned });
+        } else {
+          await apiCall('POST', '/announcements', { title, content, type, contest_id, pinned });
+        }
+        hideCreateAnnouncement();
+        loadAdminAnnouncements();
+      } catch (err) {
+        alert(err.message || '保存失败');
+      } finally {
+        btn.disabled = false; btn.textContent = editingAnnouncementId ? '保存' : '创建';
+      }
+    }
+    async function editAnnouncement(id) {
+      try {
+        const a = await apiCall('GET', `/announcements/${id}`);
+        editingAnnouncementId = id;
+        document.getElementById('announcementFormTitle').textContent = '编辑公告';
+        document.getElementById('announcementSaveBtn').textContent = '保存';
+        document.getElementById('annTitle').value = a.title;
+        document.getElementById('annType').value = a.type;
+        document.getElementById('annPinned').checked = !!a.pinned;
+        document.getElementById('annContent').value = a.content;
+        previewAnnouncement();
+        await toggleAnnContest();
+        if (a.type === 'contest' && a.contest_id) document.getElementById('annContestId').value = a.contest_id;
+        document.getElementById('createAnnouncementForm').classList.remove('hidden');
+      } catch (err) { alert(err.message || '加载失败'); }
+    }
+    async function toggleAnnPinned(id, pinned) {
+      try {
+        await apiCall('PUT', `/announcements/${id}`, { pinned });
+        loadAdminAnnouncements();
+      } catch (err) { alert(err.message || '操作失败'); }
+    }
+    async function deleteAnnouncement(id) {
+      if (!confirm('确定删除该公告？此操作不可撤销。')) return;
+      try {
+        await apiCall('DELETE', `/announcements/${id}`);
+        loadAdminAnnouncements();
+      } catch (err) { alert(err.message || '删除失败'); }
+    }
 
     async function loadAdminProblems() {
       try {
@@ -508,6 +670,40 @@
         for (const catId of selectedIds) {
           await apiCall('POST', `/categories/${catId}/problems/${problemId}`);
         }
+      } catch (err) { console.error(err); }
+    }
+
+    let allTagsCache = [];
+
+    async function loadAllTags() {
+      try {
+        allTagsCache = await apiCall('GET', '/tags');
+        const sel = document.getElementById('pTags');
+        if (sel) {
+          sel.innerHTML = allTagsCache.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+        }
+      } catch (err) { console.error(err); }
+    }
+
+    async function loadProblemTags(problemId) {
+      try {
+        const tags = await apiCall('GET', `/tags/problem/${problemId}`);
+        const sel = document.getElementById('pTags');
+        if (sel) {
+          const selectedIds = tags.map(t => t.id);
+          Array.from(sel.options).forEach(opt => {
+            opt.selected = selectedIds.includes(parseInt(opt.value));
+          });
+        }
+      } catch (err) { console.error(err); }
+    }
+
+    async function saveProblemTags(problemId) {
+      const sel = document.getElementById('pTags');
+      if (!sel) return;
+      const tagIds = Array.from(sel.selectedOptions).map(o => parseInt(o.value));
+      try {
+        await apiCall('POST', `/tags/problem/${problemId}`, { tag_ids: tagIds });
       } catch (err) { console.error(err); }
     }
 
@@ -601,8 +797,11 @@
       document.getElementById('pProvider').value = '';
       document.getElementById('pSampleInput').value = '';
       document.getElementById('pSampleOutput').value = '';
+      document.getElementById('pDifficulty').value = '0';
       const catSel = document.getElementById('pCategories');
       if (catSel) Array.from(catSel.options).forEach(opt => opt.selected = false);
+      const tagSel = document.getElementById('pTags');
+      if (tagSel) Array.from(tagSel.options).forEach(opt => opt.selected = false);
       document.getElementById('createProblemForm').classList.remove('hidden');
     }
     function hideCreateProblem() { document.getElementById('createProblemForm').classList.add('hidden'); editingProblemId = null; }
@@ -626,9 +825,12 @@
         document.getElementById('pProvider').value = p.provider || '';
         document.getElementById('pSampleInput').value = p.sample_input || '';
         document.getElementById('pSampleOutput').value = p.sample_output || '';
+        document.getElementById('pDifficulty').value = String(p.difficulty || 0);
         document.getElementById('createProblemForm').classList.remove('hidden');
         await loadAllCategories();
         await loadProblemCategories(id);
+        await loadAllTags();
+        await loadProblemTags(id);
       } catch (err) { alert(err.message); }
     }
 
@@ -647,6 +849,7 @@
         provider: document.getElementById('pProvider').value,
         sample_input: document.getElementById('pSampleInput').value,
         sample_output: document.getElementById('pSampleOutput').value,
+        difficulty: parseInt(document.getElementById('pDifficulty').value) || 0,
       };
       try {
         let newId = editingProblemId;
@@ -658,6 +861,7 @@
         }
         if (newId) {
           await saveProblemCategories(newId);
+          await saveProblemTags(newId);
         }
         hideCreateProblem();
         loadAdminProblems();
@@ -1324,6 +1528,7 @@
 
     loadAdminProblems();
     loadAllCategories();
+    loadAllTags();
   </script>
 </body>
 </html>

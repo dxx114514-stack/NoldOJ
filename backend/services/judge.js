@@ -96,20 +96,29 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
   const langConfig = sandbox.loadLanguageConfig();
   const lang = langConfig[submission.language] || { compile: '', run: '', ext: '.txt' };
-  let workDir, srcFile, exeFile, isWindows;
+  let workDir, srcFile, exeFile, isWindows, isMultiFile = false;
   let compiled = false;
 
   const groups = db.prepare('SELECT * FROM test_groups WHERE problem_id = ? ORDER BY id').all(problemId);
   const hasGroups = groups.length > 0;
 
+  // 检查是否有多文件记录
+  const subFiles = db.prepare('SELECT filename, content FROM submission_files WHERE submission_id = ? ORDER BY id').all(submission.id);
+
   try {
-    const prepared = sandbox.prepareWorkDir(submission.language, submission.source_code);
+    let prepared;
+    if (subFiles && subFiles.length > 0) {
+      prepared = sandbox.prepareWorkDirMulti(submission.language, subFiles);
+      isMultiFile = prepared.isMultiFile;
+    } else {
+      prepared = sandbox.prepareWorkDir(submission.language, submission.source_code);
+    }
     workDir = prepared.workDir;
     srcFile = prepared.srcFile;
     exeFile = prepared.exeFile;
     isWindows = prepared.isWindows;
 
-    const compileResult = sandbox.compile(workDir, srcFile, exeFile, lang, isWindows);
+    const compileResult = sandbox.compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile);
     if (!compileResult.success) {
       const detail = insertDetail.run(submission.id, null, null, '', 'running');
       updateDetail.run('compile_error', 0, 0, 0, '', compileResult.output, -1, '', detail.lastInsertRowid);

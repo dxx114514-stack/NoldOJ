@@ -239,4 +239,20 @@ router.get('/:id/leaderboard', (req, res) => {
   res.json({ leaderboard, problem_ids: problemIds });
 });
 
+// 比赛内公告
+router.get('/:id/announcements', (req, res) => {
+  const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
+  if (!contest) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  const items = db.prepare(`
+    SELECT a.id, a.title, a.content, a.pinned, a.author_id, a.created_at, a.updated_at,
+           u.username, u.nickname
+    FROM announcements a LEFT JOIN users u ON a.author_id = u.id
+    WHERE a.type = 'contest' AND a.contest_id = ?
+    ORDER BY a.pinned DESC, a.id DESC
+  `).all(req.params.id);
+  res.json({ announcements: items });
+});
+
 module.exports = router;

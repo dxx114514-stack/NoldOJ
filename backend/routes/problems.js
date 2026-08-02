@@ -20,31 +20,66 @@ function sanitizeProblem(p) {
 }
 
 router.get('/', (req, res) => {
-  const { page = 1, limit = 50, search = '', tag = '', category = '' } = req.query;
+  const { page = 1, limit = 50, search = '', tag = '', tags = '', category = '', difficulty = '', sort = '', order = 'desc' } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
   let where = 'WHERE p.is_public = 1';
   const params = [];
-  
+
   if (search) {
     const fuzzy = '%' + search.replace(/\s+/g, '') + '%';
     where += ` AND (REPLACE(p.title, ' ', '') LIKE ? OR REPLACE(p.description, ' ', '') LIKE ? OR REPLACE(IFNULL(p.provider, ''), ' ', '') LIKE ?)`;
     params.push(fuzzy, fuzzy, fuzzy);
   }
-  
-  if (tag) {
-    where += ' AND p.id IN (SELECT pt.problem_id FROM problem_tags pt JOIN tags t ON pt.tag_id = t.id WHERE t.name = ?)';
-    params.push(tag);
+
+  // 兼容单标签 tag 与多标签 tags（逗号分隔，OR 逻辑）
+  const tagList = [];
+  if (tag) tagList.push(tag);
+  if (tags) tagList.push(...tags.split(',').map(s => s.trim()).filter(Boolean));
+  if (tagList.length > 0) {
+    const placeholders = tagList.map(() => '?').join(',');
+    where += ` AND p.id IN (SELECT pt.problem_id FROM problem_tags pt JOIN tags t ON pt.tag_id = t.id WHERE t.name IN (${placeholders}))`;
+    params.push(...tagList);
   }
 
   if (category) {
     where += ' AND p.id IN (SELECT pc.problem_id FROM problem_categories pc JOIN categories c ON pc.category_id = c.id WHERE c.name = ?)';
     params.push(category);
   }
-  
+
+  if (difficulty !== '' && difficulty !== null && difficulty !== undefined) {
+    const d = parseInt(difficulty);
+    if (!isNaN(d) && d >= 0 && d <= 5) {
+      where += ' AND p.difficulty = ?';
+      params.push(d);
+    }
+  }
+
+  // 排序：默认按 id 升序；支持 created_at / accept_rate / submissions
+  const ord = String(order).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  let orderClause = 'ORDER BY p.id ASC';
+  if (sort === 'created_at') {
+    orderClause = `ORDER BY p.created_at ${ord}, p.id ${ord}`;
+  } else if (sort === 'submissions') {
+    orderClause = `ORDER BY sub_count ${ord}, p.id ${ord}`;
+  } else if (sort === 'accept_rate') {
+    orderClause = `ORDER BY ac_rate ${ord}, p.id ${ord}`;
+  }
+
   const total = db.prepare(`SELECT COUNT(*) as c FROM problems p ${where}`).get(...params).c;
-  const problems = db.prepare(`SELECT p.id, p.title, p.problem_type, p.time_limit, p.memory_limit, p.is_public, p.created_at FROM problems p ${where} ORDER BY p.id ASC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
+  const problems = db.prepare(`
+    SELECT p.id, p.title, p.problem_type, p.time_limit, p.memory_limit, p.is_public, p.difficulty, p.created_at,
+      (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id) as sub_count,
+      (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'accepted') as ac_count,
+      CASE WHEN (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id) > 0
+        THEN (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'accepted') * 1.0 / (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id)
+        ELSE 0 END as ac_rate
+    FROM problems p ${where} ${orderClause} LIMIT ? OFFSET ?
+  `).all(...params, parseInt(limit), offset);
 
   for (const problem of problems) {
+    const ac = problem.ac_count || 0;
+    const sub = problem.sub_count || 0;
+    problem.accept_rate = sub > 0 ? Math.round((ac / sub) * 1000) / 10 : 0;
     const tags = db.prepare(`
       SELECT t.id, t.name, t.color FROM tags t
       JOIN problem_tags pt ON t.id = pt.tag_id
@@ -92,12 +127,12 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode } = req.body;
+  const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode, difficulty } = req.body;
   if (!title) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
   const newId = db.findNextId('problems');
-  db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     newId,
     title,
     description || '',
@@ -116,7 +151,8 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     req.user.id,
     sample_input || '',
     sample_output || '',
-    subtask_mode || 'simple'
+    subtask_mode || 'simple',
+    difficulty !== undefined ? parseInt(difficulty) || 0 : 0
   );
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(newId);
   res.status(201).json(sanitizeProblem(problem));
@@ -132,7 +168,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot edit a problem that is part of a contest.' });
   }
 
-  const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode'];
+  const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode', 'difficulty'];
   const updates = [];
   const values = [];
   for (const field of fields) {
@@ -142,6 +178,8 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
         values.push(JSON.stringify(req.body[field]));
       } else if (field === 'is_public') {
         values.push(req.body[field] ? 1 : 0);
+      } else if (field === 'difficulty') {
+        values.push(parseInt(req.body[field]) || 0);
       } else {
         values.push(req.body[field]);
       }
