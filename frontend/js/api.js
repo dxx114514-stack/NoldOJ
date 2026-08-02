@@ -241,26 +241,26 @@ function renderNav(activePage) {
     <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-14">
-          <div class="flex items-center space-x-8">
+          <div class="flex items-center space-x-4 flex-shrink-0">
             <a href="/pages/index.html" class="flex items-center space-x-2">
               <svg class="w-7 h-7 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
               <span class="text-xl font-bold text-gray-900 dark:text-white">WinOJ</span>
             </a>
-            <div class="hidden md:flex space-x-1">
-              <a href="/pages/problems.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='problems'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题库</a>
-              <a href="/pages/problem-sets.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='problem-sets'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题单</a>
-              <a href="/pages/submissions.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='submissions'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">提交记录</a>
-              <a href="/pages/articles.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='articles'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">文章</a>
-              <a href="/pages/announcements.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='announcements'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">公告</a>
-              <a href="/pages/ide.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='ide'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">在线编程</a>
-              ${isTeacher ? `<a href="/pages/upload.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='upload'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">图床</a>` : ''}
-              <a href="/pages/rating.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='rating'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">排行</a>
-              <a href="/pages/contests.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='contests'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">比赛</a>
-              ${isTeacher ? `<a href="/pages/admin.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='admin'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">管理</a>` : ''}
-              ${isSu ? `<a href="/pages/languages.html" class="px-3 py-2 rounded-md text-sm font-medium ${activePage==='languages'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">语言</a>` : ''}
+            <div class="hidden md:flex space-x-0.5 flex-shrink-0">
+              <a href="/pages/problems.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='problems'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题库</a>
+              <a href="/pages/problem-sets.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='problem-sets'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题单</a>
+              <a href="/pages/submissions.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='submissions'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">提交记录</a>
+              <a href="/pages/articles.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='articles'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">文章</a>
+              <a href="/pages/announcements.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='announcements'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">公告</a>
+              <a href="/pages/ide.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='ide'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">在线编程</a>
+              ${isTeacher ? `<a href="/pages/upload.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='upload'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">图床</a>` : ''}
+              <a href="/pages/rating.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='rating'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">排行</a>
+              <a href="/pages/contests.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='contests'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">比赛</a>
+              ${isTeacher ? `<a href="/pages/admin.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='admin'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">管理</a>` : ''}
+              ${isSu ? `<a href="/pages/languages.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='languages'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">语言</a>` : ''}
             </div>
           </div>
-          <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2 flex-shrink-0">
             <button onclick="toggleDarkMode()" class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="切换主题">
               ${sunIcon}${moonIcon}
             </button>
@@ -269,7 +269,7 @@ function renderNav(activePage) {
               <span id="annBadge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 min-w-[18px] text-center">0</span>
             </a>
             ${user ? `
-              <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2 flex-shrink-0">
                 <span class="text-sm text-gray-700 dark:text-gray-300">${escapeHtml(user.nickname || user.username || '')}</span>
                 <span id="nav-rating" class="px-1.5 py-0.5 text-xs rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">R:${user.rating || 1500}</span>
                 ${roleBadge(user.role)}

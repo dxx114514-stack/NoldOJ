@@ -28,6 +28,9 @@ function generateRefreshToken(userId) {
 }
 
 router.get('/captcha', (req, res) => {
+  if (!config.captcha.enabled) {
+    return res.status(404).json({ error: 'Captcha disabled' });
+  }
   const { id, svg } = generateCaptcha();
   res.json({ id, svg });
 });
