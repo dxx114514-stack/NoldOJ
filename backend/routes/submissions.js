@@ -11,15 +11,20 @@ const router = express.Router();
 const rateLimit = createRateLimit(config.rateLimit.submissions);
 
 router.get('/', requireAuth, (req, res) => {
-  const { page = 1, limit = 50, user_id, problem_id, status } = req.query;
+  const { page = 1, limit = 50, user_id, problem_id, status, score_min, score_max, username } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
   let where = 'WHERE 1=1';
   const params = [];
 
+  // 用户筛选：优先 user_id，其次 username 模糊匹配（仅非普通用户可查他人）
   if (user_id) {
     where += ' AND s.user_id = ?';
     params.push(parseInt(user_id));
+  } else if (username && req.user.role !== 'user') {
+    where += ' AND u.username LIKE ?';
+    params.push(`%${username}%`);
   } else if (req.user.role === 'user') {
+    // 普通用户只能看自己的提交
     where += ' AND s.user_id = ?';
     params.push(req.user.id);
   }
@@ -32,8 +37,17 @@ router.get('/', requireAuth, (req, res) => {
     where += ' AND s.status = ?';
     params.push(status);
   }
+  // 分数段筛选
+  if (score_min !== undefined && score_min !== '') {
+    where += ' AND s.score >= ?';
+    params.push(parseFloat(score_min));
+  }
+  if (score_max !== undefined && score_max !== '') {
+    where += ' AND s.score <= ?';
+    params.push(parseFloat(score_max));
+  }
 
-  const total = db.prepare(`SELECT COUNT(*) as c FROM submissions s ${where}`).get(...params).c;
+  const total = db.prepare(`SELECT COUNT(*) as c FROM submissions s LEFT JOIN users u ON s.user_id = u.id ${where}`).get(...params).c;
   const submissions = db.prepare(`
     SELECT s.id, s.user_id, s.problem_id, s.language, s.status, s.score, s.time_used, s.memory_used, s.created_at,
            u.username, p.title as problem_title

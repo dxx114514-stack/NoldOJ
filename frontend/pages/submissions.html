@@ -13,6 +13,57 @@
   <div id="nav"></div>
   <div class="max-w-6xl mx-auto px-4 py-8">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">提交记录</h1>
+
+    <!-- 筛选栏 -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-4 mb-4">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+        <!-- 结果筛选 -->
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">结果</label>
+          <select id="fStatus" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+            <option value="">全部</option>
+            <option value="accepted">通过</option>
+            <option value="wrong_answer">答案错误</option>
+            <option value="time_limit_exceeded">时间超限</option>
+            <option value="memory_limit_exceeded">内存超限</option>
+            <option value="runtime_error">运行错误</option>
+            <option value="compile_error">编译错误</option>
+            <option value="system_error">系统错误</option>
+            <option value="pending">等待中</option>
+            <option value="running">运行中</option>
+            <option value="judging">评测中</option>
+            <option value="compiling">编译中</option>
+            <option value="pending_review">审查中</option>
+            <option value="pending_rejudge">等待重测</option>
+          </select>
+        </div>
+        <!-- 分数段 -->
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">最低分</label>
+          <input id="fScoreMin" type="number" min="0" max="100" placeholder="0" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">最高分</label>
+          <input id="fScoreMax" type="number" min="0" max="100" placeholder="100" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+        </div>
+        <!-- 用户筛选（仅管理员/教师可见） -->
+        <div id="fUserWrap" class="hidden">
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">用户名</label>
+          <input id="fUsername" type="text" placeholder="搜索用户名" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+        </div>
+        <!-- 题目筛选 -->
+        <div>
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">题目ID</label>
+          <input id="fProblemId" type="number" min="1" placeholder="题目编号" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+        </div>
+        <!-- 操作按钮 -->
+        <div class="flex space-x-2">
+          <button onclick="applyFilter()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 font-medium whitespace-nowrap">筛选</button>
+          <button onclick="resetFilter()" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 whitespace-nowrap">重置</button>
+        </div>
+      </div>
+    </div>
+
     <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
       <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
@@ -37,38 +88,101 @@
   <script>
     document.getElementById('nav').innerHTML = renderNav('submissions');
     const currentUser = getUser();
-    const isAdmin = currentUser && ['admin', 'su'].includes(currentUser.role);
+    const isAdmin = currentUser && ['admin', 'su', 'teacher'].includes(currentUser.role);
     let currentPage = 1;
+
+    // 管理员/教师显示用户筛选框
+    if (isAdmin) document.getElementById('fUserWrap').classList.remove('hidden');
+
+    // 从 URL 读取初始筛选参数（支持从其他页面跳转带参）
+    function readUrlFilters() {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('status')) document.getElementById('fStatus').value = p.get('status');
+      if (p.get('problem_id')) document.getElementById('fProblemId').value = p.get('problem_id');
+      if (p.get('user_id')) {
+        // 从 profile 等页面带 user_id 跳转时，直接用
+        document.getElementById('fProblemId').dataset.userId = p.get('user_id');
+      }
+      if (p.get('username')) document.getElementById('fUsername').value = p.get('username');
+      if (p.get('score_min')) document.getElementById('fScoreMin').value = p.get('score_min');
+      if (p.get('score_max')) document.getElementById('fScoreMax').value = p.get('score_max');
+    }
+    readUrlFilters();
+
+    // 收集当前筛选条件
+    function getFilters() {
+      const f = { page: currentPage, limit: 20 };
+      const status = document.getElementById('fStatus').value;
+      const scoreMin = document.getElementById('fScoreMin').value;
+      const scoreMax = document.getElementById('fScoreMax').value;
+      const username = document.getElementById('fUsername').value.trim();
+      const problemId = document.getElementById('fProblemId').value;
+      const urlUserId = document.getElementById('fProblemId').dataset.userId;
+      if (status) f.status = status;
+      if (scoreMin !== '') f.score_min = scoreMin;
+      if (scoreMax !== '') f.score_max = scoreMax;
+      if (isAdmin && username) f.username = username;
+      if (urlUserId) f.user_id = urlUserId;
+      if (problemId) f.problem_id = problemId;
+      return f;
+    }
+
     async function loadSubmissions() {
       if (!getToken()) { window.location.href = '/pages/login.html'; return; }
       try {
-        const data = await apiCall('GET', `/submissions?page=${currentPage}&limit=20`);
+        const filters = getFilters();
+        const qs = new URLSearchParams(filters).toString();
+        const data = await apiCall('GET', `/submissions?${qs}`);
         const tbody = document.getElementById('subList');
         const empty = document.getElementById('empty');
-        if (data.submissions.length === 0) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
-        empty.classList.add('hidden');
-        tbody.innerHTML = data.submissions.map(s => `
-          <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700 transition">
-            <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500">${s.id}</td>
-            <td class="px-4 py-3 text-sm"><a href="profile.html?id=${s.user_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(s.username||'-')}</a></td>
-            <td class="px-4 py-3 text-sm text-indigo-600 dark:text-indigo-400 font-medium"><a href="/pages/problem.html?id=${s.problem_id}" class="hover:underline">${escapeHtml(s.problem_title||'未知')}</a></td>
-            <td class="px-4 py-3 text-center text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">${s.language}</td>
-            <td class="px-4 py-3 text-center"><span class="px-2.5 py-1 text-xs rounded-full font-medium ${statusColor(s.status)}">${statusText(s.status)}</span></td>
-            <td class="px-4 py-3 text-center text-sm font-semibold text-gray-900 dark:text-white">${s.score}</td>
-            <td class="px-4 py-3 text-center text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">${s.time_used}ms</td>
-            <td class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400">${new Date(s.created_at).toLocaleString()}</td>
-            <td class="px-4 py-3 text-center">
-              <a href="/pages/submission.html?id=${s.id}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">详情</a>
-              ${isAdmin ? `<button onclick="event.stopPropagation(); deleteSubmission(${s.id})" class="ml-2 text-red-500 text-sm hover:underline">删除</button>` : ''}
-            </td>
-          </tr>
-        `).join('');
-        const totalPages = Math.ceil(data.total / 20);
+        if (data.submissions.length === 0) { tbody.innerHTML = ''; empty.classList.remove('hidden'); }
+        else {
+          empty.classList.add('hidden');
+          tbody.innerHTML = data.submissions.map(s => `
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700 transition">
+              <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500">${s.id}</td>
+              <td class="px-4 py-3 text-sm"><a href="profile.html?id=${s.user_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(s.username||'-')}</a></td>
+              <td class="px-4 py-3 text-sm text-indigo-600 dark:text-indigo-400 font-medium"><a href="/pages/problem.html?id=${s.problem_id}" class="hover:underline">${escapeHtml(s.problem_title||'未知')}</a></td>
+              <td class="px-4 py-3 text-center text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">${s.language}</td>
+              <td class="px-4 py-3 text-center"><span class="px-2.5 py-1 text-xs rounded-full font-medium ${statusColor(s.status)}">${statusText(s.status)}</span></td>
+              <td class="px-4 py-3 text-center text-sm font-semibold text-gray-900 dark:text-white">${s.score}</td>
+              <td class="px-4 py-3 text-center text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">${s.time_used}ms</td>
+              <td class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400">${new Date(s.created_at).toLocaleString()}</td>
+              <td class="px-4 py-3 text-center">
+                <a href="/pages/submission.html?id=${s.id}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">详情</a>
+                ${isAdmin ? `<button onclick="event.stopPropagation(); deleteSubmission(${s.id})" class="ml-2 text-red-500 text-sm hover:underline">删除</button>` : ''}
+              </td>
+            </tr>
+          `).join('');
+        }
+        const totalPages = Math.max(1, Math.ceil(data.total / 20));
         document.getElementById('pagination').innerHTML = Array.from({length: totalPages}, (_, i) => `
           <button onclick="currentPage=${i+1};loadSubmissions()" class="px-3 py-1 rounded-lg text-sm ${i+1===currentPage?'bg-indigo-600 text-white':'bg-white border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700'}">${i+1}</button>
         `).join('');
       } catch (err) { console.error(err); }
     }
+
+    // 点击筛选按钮：回到第 1 页并重新加载
+    function applyFilter() {
+      currentPage = 1;
+      // 清除从 URL 带来的 user_id（避免与用户名输入框冲突）
+      delete document.getElementById('fProblemId').dataset.userId;
+      loadSubmissions();
+    }
+    window.applyFilter = applyFilter;
+
+    // 重置所有筛选条件
+    function resetFilter() {
+      document.getElementById('fStatus').value = '';
+      document.getElementById('fScoreMin').value = '';
+      document.getElementById('fScoreMax').value = '';
+      document.getElementById('fUsername').value = '';
+      document.getElementById('fProblemId').value = '';
+      delete document.getElementById('fProblemId').dataset.userId;
+      currentPage = 1;
+      loadSubmissions();
+    }
+    window.resetFilter = resetFilter;
 
     async function deleteSubmission(id) {
       if (!confirm('确定删除此提交记录？')) return;
@@ -77,6 +191,11 @@
         loadSubmissions();
       } catch (err) { alert(err.message); }
     }
+
+    // 回车键触发筛选
+    document.querySelectorAll('#fScoreMin, #fScoreMax, #fUsername, #fProblemId').forEach(el => {
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyFilter(); });
+    });
 
     loadSubmissions();
   </script>
