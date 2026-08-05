@@ -16,7 +16,7 @@ for %%f in (log\*) do del /q "%%f" 2>nul
 echo [OK] Log directory cleared.
 
 where node >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [ERROR] Node.js not found. Please install Node.js first.
     echo Download: https://nodejs.org/
     pause
@@ -46,39 +46,20 @@ if not exist "backend\sandbox\sandbox_runner.exe" (
     echo [OK] sandbox_runner.exe found - Job Object isolation active
 )
 
-if not exist "backend\node_modules" (
+cd backend
+call npm ls --silent
+if !errorlevel! neq 0 (
     echo [..] Installing dependencies...
-    cd backend
+
     call npm install
-    cd ..
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo [FAIL] Failed to install dependencies
         pause
         exit /b 1
     )
     echo [OK] Dependencies installed
 )
-
-where ollama >nul 2>&1
-if %errorlevel% equ 0 (
-    curl -s http://localhost:11434/api/tags >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [OK] Ollama is running
-    ) else (
-        echo [..] Starting Ollama...
-        start "" ollama serve
-        timeout /t 5 /nobreak >nul
-        curl -s http://localhost:11434/api/tags >nul 2>&1
-        if %errorlevel% equ 0 (
-            echo [OK] Ollama started
-        ) else (
-            echo [!!] Ollama failed to start - AI code review disabled
-        )
-    )
-) else (
-    echo [!!] Ollama not found - AI code review disabled
-    echo Download: https://ollama.com/
-)
+cd ..
 
 echo.
 echo [..] Starting WinOJ server...
