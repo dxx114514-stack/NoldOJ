@@ -74,7 +74,8 @@ async function main() {
         connectSrc: ["'self'"],
         fontSrc: ["'self'", 'data:', "https://cdnjs.cloudflare.com"],
         objectSrc: ["'none'"],
-        frameSrc: ["https://player.bilibili.com"],
+        frameSrc: ["'self'", "https:", "http:"],
+        mediaSrc: ["'self'", "https:", "http:"],
         frameAncestors: ["'none'"]
       }
     },
