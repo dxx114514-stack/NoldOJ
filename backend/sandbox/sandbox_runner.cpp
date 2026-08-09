@@ -58,6 +58,24 @@ static HANDLE createRestrictedToken() {
     return ok ? hRestricted : NULL;
 }
 
+// ── 启用当前进程特权（CreateProcessAsUser 所需）────────────
+// CreateProcessAsUser 要求调用进程持有 SeAssignPrimaryTokenPrivilege
+// 和 SeIncreaseQuotaPrivilege 特权。普通用户令牌中这两个特权通常不存在
+//（甚至无法启用），只有提权/服务环境下才可能可用。
+static void enablePrivilege(const char* name) {
+    HANDLE hTok = NULL;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hTok))
+        return;
+    LUID luid;
+    if (!LookupPrivilegeValueA(NULL, name, &luid)) { CloseHandle(hTok); return; }
+    TOKEN_PRIVILEGES tp = {};
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    AdjustTokenPrivileges(hTok, FALSE, &tp, 0, NULL, NULL);
+    CloseHandle(hTok);
+}
+
 // ── 创建 Job Object 并设置安全限制 ─────────────────────────
 static HANDLE createJob(DWORD timeLimitMs, SIZE_T memLimitBytes, DWORD maxProcs) {
     HANDLE hJob = CreateJobObjectA(NULL, NULL);
@@ -156,8 +174,21 @@ int main(int argc, char* argv[]) {
 
     DWORD flags = CREATE_SUSPENDED | CREATE_NO_WINDOW;
     BOOL ok;
+    const char* createFn = "CreateProcessA";
     if (hRestricted) {
+        // CreateProcessAsUser 需要 SE_ASSIGNPRIMARYTOKEN / SE_INCREASE_QUOTA 特权，
+        // 先尝试启用（提权环境下这两个特权只是被禁用，启用后可用）。
+        enablePrivilege(SE_ASSIGNPRIMARYTOKEN_NAME);
+        enablePrivilege(SE_INCREASE_QUOTA_NAME);
+        createFn = "CreateProcessAsUserA(restricted)";
         ok = CreateProcessAsUserA(hRestricted, NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, NULL, NULL, &si, &pi);
+        if (!ok) {
+            // 普通用户运行时没有上述特权，CreateProcessAsUser 必然失败 (ERROR_ACCESS_DENIED)。
+            // 回退到使用当前进程令牌创建：Job Object 隔离 / 内存 / 时间限制 / 进程树清理仍然生效。
+            fprintf(stderr, "[sandbox] CreateProcessAsUser failed (error %lu), falling back to CreateProcessA (restricted token disabled)\n", GetLastError());
+            createFn = "CreateProcessA(fallback)";
+            ok = CreateProcessA(NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, NULL, NULL, &si, &pi);
+        }
     } else {
         ok = CreateProcessA(NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, NULL, NULL, &si, &pi);
     }
@@ -165,7 +196,7 @@ int main(int argc, char* argv[]) {
     if (!ok) {
         DWORD err = GetLastError();
         writeMeta(metaFile, -1, 0, 0, "SYSTEM_ERROR");
-        fprintf(stderr, "[sandbox] CreateProcess failed (error %lu)\n", err);
+        fprintf(stderr, "[sandbox] %s failed (error %lu)\n", createFn, err);
         CloseHandle(hJob);
         if (hRestricted) CloseHandle(hRestricted);
         return 1;
