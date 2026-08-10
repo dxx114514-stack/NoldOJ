@@ -204,6 +204,7 @@
 | 依赖 | 版本要求 | 用途 |
 |------|---------|------|
 | **Node.js** | >= 18.x | 运行后端服务 |
+| **better-sqlite3** | 跟随 npm 安装 | 原生 SQLite 驱动（数据库引擎） |
 | **Mingw64** | 任意版本 | C/C++ 编译 |
 | **Python 3** | 任意版本 | Python 代码执行（可选） |
 | **JDK** | 任意版本 | Java 编译和执行（可选） |
@@ -236,6 +237,8 @@ git clone https://github.com/dxx114514-stack/winoj.mimo.git
 - **更新**：
 ```batch
 git pull
+cd backend
+npm install
 ```
 
 - **卸载**
@@ -247,6 +250,45 @@ git pull
 - **密码**：`admin123`
 
 > **重要**：首次登录后请立即修改管理员密码！
+
+## 数据库迁移（sql.js → better-sqlite3）
+
+v1.8.0 起数据库引擎从 `sql.js`（WASM 内存库，每次写操作整库导出落盘）更换为 `better-sqlite3`（原生 SQLite，同步直写）。
+
+**关键点**：sql.js 导出的数据库文件本身就是标准 SQLite 格式，旧数据**无需转换**，better-sqlite3 可直接打开，所有数据原样保留。
+
+### 迁移步骤
+
+1. **停止服务**：关闭 `start.bat` 窗口（务必先停，避免文件占用）。
+2. **更新代码**：
+   ```batch
+   git pull
+   ```
+3. **安装依赖**（会安装 better-sqlite3 并移除 sql.js）：
+   ```batch
+   cd backend
+   npm install
+   ```
+   > 若安装失败，多为缺少编译环境。better-sqlite3 优先下载预编译二进制；失败时才需要 node-gyp + VS Build Tools。可手动指定 Node 版本对应的预编译包。
+4. **（可选但推荐）备份并校验旧库**：
+   ```batch
+   node scripts\migrate-sqlite.js
+   ```
+   该脚本会：
+   - 自动备份 `backend/data/winoj.db` → `winoj.db.backup-<时间戳>`
+   - 执行 `PRAGMA integrity_check` 完整性校验
+   - 统计全部业务表行数，确认数据完好
+5. **启动服务**：
+   ```batch
+   start.bat
+   ```
+   启动时 `initDB()` 会自动打开旧库并执行全部 schema 迁移（新增列/表），无需手工干预。
+
+### 说明
+
+- 数据库仍位于 `backend/data/winoj.db`，路径未变。
+- 迁移后数据库目录会出现 `winoj.db-wal` / `winoj.db-shm` 文件（WAL 模式，崩溃安全、读写更快），属正常现象，请勿手动删除。
+- 如需回滚：用第 4 步生成的备份覆盖回 `winoj.db` 即可。
 
 ## 配置说明
 
@@ -367,6 +409,12 @@ winoj/
 | **超级管理员** | 最高权限 | 所有权限 + 修改角色、重置密码、免密登录、管理语言、设置 Rating、自删除、设置图床限额 |
 
 ## 更新日志
+
+### v1.8.0
+- 数据库引擎从 sql.js 更换为 better-sqlite3（原生同步直写，性能与可靠性大幅提升）
+- 新增数据库迁移脚本 `scripts/migrate-sqlite.js`（备份 + 完整性校验 + 数据统计）
+- 修复内嵌 URL（`@[url]`）无法显示问题（CSP frame-src 白名单过窄）
+- 修复 sandbox 在非管理员用户下 CreateProcessAsUser 报错 (error 5) 的问题
 
 ### v1.7.0
 - 新增公告系统（全局/比赛公告，置顶展示，Markdown 支持）
@@ -500,7 +548,7 @@ A: 对已结束的比赛，你可以发起"虚拟参加"获得一个私有实例
 A: 以教师及以上身份登录管理后台，在题目管理点击"查重"按钮即可对该题发起查重。查重在后台异步执行，报告页实时显示进度。结果按相似度排序：≥85% 高度相似（红）、≥70% 疑似相似（橙）。点击"查看详情"可并排对比两份代码，相同 token 金色高亮。比赛结束后可在比赛管理点击"一键查重"对全部题目发起查重。
 
 **Q: 数据库在哪里？**
-A: 默认在 `backend/data/winoj.db`，SQLite 格式，所有数据在重启后保留。
+A: 默认在 `backend/data/winoj.db`，SQLite 格式，由 better-sqlite3 驱动（v1.8.0 起），所有数据在重启后保留。
 
 ## 许可证
 

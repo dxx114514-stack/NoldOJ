@@ -1,4 +1,4 @@
-const initSqlJs = require('sql.js');
+const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
@@ -6,42 +6,10 @@ const config = require('../config/config');
 
 let sqlDb = null;
 
-function saveDB() {
-  if (!sqlDb) return;
-  const data = sqlDb.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(config.database.path, buffer);
-}
-
+// better-sqlite3 的 Statement 原生提供 get/all/run，直接透传即可
 function prepare(sql) {
-  return {
-    get(...params) {
-      const stmt = sqlDb.prepare(sql);
-      if (params.length > 0 && Array.isArray(params[0])) stmt.bind(params[0]);
-      else if (params.length > 0) stmt.bind(params);
-      let result = undefined;
-      if (stmt.step()) result = stmt.getAsObject();
-      stmt.free();
-      return result;
-    },
-    all(...params) {
-      const stmt = sqlDb.prepare(sql);
-      if (params.length > 0 && Array.isArray(params[0])) stmt.bind(params[0]);
-      else if (params.length > 0) stmt.bind(params);
-      const results = [];
-      while (stmt.step()) results.push(stmt.getAsObject());
-      stmt.free();
-      return results;
-    },
-    run(...params) {
-      const flat = params.length > 0 && Array.isArray(params[0]) ? params[0] : params;
-      sqlDb.run(sql, flat);
-      const lastId = prepare('SELECT last_insert_rowid() as id').get()?.id;
-      const changes = sqlDb.getRowsModified();
-      saveDB();
-      return { lastInsertRowid: lastId, changes };
-    }
-  };
+  if (!sqlDb) throw new Error('Database not initialized, call initDB() first');
+  return sqlDb.prepare(sql);
 }
 
 // 表名白名单: 防止 SQL 注入（findNextId 仅由内部代码调用，但显式校验更安全）
@@ -58,9 +26,9 @@ function findNextId(table) {
   if (!ALLOWED_TABLES.has(table)) {
     throw new Error(`findNextId: invalid table name "${table}"`);
   }
-  const rows = sqlDb.exec(`SELECT id FROM ${table} ORDER BY id`);
-  if (rows.length === 0 || rows[0].values.length === 0) return 1;
-  const ids = rows[0].values.map(r => r[0]).sort((a, b) => a - b);
+  const rows = sqlDb.prepare(`SELECT id FROM ${table} ORDER BY id`).all();
+  if (rows.length === 0) return 1;
+  const ids = rows.map(r => r.id).sort((a, b) => a - b);
   if (ids[0] > 1) return 1;
   for (let i = 0; i < ids.length - 1; i++) {
     if (ids[i + 1] - ids[i] > 1) return ids[i] + 1;
@@ -70,27 +38,33 @@ function findNextId(table) {
 
 function exec(sql) {
   sqlDb.exec(sql);
-  saveDB();
+}
+
+// better-sqlite3 同步直接写盘，无需手动导出。保留空函数以兼容旧调用。
+function saveDB() {}
+
+// 读取表列名（用于渐进式 ALTER 迁移）
+function tableCols(table) {
+  return sqlDb.pragma(`table_info(${table})`).map(r => r.name);
+}
+
+// 检查表是否存在
+function tableExists(name) {
+  return !!sqlDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(name);
 }
 
 async function initDB() {
-  const SQL = await initSqlJs();
   const dbDir = path.dirname(config.database.path);
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
-  let existingData = null;
-  if (fs.existsSync(config.database.path)) {
-    existingData = fs.readFileSync(config.database.path);
-  }
-  sqlDb = existingData ? new SQL.Database(existingData) : new SQL.Database();
-  sqlDb.run('PRAGMA journal_mode = WAL');
-  sqlDb.run('PRAGMA foreign_keys = ON');
+  sqlDb = new Database(config.database.path);
+  sqlDb.pragma('journal_mode = WAL');
+  sqlDb.pragma('foreign_keys = ON');
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   sqlDb.exec(schema);
 
-  const colsResult = sqlDb.exec("PRAGMA table_info(users)");
-  const cols = colsResult.length > 0 ? colsResult[0].values.map(r => r[1]) : [];
+  const cols = tableCols('users');
   if (!cols.includes('signature')) sqlDb.exec("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''");
   if (!cols.includes('bio')) sqlDb.exec("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''");
   if (!cols.includes('provider')) sqlDb.exec("ALTER TABLE users ADD COLUMN provider TEXT DEFAULT ''");
@@ -99,50 +73,44 @@ async function initDB() {
   if (!cols.includes('preferred_language')) sqlDb.exec("ALTER TABLE users ADD COLUMN preferred_language TEXT DEFAULT ''");
   if (!cols.includes('force_logout_at')) sqlDb.exec("ALTER TABLE users ADD COLUMN force_logout_at TEXT DEFAULT ''");
 
-  const probColsResult = sqlDb.exec("PRAGMA table_info(problems)");
-  const probCols = probColsResult.length > 0 ? probColsResult[0].values.map(r => r[1]) : [];
+  const probCols = tableCols('problems');
   if (!probCols.includes('provider')) sqlDb.exec("ALTER TABLE problems ADD COLUMN provider TEXT DEFAULT ''");
   if (!probCols.includes('sample_input')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_input TEXT DEFAULT ''");
   if (!probCols.includes('sample_output')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_output TEXT DEFAULT ''");
   if (!probCols.includes('difficulty')) sqlDb.exec("ALTER TABLE problems ADD COLUMN difficulty INTEGER DEFAULT 0");
 
-  const artColsResult = sqlDb.exec("PRAGMA table_info(articles)");
-  const artCols = artColsResult.length > 0 ? artColsResult[0].values.map(r => r[1]) : [];
+  const artCols = tableCols('articles');
   if (!artCols.includes('provider')) sqlDb.exec("ALTER TABLE articles ADD COLUMN provider TEXT DEFAULT ''");
 
-  const subCheck = sqlDb.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='submissions'");
-  if (subCheck.length > 0 && subCheck[0].values.length > 0) {
-    const createSql = subCheck[0].values[0][0];
-    if (!createSql.includes('pending_review')) {
-      sqlDb.exec("ALTER TABLE submissions RENAME TO submissions_old");
-      sqlDb.exec(`CREATE TABLE submissions (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        problem_id INTEGER NOT NULL,
-        language TEXT NOT NULL,
-        source_code TEXT DEFAULT '',
-        answer_data TEXT DEFAULT '',
-        status TEXT DEFAULT 'pending' CHECK(status IN ('pending','running','compiling','judging','accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded','runtime_error','compile_error','system_error','pending_rejudge','pending_review')),
-        score REAL DEFAULT 0,
-        time_used INTEGER DEFAULT 0,
-        memory_used INTEGER DEFAULT 0,
-        compile_output TEXT DEFAULT '',
-        JudgerDetail TEXT DEFAULT '{}',
-        created_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
-      )`);
-      sqlDb.exec("INSERT INTO submissions SELECT * FROM submissions_old");
-      sqlDb.exec("DROP TABLE submissions_old");
-      sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id)");
-      sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_problem ON submissions(problem_id)");
-      sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status)");
-      console.log('[DB] submissions table CHECK constraint updated with pending_review');
-    }
+  const subRow = sqlDb.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='submissions'").get();
+  if (subRow && !String(subRow.sql).includes('pending_review')) {
+    sqlDb.exec("ALTER TABLE submissions RENAME TO submissions_old");
+    sqlDb.exec(`CREATE TABLE submissions (
+      id INTEGER PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      problem_id INTEGER NOT NULL,
+      language TEXT NOT NULL,
+      source_code TEXT DEFAULT '',
+      answer_data TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','running','compiling','judging','accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded','runtime_error','compile_error','system_error','pending_rejudge','pending_review')),
+      score REAL DEFAULT 0,
+      time_used INTEGER DEFAULT 0,
+      memory_used INTEGER DEFAULT 0,
+      compile_output TEXT DEFAULT '',
+      JudgerDetail TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+    )`);
+    sqlDb.exec("INSERT INTO submissions SELECT * FROM submissions_old");
+    sqlDb.exec("DROP TABLE submissions_old");
+    sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id)");
+    sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_problem ON submissions(problem_id)");
+    sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status)");
+    console.log('[DB] submissions table CHECK constraint updated with pending_review');
   }
 
-  const ideColsResult = sqlDb.exec("PRAGMA table_info(ide_runs)");
-  const ideCols = ideColsResult.length > 0 ? ideColsResult[0].values.map(r => r[1]) : [];
+  const ideCols = tableCols('ide_runs');
   if (!ideCols.includes('status')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN status TEXT DEFAULT 'pending'");
   if (!ideCols.includes('compile_output')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN compile_output TEXT DEFAULT ''");
   if (!ideCols.includes('memory_used')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN memory_used INTEGER DEFAULT 0");
@@ -153,13 +121,11 @@ async function initDB() {
   if (!cols.includes('max_file_size')) sqlDb.exec("ALTER TABLE users ADD COLUMN max_file_size INTEGER DEFAULT 0");
   if (!cols.includes('max_storage')) sqlDb.exec("ALTER TABLE users ADD COLUMN max_storage INTEGER DEFAULT 0");
 
-  const tcColsResult = sqlDb.exec("PRAGMA table_info(test_cases)");
-  const tcCols = tcColsResult.length > 0 ? tcColsResult[0].values.map(r => r[1]) : [];
+  const tcCols = tableCols('test_cases');
   if (!tcCols.includes('time_limit')) sqlDb.exec("ALTER TABLE test_cases ADD COLUMN time_limit INTEGER");
   if (!tcCols.includes('memory_limit')) sqlDb.exec("ALTER TABLE test_cases ADD COLUMN memory_limit INTEGER");
 
-  const tagsTableExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'");
-  if (tagsTableExists.length === 0 || tagsTableExists[0].values.length === 0) {
+  if (!tableExists('tags')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS tags (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
@@ -178,19 +144,18 @@ async function initDB() {
   }
 
   // 预置标签
-  const presetTagCount = prepare('SELECT COUNT(*) as c FROM tags').get()?.c || 0;
+  const presetTagCount = sqlDb.prepare('SELECT COUNT(*) as c FROM tags').get()?.c || 0;
   if (presetTagCount === 0) {
     const presetTags = [
       ['模拟', '#6366f1'], ['贪心', '#10b981'], ['DP', '#f59e0b'], ['图论', '#3b82f6'],
       ['数据结构', '#8b5cf6'], ['数学', '#ef4444'], ['字符串', '#14b8a6'],
       ['搜索', '#ec4899'], ['二分', '#0ea5e9'], ['构造', '#84cc16']
     ];
-    const ins = prepare('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)');
+    const ins = sqlDb.prepare('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)');
     for (const [name, color] of presetTags) ins.run(name, color);
   }
 
-  const categoriesExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='categories'");
-  if (categoriesExists.length === 0 || categoriesExists[0].values.length === 0) {
+  if (!tableExists('categories')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
@@ -216,10 +181,8 @@ async function initDB() {
       ins.run('三代下', '第三学年 下学期', 6);
     }
   }
-  saveDB();
 
-  const emailCodesExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='email_codes'");
-  if (emailCodesExists.length === 0 || emailCodesExists[0].values.length === 0) {
+  if (!tableExists('email_codes')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS email_codes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL,
@@ -232,15 +195,13 @@ async function initDB() {
   }
 
   // 功能6：contests 表添加冻结字段
-  const contestColsResult = sqlDb.exec("PRAGMA table_info(contests)");
-  const contestCols = contestColsResult.length > 0 ? contestColsResult[0].values.map(r => r[1]) : [];
+  const contestCols = tableCols('contests');
   if (!contestCols.includes('freeze_minutes')) sqlDb.exec("ALTER TABLE contests ADD COLUMN freeze_minutes INTEGER DEFAULT 0");
   if (!contestCols.includes('unfrozen')) sqlDb.exec("ALTER TABLE contests ADD COLUMN unfrozen INTEGER DEFAULT 0");
   if (!contestCols.includes('unfrozen_at')) sqlDb.exec("ALTER TABLE contests ADD COLUMN unfrozen_at TEXT");
 
   // 功能7：题单表
-  const psExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='problem_sets'");
-  if (psExists.length === 0 || psExists[0].values.length === 0) {
+  if (!tableExists('problem_sets')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS problem_sets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -275,8 +236,7 @@ async function initDB() {
   }
 
   // 功能8：讨论 / 题解区
-  const discExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='discussions'");
-  if (discExists.length === 0 || discExists[0].values.length === 0) {
+  if (!tableExists('discussions')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS discussions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       problem_id INTEGER,
@@ -311,8 +271,7 @@ async function initDB() {
   }
 
   // 功能9：虚拟比赛
-  const vcExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='virtual_contests'");
-  if (vcExists.length === 0 || vcExists[0].values.length === 0) {
+  if (!tableExists('virtual_contests')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS virtual_contests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       contest_id INTEGER NOT NULL,
@@ -328,13 +287,11 @@ async function initDB() {
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_virtual_contests_user ON virtual_contests(user_id)');
   }
   // submissions 表添加 virtual_contest_id 列
-  const subColsResult2 = sqlDb.exec("PRAGMA table_info(submissions)");
-  const subCols2 = subColsResult2.length > 0 ? subColsResult2[0].values.map(r => r[1]) : [];
+  const subCols2 = tableCols('submissions');
   if (!subCols2.includes('virtual_contest_id')) sqlDb.exec("ALTER TABLE submissions ADD COLUMN virtual_contest_id INTEGER");
 
   // 功能10：代码查重任务表
-  const plgExists = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='plagiarism_tasks'");
-  if (plgExists.length === 0 || plgExists[0].values.length === 0) {
+  if (!tableExists('plagiarism_tasks')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS plagiarism_tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       problem_id INTEGER NOT NULL,
@@ -360,9 +317,9 @@ async function initDB() {
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_plagiarism_pairs_task ON plagiarism_pairs(task_id)');
   }
 
-  const langCount = prepare('SELECT COUNT(*) as c FROM languages').get()?.c || 0;
+  const langCount = sqlDb.prepare('SELECT COUNT(*) as c FROM languages').get()?.c || 0;
   if (langCount === 0) {
-    const ins = prepare('INSERT INTO languages (name, display_name, compile_cmd, run_cmd, extension) VALUES (?, ?, ?, ?, ?)');
+    const ins = sqlDb.prepare('INSERT INTO languages (name, display_name, compile_cmd, run_cmd, extension) VALUES (?, ?, ?, ?, ?)');
     ins.run('c', 'C', 'gcc -O2 -Wall -o "{exe}" "{src}"', '"{exe}"', '.c');
     ins.run('cpp', 'C++', 'g++ -O2 -Wall -std=c++17 -o "{exe}" "{src}"', '"{exe}"', '.cpp');
     ins.run('python3', 'Python 3', '', 'python "{src}"', '.py');
@@ -370,12 +327,13 @@ async function initDB() {
     ins.run('javascript', 'JavaScript', '', 'node "{src}"', '.js');
   }
 
-  const adminCount = prepare("SELECT COUNT(*) as c FROM users WHERE username = 'admin'").get()?.c || 0;
+  const adminCount = sqlDb.prepare("SELECT COUNT(*) as c FROM users WHERE username = 'admin'").get()?.c || 0;
   if (adminCount === 0) {
     const hash = bcrypt.hashSync('admin123', 10);
-    prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run('admin', hash, 'Super Admin', 'su');
+    sqlDb.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run('admin', hash, 'Super Admin', 'su');
   }
-  saveDB();
+
+  return sqlDb;
 }
 
 const db = { prepare, exec, saveDB, findNextId };
