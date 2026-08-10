@@ -29,6 +29,7 @@
       <button onclick="showTab('files')" id="tab-files" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">文件管理</button>
       <button onclick="showTab('contests')" id="tab-contests" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">比赛管理</button>
       <button onclick="showTab('categories')" id="tab-categories" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">分类管理</button>
+      <button onclick="showTab('tags')" id="tab-tags" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">标签管理</button>
       <button onclick="showTab('announcements')" id="tab-announcements" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">公告管理</button>
     </div>
 
@@ -425,6 +426,47 @@
       </div>
     </div>
 
+    <div id="panel-tags" class="hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold">标签管理</h2>
+        <button onclick="showCreateTag()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 新建标签</button>
+      </div>
+      <div id="createTagForm" class="hidden bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-4">
+        <h3 class="font-semibold mb-3" id="tagFormTitle">新建标签</h3>
+        <div class="grid grid-cols-2 gap-4 mb-3">
+          <div>
+            <label class="text-xs text-gray-500 dark:text-gray-400 mb-1 block">标签名称</label>
+            <input id="tagName" placeholder="如：二分答案" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 dark:text-gray-400 mb-1 block">标签颜色</label>
+            <input id="tagColor" type="color" value="#6366f1" onchange="updateTagPreview()" class="h-10 w-full rounded-xl border border-gray-300 dark:border-gray-600 cursor-pointer bg-transparent">
+          </div>
+        </div>
+        <div class="mb-4 flex items-center gap-2">
+          <span class="text-xs text-gray-500 dark:text-gray-400">预览：</span>
+          <span id="tagColorPreview" class="px-2 py-0.5 text-xs rounded-full" style="background-color: #6366f120; color: #6366f1">标签预览</span>
+        </div>
+        <div class="flex justify-end space-x-3">
+          <button onclick="hideCreateTag()" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl">取消</button>
+          <button onclick="saveTag()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700" id="tagSaveBtn">创建</button>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <table class="w-full">
+          <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">ID</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">标签</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">题目数</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tagList" class="divide-y divide-gray-100 dark:divide-gray-700"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="panel-announcements" class="hidden">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-semibold">公告管理</h2>
@@ -467,7 +509,7 @@
     let editingTcId = null;
 
     function showTab(tab) {
-      ['problems','users','online','articles','files','contests','categories','announcements'].forEach(t => {
+      ['problems','users','online','articles','files','contests','categories','tags','announcements'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
         const btn = document.getElementById(`tab-${t}`);
         btn.className = t === tab ? 'px-4 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white' : 'px-4 py-2 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50';
@@ -479,6 +521,7 @@
       if (tab === 'contests') loadContests();
       if (tab === 'problems') loadAdminProblems();
       if (tab === 'categories') loadAdminCategories();
+      if (tab === 'tags') loadAdminTags();
       if (tab === 'announcements') loadAdminAnnouncements();
     }
     function showCreateContest() { document.getElementById('createContestForm').classList.remove('hidden'); }
@@ -779,6 +822,83 @@
         await apiCall('DELETE', `/categories/${id}`);
         loadAdminCategories();
         loadAllCategories();
+      } catch (err) { alert(err.message); }
+    }
+
+    // ── 标签管理 ─────────────────────────────
+    let editingTagId = null;
+
+    async function loadAdminTags() {
+      try {
+        const tags = await apiCall('GET', '/tags');
+        const tbody = document.getElementById('tagList');
+        tbody.innerHTML = tags.map(t => `
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+            <td class="px-4 py-3 text-sm">${t.id}</td>
+            <td class="px-4 py-3 text-sm"><span class="px-2 py-0.5 text-xs rounded-full" style="background-color: ${t.color}20; color: ${t.color}">${escapeHtml(t.name)}</span></td>
+            <td class="px-4 py-3 text-center text-sm">${t.problem_count || 0}</td>
+            <td class="px-4 py-3 text-center">
+              <button onclick="editTag(${t.id})" class="text-blue-600 dark:text-blue-400 text-sm hover:underline mr-2">编辑</button>
+              <button onclick="deleteTag(${t.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) { console.error(err); }
+    }
+
+    function updateTagPreview() {
+      const c = document.getElementById('tagColor').value;
+      const p = document.getElementById('tagColorPreview');
+      if (p) { p.style.backgroundColor = c + '20'; p.style.color = c; }
+    }
+
+    function showCreateTag() {
+      editingTagId = null;
+      document.getElementById('tagFormTitle').textContent = '新建标签';
+      document.getElementById('tagSaveBtn').textContent = '创建';
+      document.getElementById('tagName').value = '';
+      document.getElementById('tagColor').value = '#6366f1';
+      updateTagPreview();
+      document.getElementById('createTagForm').classList.remove('hidden');
+    }
+    function hideCreateTag() { document.getElementById('createTagForm').classList.add('hidden'); editingTagId = null; }
+
+    async function editTag(id) {
+      try {
+        const t = allTagsCache.find(x => x.id === id) || await apiCall('GET', `/tags/${id}`);
+        editingTagId = id;
+        document.getElementById('tagFormTitle').textContent = `编辑标签 #${id}`;
+        document.getElementById('tagSaveBtn').textContent = '保存';
+        document.getElementById('tagName').value = t.name || '';
+        document.getElementById('tagColor').value = /^#[0-9a-fA-F]{6}$/.test(t.color || '') ? t.color : '#6366f1';
+        updateTagPreview();
+        document.getElementById('createTagForm').classList.remove('hidden');
+      } catch (err) { alert(err.message); }
+    }
+
+    async function saveTag() {
+      const name = document.getElementById('tagName').value.trim();
+      if (!name) { alert('请输入标签名称'); return; }
+      const color = document.getElementById('tagColor').value;
+      const data = { name, color };
+      try {
+        if (editingTagId) {
+          await apiCall('PUT', `/tags/${editingTagId}`, data);
+        } else {
+          await apiCall('POST', '/tags', data);
+        }
+        hideCreateTag();
+        loadAdminTags();
+        loadAllTags();
+      } catch (err) { alert(err.message || '操作失败'); }
+    }
+
+    async function deleteTag(id) {
+      if (!confirm('确定删除此标签？该标签将从所有题目上移除，不影响题目本身。')) return;
+      try {
+        await apiCall('DELETE', `/tags/${id}`);
+        loadAdminTags();
+        loadAllTags();
       } catch (err) { alert(err.message); }
     }
 

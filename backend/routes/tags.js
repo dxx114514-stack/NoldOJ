@@ -6,6 +6,10 @@ const router = express.Router();
 
 router.get('/', (req, res) => {
   const tags = db.prepare('SELECT * FROM tags ORDER BY name').all();
+  const countStmt = db.prepare('SELECT COUNT(*) as c FROM problem_tags WHERE tag_id = ?');
+  for (const tag of tags) {
+    tag.problem_count = countStmt.get(tag.id).c;
+  }
   res.json(tags);
 });
 
@@ -86,6 +90,14 @@ router.get('/problem/:problemId', (req, res) => {
     ORDER BY t.name
   `).all(req.params.problemId);
   res.json(tags);
+});
+
+router.get('/:id', (req, res) => {
+  const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(req.params.id);
+  if (!tag) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Tag not found.' });
+  }
+  res.json(tag);
 });
 
 module.exports = router;

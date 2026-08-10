@@ -5,11 +5,9 @@ const { v4: uuidv4 } = require('uuid');
 const config = require('../config/config');
 const db = require('../database/db');
 
-const MEMWATCH_PATH = path.join(__dirname, 'memwatch.exe');
-const hasMemwatch = process.platform === 'win32' && fs.existsSync(MEMWATCH_PATH);
-
 // ── 安全沙箱运行器 (sandbox_runner.exe) ─────────────────────
 // 当存在时优先使用，提供 Job Object + 受限令牌 + 进程树隔离
+// 缺失时 start.bat 会自动从 sandbox_runner.cpp 编译；编译失败才回退到传统模式
 const SANDBOX_RUNNER_PATH = path.join(__dirname, 'sandbox_runner.exe');
 const hasSandboxRunner = process.platform === 'win32' && fs.existsSync(SANDBOX_RUNNER_PATH);
 
@@ -240,7 +238,7 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
   });
 }
 
-// ── 传统模式: 直接 spawn + memwatch (回退) ──────────────────
+// ── 传统模式: 直接 spawn (回退) ─────────────────────────────
 function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
   return new Promise((resolve) => {
     const actualExe = isWindows ? exeFile + '.exe' : exeFile;
@@ -254,16 +252,12 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
     const execFile = parts[0].replace(/^"|"$/g, '');
     const execArgs = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
 
-    const useMemwatch = isWindows && hasMemwatch;
-    const spawnFile = useMemwatch ? MEMWATCH_PATH : execFile;
-    const spawnArgs = useMemwatch ? [execFile, ...execArgs] : execArgs;
-
     const startTime = Date.now();
     let killed = false;
     let peakMemoryKB = 0;
     let memoryLimitKB = memoryLimitMb * 1024;
 
-    const proc = spawn(spawnFile, spawnArgs, {
+    const proc = spawn(execFile, execArgs, {
       cwd: workDir,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
@@ -281,17 +275,7 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
     });
 
     proc.stderr.on('data', (data) => {
-      const chunk = data.toString();
-      if (useMemwatch) {
-        const memMatch = chunk.match(/MEMWATCH:(\d+)/);
-        if (memMatch) {
-          peakMemoryKB = parseInt(memMatch[1]) || 0;
-        } else {
-          stderr += chunk;
-        }
-      } else {
-        stderr += chunk;
-      }
+      stderr += data.toString();
       if (stderr.length > config.sandbox.maxOutputSize) {
         killed = true;
         killProc(proc, isWindows);

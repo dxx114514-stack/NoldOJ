@@ -17,7 +17,7 @@
 > cd backend\sandbox
 > build.bat
 > ```
-> 未编译时自动回退到传统模式（spawn + memwatch），安全性较低。
+> 未编译时自动回退到传统模式（spawn），安全性较低。
 
 专为 Windows 平台设计的在线评测系统，支持多语言代码评测、安全沙箱执行、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查、黑夜模式、SVG 图形验证码、模糊搜索、公告系统、题目标签与难度、代码 Diff 对比、多文件提交、WebSocket 实时推送、排行榜冻结、题单训练计划、讨论/题解区、虚拟比赛、代码查重等功能。
 
@@ -25,7 +25,7 @@
 
 ### 评测核心
 - **多语言支持**：C、C++、Python 3、Java、JavaScript，可通过管理面板动态添加/禁用
-- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），受限令牌剥离高危特权，CPU/内存/进程数受限，每次判题使用独立临时目录；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn + memwatch）
+- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），受限令牌剥离高危特权，CPU/内存/进程数受限，每次判题使用独立临时目录；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn）
 - **内存检测**：每个测试点和 IDE 运行均记录峰值内存使用量
 - **多种比较模式**：严格文本比较、宽松文本比较、浮点数容差比较、Special Judge
 - **自定义计分脚本**：支持变量、算术运算、位运算、逻辑运算、条件分支（支持括号）、min/max/abs 函数
@@ -203,8 +203,7 @@
 
 | 依赖 | 版本要求 | 用途 |
 |------|---------|------|
-| **Node.js** | >= 18.x | 运行后端服务 |
-| **better-sqlite3** | 跟随 npm 安装 | 原生 SQLite 驱动（数据库引擎） |
+| **Node.js** | >= 24.x（需内置 node:sqlite） | 运行后端服务，内置 SQLite 引擎 |
 | **Mingw64** | 任意版本 | C/C++ 编译 |
 | **Python 3** | 任意版本 | Python 代码执行（可选） |
 | **JDK** | 任意版本 | Java 编译和执行（可选） |
@@ -251,11 +250,11 @@ npm install
 
 > **重要**：首次登录后请立即修改管理员密码！
 
-## 数据库迁移（sql.js → better-sqlite3）
+## 数据库迁移（sql.js → node:sqlite）
 
-v1.8.0 起数据库引擎从 `sql.js`（WASM 内存库，每次写操作整库导出落盘）更换为 `better-sqlite3`（原生 SQLite，同步直写）。
+v1.8.0 起数据库引擎从 `sql.js`（WASM 内存库，每次写操作整库导出落盘）更换为 Node 内置的 `node:sqlite`（原生 SQLite，同步直写，无需任何 npm 依赖）。
 
-**关键点**：sql.js 导出的数据库文件本身就是标准 SQLite 格式，旧数据**无需转换**，better-sqlite3 可直接打开，所有数据原样保留。
+**关键点**：sql.js 导出的数据库文件本身就是标准 SQLite 格式，旧数据**无需转换**，node:sqlite 可直接打开，所有数据原样保留。
 
 ### 迁移步骤
 
@@ -264,12 +263,12 @@ v1.8.0 起数据库引擎从 `sql.js`（WASM 内存库，每次写操作整库�
    ```batch
    git pull
    ```
-3. **安装依赖**（会安装 better-sqlite3 并移除 sql.js）：
+3. **安装依赖**：
    ```batch
    cd backend
    npm install
    ```
-   > 若安装失败，多为缺少编译环境。better-sqlite3 优先下载预编译二进制；失败时才需要 node-gyp + VS Build Tools。可手动指定 Node 版本对应的预编译包。
+   > 无需安装数据库驱动：node:sqlite 是 Node.js 内置模块（要求 Node >= 24）。
 4. **（可选但推荐）备份并校验旧库**：
    ```batch
    node scripts\migrate-sqlite.js
@@ -385,7 +384,7 @@ winoj/
 │   ├── middleware/         # 认证、限流、在线用户追踪
 │   ├── routes/             # API 路由（16个模块，100+端点）
 │   ├── services/           # 评测引擎 + IDE 评测 + AI 安全审查 + 验证码 + 查重
-│   ├── sandbox/            # 代码执行沙箱 + 计分脚本解释器 + memwatch
+│   ├── sandbox/            # 代码执行沙箱 + 计分脚本解释器
 │   ├── test/               # 单元测试（70+ 测试用例）
 │   └── src/                # 服务器入口
 ├── frontend/
@@ -411,7 +410,7 @@ winoj/
 ## 更新日志
 
 ### v1.8.0
-- 数据库引擎从 sql.js 更换为 better-sqlite3（原生同步直写，性能与可靠性大幅提升）
+- 数据库引擎从 sql.js 更换为 Node 内置 node:sqlite（原生同步直写，零依赖，性能与可靠性大幅提升）
 - 新增数据库迁移脚本 `scripts/migrate-sqlite.js`（备份 + 完整性校验 + 数据统计）
 - 修复内嵌 URL（`@[url]`）无法显示问题（CSP frame-src 白名单过窄）
 - 修复 sandbox 在非管理员用户下 CreateProcessAsUser 报错 (error 5) 的问题
@@ -512,7 +511,7 @@ winoj/
 A: 检查服务器控制台是否有报错。可能是编译器未安装或路径未配置。
 
 **Q: 内存显示 0KB？**
-A: 内存监控依赖 Windows 原生 memwatch 工具，仅在 Windows 下可用。确保 `sandbox/memwatch.exe` 存在。
+A: 沙箱模式下内存由 Job Object 测量；若显示 0KB，说明 `sandbox_runner.exe` 构建失败并回退到传统模式（该模式不测量内存）。确保 `sandbox/sandbox_runner.exe` 存在（缺失时 start.bat 会自动从源码构建）。
 
 **Q: 如何添加新语言？**
 A: 以超级管理员登录，进入"语言"管理页面，填写编译/运行命令即可。
@@ -548,7 +547,7 @@ A: 对已结束的比赛，你可以发起"虚拟参加"获得一个私有实例
 A: 以教师及以上身份登录管理后台，在题目管理点击"查重"按钮即可对该题发起查重。查重在后台异步执行，报告页实时显示进度。结果按相似度排序：≥85% 高度相似（红）、≥70% 疑似相似（橙）。点击"查看详情"可并排对比两份代码，相同 token 金色高亮。比赛结束后可在比赛管理点击"一键查重"对全部题目发起查重。
 
 **Q: 数据库在哪里？**
-A: 默认在 `backend/data/winoj.db`，SQLite 格式，由 better-sqlite3 驱动（v1.8.0 起），所有数据在重启后保留。
+A: 默认在 `backend/data/winoj.db`，SQLite 格式，由 Node 内置 node:sqlite 驱动（v1.8.0 起），所有数据在重启后保留。
 
 ## 许可证
 

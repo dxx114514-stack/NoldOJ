@@ -1,4 +1,4 @@
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
@@ -6,7 +6,7 @@ const config = require('../config/config');
 
 let sqlDb = null;
 
-// better-sqlite3 的 Statement 原生提供 get/all/run，直接透传即可
+// node:sqlite 的 StatementSync 原生提供 get/all/run，直接透传即可
 function prepare(sql) {
   if (!sqlDb) throw new Error('Database not initialized, call initDB() first');
   return sqlDb.prepare(sql);
@@ -40,12 +40,12 @@ function exec(sql) {
   sqlDb.exec(sql);
 }
 
-// better-sqlite3 同步直接写盘，无需手动导出。保留空函数以兼容旧调用。
+// node:sqlite 同步直接写盘，无需手动导出。保留空函数以兼容旧调用。
 function saveDB() {}
 
 // 读取表列名（用于渐进式 ALTER 迁移）
 function tableCols(table) {
-  return sqlDb.pragma(`table_info(${table})`).map(r => r.name);
+  return sqlDb.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
 }
 
 // 检查表是否存在
@@ -57,9 +57,9 @@ async function initDB() {
   const dbDir = path.dirname(config.database.path);
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
-  sqlDb = new Database(config.database.path);
-  sqlDb.pragma('journal_mode = WAL');
-  sqlDb.pragma('foreign_keys = ON');
+  sqlDb = new DatabaseSync(config.database.path);
+  sqlDb.exec('PRAGMA journal_mode = WAL');
+  sqlDb.exec('PRAGMA foreign_keys = ON');
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   sqlDb.exec(schema);

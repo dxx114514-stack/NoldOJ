@@ -1,13 +1,13 @@
-// migrate-sqlite.js — sql.js → better-sqlite3 迁移工具
+// migrate-sqlite.js — sql.js → node:sqlite（内置 SQLite）迁移工具
 //
 // 背景：
 //   WinOJ 原本使用 sql.js（WASM 内存数据库），每次写操作都会把整个数据库
-//   导出写回磁盘，速度慢且有崩溃丢数据的风险。本版本改为 better-sqlite3
-//   （原生 SQLite，同步直写磁盘）。
+//   导出写回磁盘，速度慢且有崩溃丢数据的风险。本版本改用 Node 内置的
+//   node:sqlite（原生 SQLite，同步直写，无需任何 npm 依赖）。
 //
 // 关键点：
 //   sql.js 的 db.export() 导出的文件本身就是标准 SQLite 格式，因此旧数据
-//   无需转换，better-sqlite3 可直接打开。本脚本负责：
+//   无需转换，node:sqlite 可直接打开。本脚本负责：
 //     1. 备份旧数据库
 //     2. 完整性校验（PRAGMA integrity_check）
 //     3. 统计各表行数，确认数据完好
@@ -27,6 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { DatabaseSync } = require('node:sqlite');
 
 function log(msg) { console.log(`[migrate] ${msg}`); }
 function logError(msg) { console.error(`[migrate][ERROR] ${msg}`); }
@@ -54,10 +55,9 @@ try {
 
 // 3. 校验并统计
 try {
-  const Database = require(path.join(__dirname, '..', 'backend', 'node_modules', 'better-sqlite3'));
-  const db = new Database(DB_PATH, { readonly: true });
+  const db = new DatabaseSync(DB_PATH, { readOnly: true });
 
-  const integrity = db.pragma('integrity_check');
+  const integrity = db.prepare('PRAGMA integrity_check').all();
   const ok = integrity.length > 0 && integrity[0].integrity_check === 'ok';
   log(`完整性检查: ${ok ? 'PASS (ok)' : 'FAIL: ' + JSON.stringify(integrity)}`);
   if (!ok) {
@@ -78,7 +78,7 @@ try {
 
   db.close();
 } catch (e) {
-  logError(`校验失败（请确认已执行 npm install 安装 better-sqlite3）: ${e.message}`);
+  logError(`校验失败: ${e.message}`);
   process.exit(1);
 }
 
