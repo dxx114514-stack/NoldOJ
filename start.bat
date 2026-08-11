@@ -26,24 +26,26 @@ if !errorlevel! neq 0 (
 for /f "tokens=*" %%i in ('node -v') do set NODE_VER=%%i
 echo [OK] Node.js: %NODE_VER%
 
-REM == Sandbox compile ==================================================
-if not exist "backend\sandbox\sandbox_runner.exe" (
-    if exist "backend\sandbox\sandbox_runner.cpp" (
-        where g++ >nul 2>&1
-        if !errorlevel! equ 0 (
-            echo [..] Building sandbox_runner.exe - Job Object security + AppContainer...
-            g++ -O2 -static -o "backend\sandbox\sandbox_runner.exe" "backend\sandbox\sandbox_runner.cpp" -lpsapi -luserenv 2>nul
-            if exist "backend\sandbox\sandbox_runner.exe" (
-                echo [OK] sandbox_runner.exe built - Job Object isolation active
-            ) else (
-                echo [!!] sandbox_runner.exe build failed - using legacy mode
-            )
+REM == Sandbox compile (始终重编译，确保与 sandbox_runner.cpp 同步) ======
+if exist "backend\sandbox\sandbox_runner.cpp" (
+    where g++ >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo [..] Building sandbox_runner.exe - Job Object security + AppContainer...
+        g++ -O2 -static -o "backend\sandbox\sandbox_runner.exe" "backend\sandbox\sandbox_runner.cpp" -lpsapi -luserenv 2>nul
+        if exist "backend\sandbox\sandbox_runner.exe" (
+            echo [OK] sandbox_runner.exe rebuilt - Job Object isolation active
         ) else (
-            echo [!!] g++ not found - sandbox_runner.exe not built, using legacy mode
+            echo [!!] sandbox_runner.exe build failed - using legacy mode
         )
+    ) else (
+        echo [!!] g++ not found - sandbox_runner.exe not rebuilt, using legacy mode
     )
 ) else (
-    echo [OK] sandbox_runner.exe found - Job Object isolation active
+    if exist "backend\sandbox\sandbox_runner.exe" (
+        echo [OK] sandbox_runner.exe kept - Job Object isolation active
+    ) else (
+        echo [!!] sandbox_runner.exe missing - using legacy mode
+    )
 )
 
 cd backend

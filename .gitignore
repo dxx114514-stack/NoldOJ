@@ -17,6 +17,7 @@ data/uploads/
 
 # Sandbox temp files
 winoj-sandbox/
+backend/sandbox/sandbox_runner.exe
 
 # OS files
 Thumbs.db
