@@ -11,12 +11,12 @@ if errorlevel 1 (
 )
 
 echo [INFO] Compiling sandbox_runner.exe ...
-g++ -O2 -static -o sandbox_runner.exe sandbox_runner.cpp -lpsapi
+g++ -O2 -static -o sandbox_runner.exe sandbox_runner.cpp -lpsapi -luserenv
 if errorlevel 1 (
     echo [ERROR] Compilation failed.
     exit /b 1
 )
 
 echo [OK] sandbox_runner.exe built successfully.
-echo [INFO] The sandbox will now use Job Object isolation + restricted token.
-echo [INFO] If sandbox_runner.exe is absent, the system falls back to legacy mode.
+echo [INFO] Sandbox: Job Object isolation + restricted token + AppContainer (fs/network jail).
+echo [INFO] AppContainer requires admin/service privileges; otherwise falls back gracefully.

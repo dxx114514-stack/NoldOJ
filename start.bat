@@ -31,8 +31,8 @@ if not exist "backend\sandbox\sandbox_runner.exe" (
     if exist "backend\sandbox\sandbox_runner.cpp" (
         where g++ >nul 2>&1
         if !errorlevel! equ 0 (
-            echo [..] Building sandbox_runner.exe - Job Object security...
-            g++ -O2 -static -o "backend\sandbox\sandbox_runner.exe" "backend\sandbox\sandbox_runner.cpp" -lpsapi 2>nul
+            echo [..] Building sandbox_runner.exe - Job Object security + AppContainer...
+            g++ -O2 -static -o "backend\sandbox\sandbox_runner.exe" "backend\sandbox\sandbox_runner.cpp" -lpsapi -luserenv 2>nul
             if exist "backend\sandbox\sandbox_runner.exe" (
                 echo [OK] sandbox_runner.exe built - Job Object isolation active
             ) else (

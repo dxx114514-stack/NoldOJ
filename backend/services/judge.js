@@ -162,6 +162,9 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
               score: 0,
               timeUsed: 0,
               memoryUsed: 0,
+              stdout: '',
+              stderr: '',
+              exitCode: -1,
               detailId
             });
           }
@@ -193,11 +196,11 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
             if (status !== 'accepted') groupAllAccepted = false;
             const memKB = result.memoryUsed || 0;
             updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, 4096), (result.stderr || '').slice(0, 4096), result.exitCode, '', detailId);
-            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, detailId });
+            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, 4096), stderr: (result.stderr || '').slice(0, 4096), exitCode: result.exitCode, detailId });
           } catch (err) {
             groupAllAccepted = false;
             updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
-            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, detailId });
+            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: err.message, exitCode: -1, detailId });
           }
         }
 
@@ -226,10 +229,10 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
           const memKB = result.memoryUsed || 0;
           updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, 4096), (result.stderr || '').slice(0, 4096), result.exitCode, '', detailId);
-          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, detailId });
+          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, 4096), stderr: (result.stderr || '').slice(0, 4096), exitCode: result.exitCode, detailId });
         } catch (err) {
           updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
-          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, detailId });
+          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: err.message, exitCode: -1, detailId });
         }
       }
     }
@@ -253,7 +256,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
     }
 
     for (const tc of tcResults) {
-      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, '', '', 0, '', tc.detailId);
+      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, tc.stdout || '', tc.stderr || '', typeof tc.exitCode === 'number' ? tc.exitCode : -1, '', tc.detailId);
     }
 
     updateSubmission.run(finalStatus, finalScore, finalTime, finalMemory, '', submission.id);
