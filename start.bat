@@ -47,7 +47,7 @@ if exist "backend\sandbox\sandbox_runner.cpp" (
         echo [!!] sandbox_runner.exe missing - using legacy mode
     )
 )
-
+title WinOJ
 cd backend
 call npm ls --silent
 if !errorlevel! neq 0 (
@@ -62,7 +62,7 @@ if !errorlevel! neq 0 (
     echo [OK] Dependencies installed
 )
 cd ..
-
+title WinOJ
 echo.
 echo [..] Starting WinOJ server...
 echo [..] Logs: log\server.log
