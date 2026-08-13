@@ -1130,6 +1130,98 @@ paths:
         '200':
           description: 移除成功
 
+  /problems/{id}/batch-testcases:
+    put:
+      tags: [题目]
+      summary: 批量更新测试点
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [testcases]
+              properties:
+                testcases:
+                  type: array
+                  description: 每个元素含测试点 id 及待更新字段
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: 更新成功
+
+  /problems/{id}/discussions:
+    get:
+      tags: [题目]
+      summary: 题目讨论列表
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 讨论列表
+
+  /problems/{id}/plagiarism-check:
+    post:
+      tags: [题目]
+      summary: 对题目发起代码查重
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                threshold:
+                  type: integer
+                  default: 80
+                min_submissions:
+                  type: integer
+                  default: 2
+                start_time:
+                  type: string
+                end_time:
+                  type: string
+      responses:
+        '200':
+          description: 查重任务已启动
+
+  /problems/{id}/plagiarism-report:
+    get:
+      tags: [题目]
+      summary: 获取题目查重报告
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 查重报告
+
   # ===== TAGS =====
   /tags:
     get:
@@ -1398,6 +1490,22 @@ paths:
         '200':
           description: 重测成功
 
+  /submissions/{id}/diff:
+    get:
+      tags: [提交]
+      summary: 与上次提交的代码对比
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 代码 diff；WA 时附期望/实际输出
+
   # ===== IDE =====
   /ide/languages:
     get:
@@ -1594,6 +1702,16 @@ paths:
       responses:
         '200':
           description: 更新成功
+
+  /users/me/virtual-contests:
+    get:
+      tags: [用户]
+      summary: 我的虚拟比赛列表
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 虚拟比赛列表
 
   /users/{id}/profile:
     get:
@@ -2232,6 +2350,7 @@ paths:
     get:
       tags: [比赛]
       summary: 比赛排行榜
+      description: 可选认证。参赛者/teacher/admin/su 返回完整排行榜（含 rank、total_score、total_time、各题得分）；非参赛者或未登录仅返回冻结状态（leaderboard 为空），不泄露排名。冻结时只统计冻结时刻前的提交。
       parameters:
         - name: id
           in: path
@@ -2241,6 +2360,94 @@ paths:
       responses:
         '200':
           description: 排行榜
+
+  /contests/{id}/unfreeze:
+    post:
+      tags: [比赛]
+      summary: 解除排行榜冻结
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 解冻成功
+
+  /contests/{id}/announcements:
+    get:
+      tags: [比赛]
+      summary: 比赛内公告列表
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 公告列表
+
+  /contests/{id}/virtual-start:
+    post:
+      tags: [比赛]
+      summary: 发起虚拟参赛
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 虚拟参赛已启动
+
+  /contests/{id}/plagiarism-check:
+    post:
+      tags: [比赛]
+      summary: 对比赛所有题目一键查重
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                threshold:
+                  type: integer
+                  default: 80
+                min_submissions:
+                  type: integer
+                  default: 2
+      responses:
+        '200':
+          description: 查重任务已启动
+
+  /contests/{id}/discussions:
+    get:
+      tags: [比赛]
+      summary: 比赛讨论列表
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 讨论列表
 
   # ===== ARTICLES =====
   /articles:
@@ -2396,6 +2603,223 @@ paths:
         '200':
           description: 删除成功
 
+  # ===== DISCUSSIONS =====
+  /discussions:
+    post:
+      tags: [讨论]
+      summary: 创建讨论
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                problem_id:
+                  type: integer
+                  description: 题目讨论，与 contest_id 二选一
+                contest_id:
+                  type: integer
+                  description: 比赛讨论，与 problem_id 二选一
+                title:
+                  type: string
+                content:
+                  type: string
+                  description: Markdown 格式
+      responses:
+        '201':
+          description: 创建成功
+
+  /discussions/{id}:
+    get:
+      tags: [讨论]
+      summary: 讨论详情（含楼中楼回复树，最多两层）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 讨论详情
+    put:
+      tags: [讨论]
+      summary: 更新讨论（作者或 admin）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                pinned:
+                  type: boolean
+                locked:
+                  type: boolean
+                is_official:
+                  type: boolean
+      responses:
+        '200':
+          description: 更新成功
+    delete:
+      tags: [讨论]
+      summary: 删除讨论（作者或 admin，含全部回复）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+
+  /discussions/{id}/replies:
+    post:
+      tags: [讨论]
+      summary: 发表回复
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                parent_id:
+                  type: integer
+                  description: 二级回复时指向一级回复 id
+      responses:
+        '201':
+          description: 回复成功
+
+  /discussions/{id}/replies/{rid}:
+    delete:
+      tags: [讨论]
+      summary: 删除回复（作者或 admin，级联删除其直接子回复）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: rid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+
+  /discussions/{id}/pin:
+    put:
+      tags: [讨论]
+      summary: 置顶/取消置顶（teacher+）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pinned]
+              properties:
+                pinned:
+                  type: boolean
+      responses:
+        '200':
+          description: 成功
+
+  /discussions/{id}/lock:
+    put:
+      tags: [讨论]
+      summary: 锁定/解锁（teacher+）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locked]
+              properties:
+                locked:
+                  type: boolean
+      responses:
+        '200':
+          description: 成功
+
+  /discussions/{id}/official:
+    put:
+      tags: [讨论]
+      summary: 标记官方题解（teacher+）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_official]
+              properties:
+                is_official:
+                  type: boolean
+      responses:
+        '200':
+          description: 成功
+
   # ===== STATS =====
   /stats:
     get:
@@ -2408,3 +2832,478 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Stats'
+
+  # ===== CATEGORIES =====
+  /categories:
+    get:
+      tags: [分类]
+      summary: 分类列表
+      responses:
+        '200':
+          description: 分类列表
+    post:
+      tags: [分类]
+      summary: 创建分类
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: 创建成功
+
+  /categories/{id}:
+    get:
+      tags: [分类]
+      summary: 分类详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 分类详情
+    put:
+      tags: [分类]
+      summary: 更新分类
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: 更新成功
+    delete:
+      tags: [分类]
+      summary: 删除分类
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+
+  /categories/{id}/problems/{pid}:
+    post:
+      tags: [分类]
+      summary: 把题目加入分类
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: pid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 加入成功
+    delete:
+      tags: [分类]
+      summary: 把题目移出分类
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: pid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 移除成功
+
+  # ===== ANNOUNCEMENTS =====
+  /announcements:
+    get:
+      tags: [公告]
+      summary: 公告列表
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            default: global
+      responses:
+        '200':
+          description: 公告列表
+    post:
+      tags: [公告]
+      summary: 创建公告
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                type:
+                  type: string
+                  default: global
+                pinned:
+                  type: boolean
+                  default: false
+      responses:
+        '201':
+          description: 创建成功
+
+  /announcements/{id}:
+    get:
+      tags: [公告]
+      summary: 公告详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 公告详情
+    put:
+      tags: [公告]
+      summary: 更新公告
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                pinned:
+                  type: boolean
+      responses:
+        '200':
+          description: 更新成功
+    delete:
+      tags: [公告]
+      summary: 删除公告
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+
+  # ===== PROBLEM SETS =====
+  /problem-sets:
+    get:
+      tags: [题单]
+      summary: 题单列表
+      responses:
+        '200':
+          description: 公开题单列表
+    post:
+      tags: [题单]
+      summary: 创建题单
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                is_public:
+                  type: integer
+                  enum: [0, 1]
+                  default: 1
+                problemIds:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '201':
+          description: 创建成功
+
+  /problem-sets/{id}:
+    get:
+      tags: [题单]
+      summary: 题单详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 题单详情
+    put:
+      tags: [题单]
+      summary: 更新题单信息
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                is_public:
+                  type: integer
+                  enum: [0, 1]
+      responses:
+        '200':
+          description: 更新成功
+    delete:
+      tags: [题单]
+      summary: 删除题单
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+
+  /problem-sets/{id}/problems:
+    put:
+      tags: [题单]
+      summary: 覆盖式设置题单题目列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [problemIds]
+              properties:
+                problemIds:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: 更新成功
+
+  /problem-sets/{id}/progress:
+    get:
+      tags: [题单]
+      summary: 当前用户解题进度
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 解题进度
+
+  /problem-sets/{id}/progress/{pid}:
+    post:
+      tags: [题单]
+      summary: 标记题目已 AC
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: pid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 标记成功
+
+  # ===== VIRTUAL CONTESTS =====
+  /virtual-contests/{id}:
+    get:
+      tags: [虚拟比赛]
+      summary: 虚拟比赛详情
+      description: 需认证，仅本人或 admin/su 可见。返回题目、剩余时间、我的提交。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 虚拟比赛详情
+
+  /virtual-contests/{id}/ranking:
+    get:
+      tags: [虚拟比赛]
+      summary: 本人排名数据
+      description: 需认证，仅本人或 admin/su 可见。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 排名数据
+
+  # ===== PLAGIARISM =====
+  /plagiarism/pairs/{pair_id}:
+    get:
+      tags: [查重]
+      summary: 查重对详情
+      description: 返回两份代码并排展示 + 高亮 token
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: pair_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 查重对详情
+
+  /plagiarism/{task_id}:
+    get:
+      tags: [查重]
+      summary: 查重任务进度/结果
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 任务进度与结果
+
+  # ===== SYSTEM =====
+  /health:
+    get:
+      tags: [系统]
+      summary: 健康检查
+      responses:
+        '200':
+          description: 健康检查探针
+
+  /jobs:
+    get:
+      tags: [系统]
+      summary: 任务重定向
+      description: 302 重定向到 /api/v1/submissions
+      responses:
+        '302':
+          description: 重定向
+
+  /jobs/{id}:
+    get:
+      tags: [系统]
+      summary: 任务详情重定向
+      description: 302 重定向到 /api/v1/submissions/{id}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '302':
+          description: 重定向

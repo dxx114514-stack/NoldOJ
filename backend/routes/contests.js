@@ -1,12 +1,15 @@
 const express = require('express');
 const db = require('../database/db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
+// 公开比赛列表保持匿名可访问；挂 optionalAuth 以便识别登录用户角色
+router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, search = '' } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
   let where = '';
   const params = [];
   if (search) {
@@ -21,28 +24,36 @@ router.get('/', (req, res) => {
     FROM contests c LEFT JOIN users u ON c.created_by = u.id
     ${where}
     ORDER BY c.id DESC LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit), offset);
-  res.json({ total, page: parseInt(page), limit: parseInt(limit), contests });
+  `).all(...params, limitNum, offset);
+  res.json({ total, page: pageNum, limit: limitNum, contests });
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', optionalAuth, (req, res) => {
   const contest = db.prepare('SELECT c.*, u.username as creator_name FROM contests c LEFT JOIN users u ON c.created_by = u.id WHERE c.id = ?').get(req.params.id);
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
+  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
   let problems = [];
-  if (req.user && ['teacher', 'admin', 'su'].includes(req.user.role)) {
+  if (isStaff) {
     problems = db.prepare(`
       SELECT cp.sort_order, cp.alias, p.id, p.title, p.time_limit, p.memory_limit, p.is_public
       FROM contest_problems cp JOIN problems p ON cp.problem_id = p.id
       WHERE cp.contest_id = ? ORDER BY cp.sort_order
     `).all(contest.id);
   } else {
-    problems = db.prepare(`
+    // 未开始前不泄露题目列表（防止提前预习题目）
+    const now = Date.now();
+    const started = !contest.start_time || new Date(contest.start_time).getTime() <= now;
+    if (!started) {
+      problems = [];
+    } else {
+      problems = db.prepare(`
       SELECT cp.sort_order, cp.alias, p.id, p.title, p.time_limit, p.memory_limit
       FROM contest_problems cp JOIN problems p ON cp.problem_id = p.id
       WHERE cp.contest_id = ? ORDER BY cp.sort_order
     `).all(contest.id);
+    }
   }
   const participantCount = db.prepare('SELECT COUNT(*) as c FROM contest_participants WHERE contest_id = ?').get(contest.id).c;
   res.json({ ...contest, problems, participant_count: participantCount });
@@ -187,7 +198,7 @@ router.delete('/:id/participants/:uid', requireAuth, requireRole('teacher'), (re
   res.json({ message: 'Participant removed.' });
 });
 
-router.get('/:id/leaderboard', (req, res) => {
+router.get('/:id/leaderboard', optionalAuth, (req, res) => {
   const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(req.params.id);
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
@@ -208,8 +219,17 @@ router.get('/:id/leaderboard', (req, res) => {
     }
   }
 
+  // 仅参赛者可查看完整排行榜；教师/管理员/站长放行；非参赛者只返回冻结状态，不泄露排名
+  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  const participant = req.user
+    ? db.prepare('SELECT id FROM contest_participants WHERE contest_id = ? AND user_id = ?').get(contest.id, req.user.id)
+    : null;
+  const frozenState = { leaderboard: [], problem_ids: [], frozen, freeze_at: freezeAt ? freezeAt.toISOString() : null };
+  if (!isStaff && !participant) {
+    return res.json(frozenState);
+  }
   const contestProblems = db.prepare('SELECT problem_id FROM contest_problems WHERE contest_id = ?').all(contest.id);
-  if (contestProblems.length === 0) return res.json({ leaderboard: [], problem_ids: [], frozen, freeze_at: freezeAt ? freezeAt.toISOString() : null });
+  if (contestProblems.length === 0) return res.json(frozenState);
 
   const problemIds = contestProblems.map(p => p.problem_id);
   const placeholders = problemIds.map(() => '?').join(',');

@@ -80,7 +80,10 @@ function requireRole(...roles) {
       return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'Authentication required.' });
     }
     const hierarchy = ['user', 'teacher', 'admin', 'su'];
-    const minLevel = hierarchy.indexOf(roles[0]);
+    // 要求同时满足所有传入角色（取其中最低门槛），user 满足所有额外要求
+    const levels = roles.map(r => hierarchy.indexOf(r)).filter(i => i >= 0);
+    if (levels.length === 0) return next();
+    const minLevel = Math.min(...levels);
     const userLevel = hierarchy.indexOf(req.user.role);
     if (userLevel < minLevel) {
       return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Insufficient permissions.' });

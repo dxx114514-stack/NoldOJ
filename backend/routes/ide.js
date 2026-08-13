@@ -77,6 +77,13 @@ router.get('/run/:id', optionalAuth, (req, res) => {
   if (!run) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Run not found.' });
   }
+  // 越权防护: 未登录用户不能读取；他人运行结果不能读取（管理员除外）
+  if (!req.user) {
+    return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'Authentication required.' });
+  }
+  if (run.user_id !== req.user.id && req.user.role !== 'su') {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Access denied.' });
+  }
   res.json({
     id: run.id,
     status: run.status,

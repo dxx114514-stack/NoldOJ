@@ -2,7 +2,13 @@ const buckets = new Map();
 
 function createRateLimit({ windowMs = 60000, max = 10 } = {}) {
   return (req, res, next) => {
-    const key = `${req.ip}:${req.baseUrl}${req.path}`;
+    // 反向代理 (cloudflared 等) 下 req.ip 依赖 trust proxy 设置；
+    // 兜底取 X-Forwarded-For 首跳真实 IP，避免所有用户共享同一代理 IP 而共享限流额度
+    const clientIp = req.ip ||
+      (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+      req.socket?.remoteAddress ||
+      'unknown';
+    const key = `${clientIp}:${req.baseUrl}${req.path}`;
     const now = Date.now();
     let bucket = buckets.get(key);
     if (!bucket || now - bucket.windowStart > windowMs) {

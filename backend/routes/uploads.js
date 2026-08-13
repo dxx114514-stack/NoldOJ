@@ -87,7 +87,9 @@ const upload = multer({
 
 router.get('/', requireAuth, requireRole('teacher'), (req, res) => {
   const { page = 1, limit = 50 } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
   let where = '';
   let params = [];
   if (req.user.role === 'user') {
@@ -99,8 +101,8 @@ router.get('/', requireAuth, requireRole('teacher'), (req, res) => {
     SELECT f.*, u.username
     FROM uploaded_files f LEFT JOIN users u ON f.user_id = u.id
     ${where} ORDER BY f.id DESC LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit), offset);
-  res.json({ total, page: parseInt(page), limit: parseInt(limit), files });
+  `).all(...params, limitNum, offset);
+  res.json({ total, page: pageNum, limit: limitNum, files });
 });
 
 router.post('/', requireAuth, requireRole('teacher'), upload.single('file'), (req, res) => {
@@ -152,8 +154,10 @@ router.get('/:filename', requireAuth, (req, res) => {
   if (!filePath || !fs.existsSync(filePath)) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'File not found.' });
   }
-  // 强制下载，避免浏览器内联渲染（如 HTML/SVG 触发 XSS）
-  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.params.filename)}"`);
+  // 强制下载，避免浏览器内联渲染（如 HTML/SVG 触发 XSS）；
+  // filename 转义引号，防止响应头注入
+  const downName = String(path.basename(req.params.filename)).replace(/["\\\r\n]/g, '_');
+  res.setHeader('Content-Disposition', `attachment; filename="${downName}"`);
   res.sendFile(filePath);
 });
 

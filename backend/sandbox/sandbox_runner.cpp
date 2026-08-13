@@ -645,8 +645,15 @@ static SIZE_T getJobPeakMemKB(HANDLE hJob) {
 static void writeMeta(const char* path, int exitCode, DWORD timeMs, SIZE_T memKB, const char* signal) {
     FILE* f = fopen(path, "w");
     if (!f) return;
+    // JSON 字符串转义：防止 signal 含双引号/反斜杠导致元数据被破坏
+    std::string sig(signal ? signal : "");
+    std::string esc;
+    for (char c : sig) {
+        if (c == '"' || c == '\\') esc += '\\';
+        esc += c;
+    }
     fprintf(f, "{\"exit_code\":%d,\"time_used\":%lu,\"memory_used\":%llu,\"signal\":\"%s\"}",
-            exitCode, (unsigned long)timeMs, (unsigned long long)memKB, signal);
+            exitCode, (unsigned long)timeMs, (unsigned long long)memKB, esc.c_str());
     fclose(f);
 }
 
@@ -671,9 +678,15 @@ int main(int argc, char* argv[]) {
     std::string cmdLine;
     for (int i = 5; i < argc; i++) {
         if (i > 5) cmdLine += " ";
-        cmdLine += "\"";
-        cmdLine += argv[i];
-        cmdLine += "\"";
+        cmdLine += '"';
+        // 内部双引号按 Windows 规则转义（倍增 ""）：防止参数注入改变命令结构
+        const char* s = argv[i];
+        while (*s) {
+            if (*s == '"') cmdLine += "\"\"";
+            else cmdLine += *s;
+            s++;
+        }
+        cmdLine += '"';
     }
     std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
     cmdBuf.push_back('\0');

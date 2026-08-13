@@ -6,7 +6,9 @@ const router = express.Router();
 
 router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 20, search = '' } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+  const offset = (pageNum - 1) * limitNum;
   let where = '';
   let params = [];
   if (!req.user || !['teacher', 'admin', 'su'].includes(req.user.role)) {
@@ -24,8 +26,8 @@ router.get('/', optionalAuth, (req, res) => {
            u.username, u.nickname
     FROM articles a LEFT JOIN users u ON a.author_id = u.id
     ${where} ORDER BY a.id DESC LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit), offset);
-  res.json({ total, page: parseInt(page), limit: parseInt(limit), articles });
+  `).all(...params, limitNum, offset);
+  res.json({ total, page: pageNum, limit: limitNum, articles });
 });
 
 router.get('/:id', (req, res) => {

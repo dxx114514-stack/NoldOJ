@@ -56,6 +56,29 @@ function loadCaptchaConfig() {
 
 const captchaCfg = loadCaptchaConfig();
 
+// ── 判题并发: config/judge.txt 的 MAX_THREADS= 或环境变量 WINOJ_JUDGE_THREADS，
+//    默认 (CPU 数 + 1) / 2，最小 1 ──
+function loadJudgeConfig() {
+  const cpu = Math.max(1, (os.cpus() || []).length || 1);
+  let maxThreads = Math.max(1, Math.floor((cpu + 1) / 2));
+  const envVal = parseInt(process.env.WINOJ_JUDGE_THREADS, 10);
+  if (envVal && envVal > 0) maxThreads = envVal;
+  try {
+    const p = path.join(__dirname, '..', '..', 'config', 'judge.txt');
+    const content = fs.readFileSync(p, 'utf8');
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('MAX_THREADS=')) {
+        const v = parseInt(t.split('=')[1], 10);
+        if (v && v > 0) maxThreads = v;
+      }
+    }
+  } catch {}
+  return { maxThreads };
+}
+
+const judgeCfg = loadJudgeConfig();
+
 // ── JWT 密钥: 从 config/jwt.txt 读取，首次启动自动生成强随机密钥 ──
 function loadJwtConfig() {
   const jwtPath = path.join(__dirname, '..', '..', 'config', 'jwt.txt');
@@ -147,6 +170,7 @@ module.exports = {
     killOnJobClose: true,     // Job 关闭时杀死整棵进程树
     noBreakaway: true          // 禁止子进程脱离沙箱
   },
+  judge: judgeCfg,
   rateLimit: {
     submissions: { windowMs: 60000, max: 10 },
     ideRun: { windowMs: 60000, max: 20 }

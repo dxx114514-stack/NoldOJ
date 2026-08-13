@@ -1,14 +1,17 @@
 const { Resend } = require('resend');
+const crypto = require('crypto');
 const db = require('../database/db');
 const config = require('../config/config');
 
+// 使用 CSPRNG (crypto.randomInt) 生成 6 位验证码，避免 Math.random 可预测
 function generateCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
 async function sendVerificationEmail(email, code) {
   if (!config.email.enabled || !config.email.apiKey) {
-    console.log(`[Email] Skipped (disabled). Code for ${email}: ${code}`);
+    // 邮件禁用时不在控制台打印明文验证码，避免泄露
+    console.log('[Email] Skipped (disabled).');
     return true;
   }
   try {

@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const AdmZip = require('adm-zip');
 const db = require('../database/db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 const uploadDir = path.join(__dirname, '../../data/uploads');
@@ -21,7 +21,9 @@ function sanitizeProblem(p) {
 
 router.get('/', (req, res) => {
   const { page = 1, limit = 50, search = '', tag = '', tags = '', category = '', difficulty = '', sort = '', order = 'desc' } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
   let where = 'WHERE p.is_public = 1';
   const params = [];
 
@@ -74,7 +76,7 @@ router.get('/', (req, res) => {
         THEN (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'accepted') * 1.0 / (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id)
         ELSE 0 END as ac_rate
     FROM problems p ${where} ${orderClause} LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit), offset);
+  `).all(...params, limitNum, offset);
 
   for (const problem of problems) {
     const ac = problem.ac_count || 0;
@@ -230,10 +232,12 @@ router.post('/:id/testdata', requireAuth, requireRole('teacher'), upload.array('
       fs.unlinkSync(file.path);
       continue;
     }
-    const name = match[1];
+    // 文件名消毒: 只允许安全字符，且必须是纯文件名（防止 ../ 路径穿越）
+    let name = path.basename(match[1]).replace(/[<>:"/\\|?*]/g, '_').replace(/^\.+/, '');
     const ext = match[2];
+    if (!name) name = 'case';
     if (!pairs[name]) pairs[name] = {};
-    const destPath = path.join(problemDir, file.originalname);
+    const destPath = path.join(problemDir, `${name}.${ext}`);
     fs.renameSync(file.path, destPath);
     pairs[name][ext] = destPath;
   }
@@ -380,7 +384,8 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
     res.json({ message: `Imported ${count} test case(s) from ${Object.keys(subtasks).length} subtask(s).` });
   } catch (err) {
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: `Failed to process ZIP: ${err.message}` });
+    console.error('[problems] ZIP import failed:', err);
+    res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'ZIP 数据导入失败，请检查文件格式。' });
   }
 });
 
@@ -395,7 +400,11 @@ router.get('/:id/testdata', requireAuth, requireRole('teacher'), (req, res) => {
   
   function resolveFilePath(baseDir, storedPath) {
     if (!storedPath) return null;
-    return path.isAbsolute(storedPath) ? storedPath : path.join(baseDir, storedPath);
+    // 防路径穿越: 一律 norm 到 baseDir 之下；绝对路径或含 .. 的拒绝
+    const resolved = path.resolve(baseDir, storedPath);
+    const base = path.resolve(baseDir);
+    if (resolved !== base && !resolved.startsWith(base + path.sep)) return null;
+    return resolved;
   }
 
   const result = testCases.map(tc => {
@@ -627,7 +636,7 @@ router.put('/:id/batch-testcases', requireAuth, requireRole('teacher'), (req, re
   res.json({ message: parts.length > 0 ? parts.join('、') + '已更新。' : '没有需要更新的内容。' });
 });
 
-router.get('/:id/solutions', (req, res) => {
+router.get('/:id/solutions', optionalAuth, (req, res) => {
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
@@ -641,7 +650,15 @@ router.get('/:id/solutions', (req, res) => {
     LEFT JOIN users u ON a.author_id = u.id
     WHERE ps.problem_id = ? ORDER BY ps.sort_order
   `).all(problem.id);
-  res.json(solutions);
+  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  if (isStaff) {
+    return res.json(solutions);
+  }
+  // 非教师只看已发布题解且隐藏未发布文章内容
+  const visible = solutions
+    .filter(s => s.is_published === 1)
+    .map(s => ({ ...s, article_content: undefined }));
+  res.json(visible);
 });
 
 router.post('/:id/solutions', requireAuth, requireRole('teacher'), (req, res) => {

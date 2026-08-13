@@ -60,7 +60,8 @@ function sanitizeForReview(code, maxLength = 8000) {
   if (sanitized.length > maxLength) {
     sanitized = sanitized.slice(0, maxLength) + '\n... (truncated)';
   }
-  sanitized = sanitized.replace(/```/g, '```');
+  // 反引号括号包裹用户代码会闭合外层模板代码块：将反引号转义为全角，避免污染 prompt 结构
+  sanitized = sanitized.replace(/`/g, '\u2018\u2019');
   sanitized = sanitized.replace(/<\/?system>/gi, '[redacted]');
   sanitized = sanitized.replace(/<\|[^|]+\|>/g, '[redacted]');
   return sanitized;
@@ -142,4 +143,5 @@ async function reviewCode(sourceCode, language) {
   }
 }
 
-module.exports = { reviewCode, detectPromptInjection, sanitizeForReview, CODE_LENGTH_LIMIT, AI_URL, AI_MODEL, AI_ENABLED, AI_KEY };
+// 注意: AI_KEY 是密钥，绝不导出；仅在本模块内部使用
+module.exports = { reviewCode, detectPromptInjection, sanitizeForReview, CODE_LENGTH_LIMIT, AI_ENABLED };

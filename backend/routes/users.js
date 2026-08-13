@@ -12,7 +12,9 @@ router.get('/online', requireAuth, requireRole('admin'), (req, res) => {
 
 router.get('/rating', (req, res) => {
   const { page = 1, limit = 50, show_hidden = '' } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const pageNum1 = Math.max(1, parseInt(page) || 1);
+  const limitNum1 = Math.min(100, Math.max(1, parseInt(limit) || 50));
+  const offset = (pageNum1 - 1) * limitNum1;
   let where = 'WHERE hide_rating = 0';
   if (show_hidden === '1' && req.user && ['admin', 'su'].includes(req.user.role)) {
     where = '';
@@ -21,8 +23,8 @@ router.get('/rating', (req, res) => {
   const users = db.prepare(`
     SELECT id, username, nickname, role, rating, created_at
     FROM users ${where} ORDER BY rating DESC, created_at ASC LIMIT ? OFFSET ?
-  `).all(parseInt(limit), offset);
-  res.json({ total, page: parseInt(page), limit: parseInt(limit), users });
+  `).all(limitNum1, offset);
+  res.json({ total, page: pageNum1, limit: limitNum1, users });
 });
 
 // 公开用户资料 API（所有人可访问）
@@ -117,7 +119,9 @@ router.put('/:id/upload-limits', requireAuth, requireRole('su'), (req, res) => {
 
 router.get('/', requireAuth, requireRole('admin'), (req, res) => {
   const { page = 1, limit = 50, search = '', role = '' } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const pageNum2 = Math.max(1, parseInt(page) || 1);
+  const limitNum2 = Math.min(100, Math.max(1, parseInt(limit) || 50));
+  const offset = (pageNum2 - 1) * limitNum2;
   let where = 'WHERE 1=1';
   const params = [];
   if (search) {
@@ -129,8 +133,8 @@ router.get('/', requireAuth, requireRole('admin'), (req, res) => {
     params.push(role);
   }
   const total = db.prepare(`SELECT COUNT(*) as c FROM users ${where}`).get(...params).c;
-  const users = db.prepare(`SELECT id, username, nickname, email, role, banned, rating, hide_rating, created_at FROM users ${where} ORDER BY id LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
-  res.json({ total, page: parseInt(page), limit: parseInt(limit), users });
+  const users = db.prepare(`SELECT id, username, nickname, email, role, banned, rating, hide_rating, created_at FROM users ${where} ORDER BY id LIMIT ? OFFSET ?`).all(...params, limitNum2, offset);
+  res.json({ total, page: pageNum2, limit: limitNum2, users });
 });
 
 router.get('/:id', requireAuth, requireRole('admin'), (req, res) => {
@@ -208,8 +212,9 @@ router.post('/:id/force-logout', requireAuth, requireRole('admin'), (req, res) =
 
 router.post('/:id/reset-password', requireAuth, requireRole('su'), (req, res) => {
   const { new_password } = req.body;
-  if (!new_password || new_password.length < 6) {
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'New password must be at least 6 characters.' });
+  // 与注册/改密一致的强度要求: 至少 8 位，含字母，且含数字或符号
+  if (!new_password || new_password.length < 8 || !/[a-zA-Z]/.test(new_password) || !(/\d/.test(new_password) || /[^a-zA-Z0-9]/.test(new_password))) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '密码至少 8 位，且须包含字母与数字或符号。' });
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!user) {
@@ -229,6 +234,10 @@ router.post('/sudo-login', requireAuth, requireRole('su'), (req, res) => {
   const target = db.prepare('SELECT * FROM users WHERE id = ?').get(user_id);
   if (!target) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
+  }
+  // 封禁用户不允许 sudo 登录，防止绕过封禁
+  if (target.banned) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '该用户已被封禁，无法登录。' });
   }
   const jwt = require('jsonwebtoken');
   const config = require('../config/config');

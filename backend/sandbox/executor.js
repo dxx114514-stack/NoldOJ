@@ -1,4 +1,4 @@
-const { execSync, spawn, exec } = require('child_process');
+const { execSync, spawn, exec, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -70,10 +70,30 @@ function prepareWorkDirMulti(language, files) {
   if (!Array.isArray(files) || files.length === 0) {
     throw new Error('No files provided for multi-file submission');
   }
+  // 限制单次提交文件数与总大小，防止磁盘耗尽
+  const MAX_FILES = config.sandbox.maxFilesPerSubmission || 64;
+  const MAX_TOTAL_BYTES = config.sandbox.maxSubmissionBytes || 1024 * 1024; // 默认 1MB
+  if (files.length > MAX_FILES) {
+    throw new Error(`Too many files (max ${MAX_FILES})`);
+  }
+  let totalBytes = 0;
+  for (const f of files) {
+    totalBytes += Buffer.byteLength(String(f.content || ''), 'utf8');
+    if (totalBytes > MAX_TOTAL_BYTES) {
+      throw new Error(`Total source size exceeds ${MAX_TOTAL_BYTES} bytes`);
+    }
+  }
 
   // 写入所有文件
+  const sanitizeFile = (name) => {
+    // Windows 保留设备名 (CON/NUL/PRN/AUX/COM1-9/LPT1-9) 及其带扩展名形式不允许
+    const base = String(name).replace(/[<>:"/\\|?*]/g, '_').replace(/^\.+/, '');
+    const stem = base.replace(/\.[^.]+$/, '');
+    const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+    return RESERVED.test(stem) ? '_' + base : base;
+  };
   for (const f of files) {
-    const safeName = path.basename(f.filename).replace(/[<>:"/\\|?*]/g, '_');
+    const safeName = sanitizeFile(path.basename(f.filename)) || '_';
     const filePath = path.join(workDir, safeName);
     fs.writeFileSync(filePath, f.content, 'utf8');
   }
@@ -101,28 +121,40 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
   const actualExe = isWindows ? exeFile + '.exe' : exeFile;
   let cmd = lang.compile;
 
-  // 多文件 C++: 使用通配符编译所有 .cpp 文件
+  // 多文件 C++: 显式收集 main 目录下所有 .cpp（不经 shell 通配符，避免注入）
+  let extraSources = [];
   if (isMultiFile && lang.ext === '.cpp') {
-    cmd = 'g++ -O2 -Wall -std=c++17 -o "{exe}" *.cpp';
+    const mainDir = path.join(workDir, 'main');
+    extraSources = fs.readdirSync(mainDir).filter(f => f.endsWith('.cpp')).map(f => path.join(mainDir, f));
+    cmd = 'g++ -O2 -Wall -std=c++17 -o "{exe}" {extra} "{src}"';
   }
 
   cmd = cmd
     .replace('{src}', srcFile)
     .replace('{exe}', actualExe)
-    .replace('{workdir}', workDir);
+    .replace('{workdir}', workDir)
+    .replace('{extra}', extraSources.join(' '));
+
+  // 解析为可执行文件 + 参数数组，使用 spawnSync 不经 shell，杜绝命令注入
+  const parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [cmd];
+  const compiler = parts[0].replace(/^"|"$/g, '');
+  const argTokens = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
 
   try {
-    const output = execSync(cmd, {
+    const result = spawnSync(compiler, argTokens, {
       cwd: workDir,
       timeout: 30000,
       maxBuffer: 1024 * 1024,
-      stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
     });
-    return { success: true, output: output.toString() };
+    if (result.status === 0) {
+      return { success: true, output: String(result.stdout || '') };
+    }
+    return { success: false, output: String(result.stderr || result.stdout || errMsg()) };
   } catch (err) {
     return { success: false, output: String(err.stderr || err.stdout || err.message || 'Compilation failed') };
   }
+  function errMsg() { return 'Compilation failed (exit ' + (result.status ?? '?') + ')'; }
 }
 
 function killProc(proc, isWindows) {
@@ -292,8 +324,30 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
       killProc(proc, isWindows);
     }, timeLimitMs);
 
+    // 传统模式无 sandbox_runner.exe 做内存监控: Windows 上用 tasklist 轮询内存，
+    // 一旦超过 memoryLimitMb 即终止进程，保证内存限制生效
+    let memPollTimer = null;
+    if (isWindows && memoryLimitKB > 0) {
+      memPollTimer = setInterval(() => {
+        try {
+          const out = execSync(`tasklist /FI "PID eq ${proc.pid}" /FO CSV /NH`, { encoding: 'utf8', windowsHide: true, timeout: 3000 });
+          const line = out.trim().split('\n')[0] || '';
+          const match = line.match(/,"([\d,.]+)\s*K"/);
+          if (match) {
+            const kb = Math.round(parseFloat(match[1].replace(/,/g, '')));
+            if (kb > peakMemoryKB) peakMemoryKB = kb;
+            if (peakMemoryKB > memoryLimitKB) {
+              killed = true;
+              killProc(proc, isWindows);
+            }
+          }
+        } catch {}
+      }, 150);
+    }
+
     proc.on('close', (code) => {
       clearTimeout(timer);
+      if (memPollTimer) clearInterval(memPollTimer);
       const timeUsed = Date.now() - startTime;
       const oom = memoryLimitKB > 0 && peakMemoryKB > memoryLimitKB;
       resolve({
@@ -308,6 +362,7 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
 
     proc.on('error', (err) => {
       clearTimeout(timer);
+      if (memPollTimer) clearInterval(memPollTimer);
       resolve({
         stdout,
         stderr: stderr + '\n' + (err.message || 'Process error'),

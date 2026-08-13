@@ -112,6 +112,7 @@ router.delete('/:id', requireAuth, (req, res) => {
   if (req.user.id !== disc.author_id && !['admin', 'su'].includes(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete others\' discussions.' });
   }
+  db.prepare('DELETE FROM discussion_replies WHERE discussion_id = ?').run(disc.id);
   db.prepare('DELETE FROM discussions WHERE id = ?').run(disc.id);
   res.json({ message: 'Discussion deleted.' });
 });
@@ -163,6 +164,8 @@ router.delete('/:id/replies/:rid', requireAuth, (req, res) => {
   if (req.user.id !== reply.author_id && !['admin', 'su'].includes(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete others\' replies.' });
   }
+  // 级联删除该回复的所有直接子回复
+  db.prepare('DELETE FROM discussion_replies WHERE parent_id = ?').run(reply.id);
   db.prepare('DELETE FROM discussion_replies WHERE id = ?').run(reply.id);
   res.json({ message: 'Reply deleted.' });
 });

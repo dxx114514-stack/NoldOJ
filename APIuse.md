@@ -50,6 +50,40 @@ user（用户） < teacher（教师） < admin（管理员） < su（超级管�
 
 ## 1. 认证模块 `/auth`
 
+### GET /auth/captcha — 获取图形验证码
+
+无需认证。返回验证码 id + SVG 图像（`svg-captcha`），用于登录/注册。在 `config` 中禁用验证码时返回 404。
+
+**响应：**
+```json
+{
+  "captcha_id": "xxx",
+  "svg": "<svg>...</svg>"
+}
+```
+
+### POST /auth/send-code — 发送邮箱验证码
+
+无需认证（有邮件限流）。向注册邮箱发送验证码，用于邮箱校验。
+
+**请求体：**
+```json
+{ "email": "user@example.com" }
+```
+
+### POST /auth/verify-code — 校验邮箱验证码
+
+无需认证（有限流）。校验 `email_codes` 表中的验证码，通过后标记邮箱已验证。
+
+**请求体：**
+```json
+{ "email": "user@example.com", "code": "123456" }
+```
+
+### GET /auth/email-enabled — 查询邮箱功能是否启用
+
+无需认证。返回邮箱注册/验证功能是否开启。
+
 ### POST /auth/login — 登录
 
 无需认证。封禁用户无法登录。
@@ -206,9 +240,45 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 ### GET /problems/:id/solutions — 获取题目题解列表
 
+可选认证。教师/管理员可见全部；普通用户仅见已发布题解且隐藏正文内容。
+
 ### POST /problems/:id/solutions — 链接文章为题解
 
+需教师权限。请求体：`article_id`、`sort_order`（可选）、`show_after_contest`（可选）。
+
 ### DELETE /problems/:id/solutions/:sid — 移除题解
+
+需教师权限。
+
+### GET /problems/:id/groups — 列出子任务分组
+
+需教师权限。
+
+### PUT /problems/:id/batch-testcases — 批量更新测试点
+
+需教师权限。批量修改多个测试点的字段（输入/输出/分组等）。
+
+### GET /problems/:id/discussions — 题目讨论列表
+
+无需认证。分页返回该题目下的讨论帖列表（含回复数）。
+
+### POST /problems/:id/plagiarism-check — 对题目发起代码查重
+
+需教师权限。异步启动查重任务，返回 `task_id`。
+
+**请求体：**
+```json
+{
+  "threshold": 80,
+  "min_submissions": 2,
+  "start_time": "",
+  "end_time": ""
+}
+```
+
+### GET /problems/:id/plagiarism-report — 获取题目查重报告
+
+需教师权限。返回该题查重任务结果（查重对列表）。
 
 ---
 
@@ -279,6 +349,12 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 5. 审查不通过 → 封禁用户 + 状态 `system_error`
 
 ### GET /submissions/:id/detail — 提交详细信息
+
+需认证。返回详细信息（用户只可看自己的）。
+
+### GET /submissions/:id/diff — 与上次提交的代码对比
+
+需认证。返回与上一次 AC/有效提交的代码 diff；WA 时附期望输出与实际输出。
 
 ### POST /submissions/:id/rejudge — 重测提交
 
@@ -374,9 +450,17 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需管理员权限。返回 Rating 和 provider 字段。
 
+### GET /users/:id/profile — 公开用户资料
+
+无需认证。返回公开资料（签名、简介、Rating 等，隐藏 Rating 的用户会隐藏）。
+
 ### GET /users/me — 获取当前用户信息
 
 需认证。返回 `preferred_language`、`force_logout_at` 等字段。
+
+### GET /users/me/virtual-contests — 我的虚拟比赛列表
+
+需认证。返回当前用户的虚拟比赛记录列表。
 
 ### PUT /users/me — 更新个人资料
 
@@ -403,6 +487,19 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 ### PUT /users/:id/rating — 修改 Rating
 
 需超级管理员权限。
+
+### PUT /users/:id/hide-rating — 切换隐藏 Rating
+
+需管理员权限。不能修改权限高于自己或同级用户的隐藏状态。
+
+### PUT /users/:id/upload-limits — 设置上传限制
+
+需超级管理员权限。设置用户上传大小/容量限制。
+
+**请求体：**
+```json
+{ "max_upload_bytes": 10485760, "total_upload_bytes": 2147483648 }
+```
 
 ### PUT /users/:id/submit-lock-exempt — 设置提交锁豁免
 
@@ -479,7 +576,31 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 ### GET /contests/:id/leaderboard — 比赛排行榜
 
-按总分降序、耗时升序排列。
+按总分降序、耗时升序排列。可选认证（传 Token 可识别角色/参赛身份）：
+
+- **参赛者 / teacher / admin / su**：返回完整排行榜（`leaderboard` 含 `rank`、`total_score`、`total_time`、各题得分）
+- **非参赛者 / 未登录**：仅返回冻结状态，`leaderboard` 为空数组，不泄露排名
+- 排行榜冻结时只统计冻结时刻之前的提交
+
+### POST /contests/:id/unfreeze — 解除排行榜冻结
+
+需管理员权限。解冻后广播给该比赛房间。
+
+### GET /contests/:id/announcements — 比赛内公告列表
+
+无需认证。返回该比赛的公告列表。
+
+### POST /contests/:id/virtual-start — 发起虚拟参赛
+
+需认证。为当前用户启动该比赛的虚拟参赛。
+
+### POST /contests/:id/plagiarism-check — 对比赛所有题目一键查重
+
+需教师权限。异步启动查重任务，返回 `task_id`。
+
+### GET /contests/:id/discussions — 比赛讨论列表
+
+无需认证。分页返回该比赛的讨论帖列表。
 
 ---
 
@@ -526,6 +647,187 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 ### GET /stats — 首页统计数据
 
 返回题目数、提交数、用户数、语言数。
+
+---
+
+## 10.5 分类模块 `/categories`
+
+### GET /categories — 分类列表
+
+无需认证。返回所有分类（含题目数）。
+
+### GET /categories/:id — 分类详情
+
+无需认证。
+
+### POST /categories — 创建分类
+
+需管理员权限。
+
+### PUT /categories/:id — 更新分类
+
+需管理员权限。
+
+### DELETE /categories/:id — 删除分类
+
+需管理员权限。级联删除关联关系。
+
+### POST /categories/:id/problems/:pid — 把题目加入分类
+
+需教师权限。
+
+### DELETE /categories/:id/problems/:pid — 把题目移出分类
+
+需教师权限。
+
+---
+
+## 10.6 公告模块 `/announcements`
+
+### GET /announcements — 公告列表
+
+无需认证。支持 `type` 过滤，默认 global，置顶优先。
+
+### GET /announcements/:id — 公告详情
+
+无需认证。
+
+### POST /announcements — 创建公告
+
+需教师权限。global 公告通过 WebSocket 广播。
+
+### PUT /announcements/:id — 更新公告
+
+需教师权限。不能修改他人公告。
+
+### DELETE /announcements/:id — 删除公告
+
+需教师权限。不能删除他人公告。
+
+---
+
+## 10.7 题单模块 `/problem-sets`
+
+### GET /problem-sets — 题单列表
+
+无需认证。仅返回公开题单；登录用户携带进度。
+
+### GET /problem-sets/:id — 题单详情
+
+可选认证。私有题单仅创建者/admin/su 可见。
+
+### GET /problem-sets/:id/progress — 当前用户解题进度
+
+需认证。返回该题单中每道题的 AC 状态。
+
+### POST /problem-sets — 创建题单
+
+需教师权限。
+
+### PUT /problem-sets/:id — 更新题单信息
+
+需教师权限。可更新 `title`、`description`、`is_public`。
+
+### PUT /problem-sets/:id/problems — 覆盖式设置题单题目列表
+
+需教师权限。整体替换题单包含的题目。
+
+**请求体：**
+```json
+{ "problemIds": [1, 2, 3] }
+```
+
+### DELETE /problem-sets/:id — 删除题单
+
+需教师权限。级联删除条目与进度记录。
+
+### POST /problem-sets/:id/progress/:pid — 标记题目已 AC
+
+需认证。需该题存在 accepted 提交。
+
+---
+
+## 10.8 虚拟比赛模块 `/virtual-contests`
+
+### GET /virtual-contests/:id — 虚拟比赛详情
+
+需认证（仅本人或 admin/su）。返回题目、剩余时间、我的提交。
+
+### GET /virtual-contests/:id/ranking — 本人排名数据
+
+需认证（仅本人或 admin/su）。返回该虚拟比赛中本人各题得分与排名。
+
+---
+
+## 10.9 代码查重模块 `/plagiarism`
+
+### GET /plagiarism/pairs/:pair_id — 查重对详情
+
+需教师权限。返回两份代码并排展示 + 高亮 token。
+
+### GET /plagiarism/:task_id — 查重任务进度/结果
+
+需教师权限。返回任务状态、进度、查重对列表。
+
+---
+
+## 11. 讨论模块 `/discussions`
+
+### GET /discussions/:id — 讨论详情
+
+返回讨论内容及楼中楼回复树（一级回复含 `children`，最多两层）。
+
+### POST /discussions — 创建讨论
+
+需登录。请求体：`problem_id` / `contest_id`（择一）、`title`、`content`。
+
+### PUT /discussions/:id — 更新讨论
+
+需登录（作者本人或 admin）。请求体字段：`title`、`content`、`pinned`、`locked`、`is_official`。
+
+### DELETE /discussions/:id — 删除讨论
+
+需登录（作者或 admin）。删除讨论及其全部回复。
+
+### POST /discussions/:id/replies — 发表回复
+
+需登录。请求体：`content`、`parent_id`（可选，二级回复指向一级回复 id）。
+
+### DELETE /discussions/:id/replies/:rid — 删除回复
+
+需登录（作者或 admin）。删除该回复时**级联删除其所有直接子回复**。
+
+### PUT /discussions/:id/pin — 置顶/取消置顶
+
+需教师及以上。请求体：`pinned`（boolean）。
+
+### PUT /discussions/:id/lock — 锁定/解锁
+
+需教师及以上。请求体：`locked`（boolean）。
+
+### PUT /discussions/:id/official — 标记官方题解
+
+需教师及以上。请求体：`is_official`（boolean）。
+
+---
+
+## 12. 系统端点（server.js 直接定义）
+
+### GET /api/v1/health — 健康检查
+
+无需认证。返回 `{ ok: true, ts: <时间戳> }`。
+
+### GET /api/v1/stats — 平台统计
+
+无需认证。返回 `{ problems, submissions, users, languages }`。
+
+### GET /api/v1/jobs — 任务重定向
+
+302 重定向到 `/api/v1/submissions`。
+
+### GET /api/v1/jobs/:id — 任务详情重定向
+
+302 重定向到 `/api/v1/submissions/:id`。
 
 ---
 

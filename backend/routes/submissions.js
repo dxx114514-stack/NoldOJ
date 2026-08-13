@@ -12,21 +12,24 @@ const rateLimit = createRateLimit(config.rateLimit.submissions);
 
 router.get('/', requireAuth, (req, res) => {
   const { page = 1, limit = 50, user_id, problem_id, status, score_min, score_max, username } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
   let where = 'WHERE 1=1';
   const params = [];
 
-  // 用户筛选：优先 user_id，其次 username 模糊匹配（仅非普通用户可查他人）
-  if (user_id) {
-    where += ' AND s.user_id = ?';
-    params.push(parseInt(user_id));
-  } else if (username && req.user.role !== 'user') {
-    where += ' AND u.username LIKE ?';
-    params.push(`%${username}%`);
-  } else if (req.user.role === 'user') {
-    // 普通用户只能看自己的提交
+  // 用户筛选：普通用户固定只能看自己的提交，杜绝通过 user_id 参数越权查看他人
+  if (req.user.role === 'user') {
     where += ' AND s.user_id = ?';
     params.push(req.user.id);
+  } else if (user_id) {
+    where += ' AND s.user_id = ?';
+    params.push(parseInt(user_id));
+  } else if (username) {
+    // 转义 LIKE 通配符，防止 % _ 被当作模式匹配（避免越权用 % 匹配所有用户）
+    const esc = String(username).replace(/[\\%_]/g, m => `\\${m}`);
+    where += ' AND u.username LIKE ? ESCAPE ?';
+    params.push(`%${esc}%`, '\\');
   }
 
   if (problem_id) {
@@ -55,9 +58,9 @@ router.get('/', requireAuth, (req, res) => {
     LEFT JOIN users u ON s.user_id = u.id
     LEFT JOIN problems p ON s.problem_id = p.id
     ${where} ORDER BY s.id DESC LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit), offset);
+  `).all(...params, limitNum, offset);
 
-  res.json({ total, page: parseInt(page), limit: parseInt(limit), submissions });
+  res.json({ total, page: pageNum, limit: limitNum, submissions });
 });
 
 router.get('/:id', requireAuth, (req, res) => {

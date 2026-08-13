@@ -3,6 +3,7 @@ const path = require('path');
 const vm = require('vm');
 const db = require('../database/db');
 const sandbox = require('../sandbox/executor');
+const config = require('../config/config');
 const { runScoringScript } = require('../sandbox/scorer');
 const { emitJudgeStatus, emitContestRanking } = require('./socket');
 
@@ -50,29 +51,13 @@ function compareOutput(expected, actual, problem) {
 // 注意: vm 并非绝对安全的沙箱，但相比 eval 已杜绝直接访问主进程上下文
 function runSPJ(spjCode, expected, actual) {
   try {
-    const sandboxCtx = {
-      stdin: '',
-      stdout: actual,
-      answer: expected,
-      // 仅暴露安全的纯函数
-      Math,
-      String,
-      Number,
-      Boolean,
-      Array,
-      Object,
-      JSON,
-      parseInt,
-      parseFloat,
-      isNaN,
-      isFinite,
-      RegExp,
-      Date
-    };
-    const script = new vm.Script(`(function(stdin, stdout, answer) { ${spjCode} })`);
-    const fn = script.runInNewContext(sandboxCtx, { timeout: 1000 });
-    if (typeof fn !== 'function') return false;
-    const result = fn(sandboxCtx.stdin, sandboxCtx.stdout, sandboxCtx.answer);
+    // vm 逃逸防护: 若把宿主 realm 的字符串（stdout/answer）作为沙箱对象属性注入，
+    // spjCode 可经 `stdout.constructor.constructor` 拿到宿主 Function 并执行任意代码。
+    // 因此不注入任何宿主对象，只把数据序列化为 JSON 字符串字面量直接拼进脚本源码，
+    // 使沙箱内的一切（包括全局对象、构造函数）都属于 vm 的独立 realm。
+    const sandbox = vm.createContext({});
+    const script = new vm.Script(`(function(stdin, stdout, answer) { ${spjCode} })(JSON.parse(${JSON.stringify(JSON.stringify(''))}), JSON.parse(${JSON.stringify(JSON.stringify(String(actual ?? '')))}), JSON.parse(${JSON.stringify(JSON.stringify(String(expected ?? '')))}))`);
+    const result = script.runInContext(sandbox, { timeout: 1000 });
     return result === true || result === 1 || result === 'AC';
   } catch {
     return false;
@@ -261,7 +246,8 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
     updateSubmission.run(finalStatus, finalScore, finalTime, finalMemory, '', submission.id);
   } catch (err) {
-    if (workDir && compiled) sandbox.cleanupWorkDir(workDir);
+    // 无论编译/判题是否深入，只要建过 workDir 就清理，避免临时文件残留
+    if (workDir) sandbox.cleanupWorkDir(workDir);
     updateSubmission.run('system_error', 0, 0, 0, err.message, submission.id);
   }
 }
@@ -546,22 +532,29 @@ async function judgeSubmission(submissionId) {
 
 const judgeQueue = [];
 const queuedIds = new Set();
-let isJudging = false;
+const maxThreads = config.judge.maxThreads;
+const runningJobs = new Set();
 
-async function processQueue() {
-  if (isJudging || judgeQueue.length === 0) return;
-  isJudging = true;
-  const submissionId = judgeQueue.shift();
-  queuedIds.delete(submissionId);
+// 并发判题池：最多同时运行 maxThreads 条提交，各自独立判题线程
+async function runOne(submissionId) {
   try {
     await judgeSubmission(submissionId);
   } catch (err) {
     console.error(`Judge error for submission ${submissionId}:`, err);
     db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(submissionId);
   }
-  isJudging = false;
-  if (judgeQueue.length > 0) {
-    setImmediate(processQueue);
+}
+
+function pumpQueue() {
+  while (runningJobs.size < maxThreads && judgeQueue.length > 0) {
+    const submissionId = judgeQueue.shift();
+    queuedIds.delete(submissionId);
+    const job = runOne(submissionId);
+    runningJobs.add(job);
+    job.finally(() => {
+      runningJobs.delete(job);
+      pumpQueue();
+    });
   }
 }
 
@@ -569,7 +562,7 @@ function enqueueSubmission(submissionId) {
   if (queuedIds.has(submissionId)) return;
   queuedIds.add(submissionId);
   judgeQueue.push(submissionId);
-  setImmediate(processQueue);
+  pumpQueue();
 }
 
 module.exports = { judgeSubmission, enqueueSubmission, compareOutput };

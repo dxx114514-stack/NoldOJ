@@ -45,6 +45,10 @@ async function main() {
 
   const app = express();
 
+  // 反向代理（cloudflared 等本地隧道）情况下信任最近一跳，使 req.ip 取到真实客户端 IP
+  // 仅信任 1 跳，避免伪造 X-Forwarded-For 劫持限流
+  app.set('trust proxy', 1);
+
   app.use((req, res, next) => {
     const start = process.hrtime.bigint();
     const reqId = Math.random().toString(36).slice(2, 8);
@@ -63,7 +67,7 @@ async function main() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'",
+        scriptSrc: ["'self'", "'unsafe-inline'",
                      "https://cdn.tailwindcss.com",
                      "https://cdnjs.cloudflare.com",
                      "https://cdn.jsdelivr.net"],
@@ -74,8 +78,9 @@ async function main() {
         connectSrc: ["'self'"],
         fontSrc: ["'self'", 'data:', "https://cdnjs.cloudflare.com"],
         objectSrc: ["'none'"],
-        frameSrc: ["'self'", "https:", "http:"],
-        mediaSrc: ["'self'", "https:", "http:"],
+        // 允许 https 嵌入（bilibili 视频 / @[url] 嵌入），禁止 http 明文 iframe/媒体
+        frameSrc: ["'self'", "https:"],
+        mediaSrc: ["'self'", "https:"],
         frameAncestors: ["'none'"]
       }
     },
@@ -96,7 +101,26 @@ async function main() {
   app.use(cookieParser());
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-  app.use(express.static(path.join(__dirname, '../../frontend')));
+
+  // 静态资源仅暴露安全子目录，避免整个前端目录被遍历
+  const frontendRoot = path.join(__dirname, '../../frontend');
+  app.use('/css', express.static(path.join(frontendRoot, 'css'), { dotfiles: 'deny' }));
+  app.use('/js', express.static(path.join(frontendRoot, 'js'), { dotfiles: 'deny' }));
+  app.use('/img', express.static(path.join(frontendRoot, 'img'), { dotfiles: 'deny' }));
+  app.use(express.static(path.join(frontendRoot, 'pages'), { dotfiles: 'deny' }));
+  app.get('/favicon.svg', (req, res) => res.sendFile(path.join(frontendRoot, 'favicon.svg')));
+
+  // 安全公告文件 (RFC 9116)
+  const securityContact = config.security?.contact || 'https://github.com'; 
+  const securityTxt = `Contact: ${securityContact}\nPreferred-Languages: zh\nCanonical: /security.txt\n`;
+  app.get('/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });
+  app.get('/.well-known/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });
+
+  // 健康检查端点: 前端旧逻辑直接 GET /output.txt 探测服务是否在线，
+  // 除以明确 404 防止根目录同名文件被当作被测数据外，还提供专用探针。
+  app.get('/api/v1/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
+  app.get('/output.txt', (req, res) => res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Use /api/v1/health instead.' }));
+
   app.use('/uploads', express.static(path.join(__dirname, '../../data/uploads')));
 
   const authRoutes = require('../routes/auth');

@@ -1,5 +1,6 @@
 const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
@@ -329,8 +330,14 @@ async function initDB() {
 
   const adminCount = sqlDb.prepare("SELECT COUNT(*) as c FROM users WHERE username = 'admin'").get()?.c || 0;
   if (adminCount === 0) {
-    const hash = bcrypt.hashSync('admin123', 10);
+    // 初始管理员使用随机口令，避免硬编码默认密码；口令仅在本次启动日志中显示一次
+    const initialPw = Array.from(crypto.getRandomValues(new Uint8Array(12)))
+      .map(b => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$'.charAt(b % 58))
+      .join('');
+    const hash = bcrypt.hashSync(initialPw, 10);
     sqlDb.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run('admin', hash, 'Super Admin', 'su');
+    // 仅在数据库刚初始化、且此前不存在 admin 时输出
+    console.log('[DB] 初始管理员账号 admin 已创建，初始密码（仅此一次显示）: ' + initialPw);
   }
 
   return sqlDb;

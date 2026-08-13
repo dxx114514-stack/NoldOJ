@@ -5,9 +5,15 @@ const db = require('../database/db');
 let io = null;
 
 function initSocket(server) {
+  const allowedOrigins = new Set(config.cors.origins);
   io = require('socket.io')(server, {
     cors: {
-      origin: true,
+      // 仅允许配置的白名单源，禁止任意 Origin 凭据连接
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true);
+        if (allowedOrigins.has(origin)) return cb(null, true);
+        return cb(null, false);
+      },
       credentials: true
     }
   });
