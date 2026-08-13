@@ -1,0 +1,20 @@
+name: Sync GitHub to Gitee
+
+on:
+  push:
+    branches: [ main, master ] # 监听 main 和 master 分支的推送
+  workflow_dispatch:           # 允许在网页上手动点击触发
+
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync GitHub -> Gitee
+        uses: wearerequired/git-mirror-action@v1
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
+        with:
+          # 源仓库（GitHub）
+          source-repo: "git@github.com:${{ github.repository }}.git"
+          # 目标仓库（Gitee），请将 '你的Gitee用户名' 替换为真实值
+          destination-repo: "git@gitee.com:dxx/${{ github.event.repository.name }}.git"
