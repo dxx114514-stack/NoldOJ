@@ -4,6 +4,9 @@ const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth')
 
 const router = express.Router();
 
+const MAX_TITLE_LENGTH = 200;
+const MAX_CONTENT_LENGTH = 10000;
+
 // 讨论详情（含回复，最多两层楼中楼）
 router.get('/:id', optionalAuth, (req, res) => {
   const disc = db.prepare(`
@@ -62,8 +65,14 @@ router.post('/', requireAuth, (req, res) => {
   if (!title || !title.trim()) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
+  if (String(title).length > MAX_TITLE_LENGTH) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Title must be at most ${MAX_TITLE_LENGTH} characters.` });
+  }
   if (!content || !content.trim()) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Content is required.' });
+  }
+  if (String(content).length > MAX_CONTENT_LENGTH) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Content must be at most ${MAX_CONTENT_LENGTH} characters.` });
   }
   if (!problem_id && !contest_id) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problem_id or contest_id is required.' });
@@ -97,8 +106,18 @@ router.put('/:id', requireAuth, (req, res) => {
   const { title, content } = req.body;
   const updates = [];
   const values = [];
-  if (title !== undefined) { updates.push('title = ?'); values.push(title.trim()); }
-  if (content !== undefined) { updates.push('content = ?'); values.push(content.trim()); }
+  if (title !== undefined) {
+    if (String(title).length > MAX_TITLE_LENGTH) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Title must be at most ${MAX_TITLE_LENGTH} characters.` });
+    }
+    updates.push('title = ?'); values.push(title.trim());
+  }
+  if (content !== undefined) {
+    if (String(content).length > MAX_CONTENT_LENGTH) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Content must be at most ${MAX_CONTENT_LENGTH} characters.` });
+    }
+    updates.push('content = ?'); values.push(content.trim());
+  }
   if (updates.length === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
@@ -135,6 +154,9 @@ router.post('/:id/replies', requireAuth, (req, res) => {
   const { content, parent_id } = req.body;
   if (!content || !content.trim()) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Content is required.' });
+  }
+  if (String(content).length > MAX_CONTENT_LENGTH) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Content must be at most ${MAX_CONTENT_LENGTH} characters.` });
   }
   // 限制最多两层楼中楼
   let parentId = null;

@@ -5,7 +5,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  const languages = db.prepare('SELECT * FROM languages ORDER BY id').all();
+  // 公开接口只暴露非敏感字段，不泄露 compile_cmd/run_cmd
+  const languages = db.prepare('SELECT id, name, display_name, extension, is_enabled FROM languages ORDER BY id').all();
   res.json(languages);
 });
 

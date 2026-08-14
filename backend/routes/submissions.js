@@ -6,6 +6,7 @@ const { createRateLimit } = require('../middleware/ratelimit');
 const { enqueueSubmission } = require('../services/judge');
 const { reviewCode, CODE_LENGTH_LIMIT } = require('../services/security');
 const { sanitizeLog } = require('../utils/securityHelpers');
+const { parsePageLimit } = require('../utils/pagination');
 const config = require('../config/config');
 
 const router = express.Router();
@@ -13,9 +14,7 @@ const rateLimit = createRateLimit(config.rateLimit.submissions);
 
 router.get('/', requireAuth, (req, res) => {
   const { page = 1, limit = 50, user_id, problem_id, status, score_min, score_max, username } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
-  const offset = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
   let where = 'WHERE 1=1';
   const params = [];
 

@@ -56,7 +56,7 @@ async function main() {
 
   app.use((req, res, next) => {
     const start = process.hrtime.bigint();
-    const reqId = Math.random().toString(36).slice(2, 8);
+    const reqId = crypto.randomUUID().slice(0, 8);
     res.on('finish', () => {
       const diff = Number(process.hrtime.bigint() - start) / 1e6;
       const color = res.statusCode < 300 ? 32 : res.statusCode < 400 ? 33 : res.statusCode < 500 ? 31 : 35;

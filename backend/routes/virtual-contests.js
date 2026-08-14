@@ -42,13 +42,16 @@ function virtualStart(req, res) {
 }
 
 // 虚拟比赛详情（题目+剩余时间+提交）
+// ownership 校验并入 SQL，未授权与不存在统一返回 404，防 ID 枚举
 router.get('/:id', requireAuth, async (req, res) => {
-  const vc = db.prepare('SELECT * FROM virtual_contests WHERE id = ?').get(req.params.id);
+  const vc = db.prepare(`
+    SELECT vc.* FROM virtual_contests vc
+    WHERE vc.id = ? AND (vc.user_id = ? OR EXISTS(
+      SELECT 1 FROM users u WHERE u.id = ? AND u.role IN ('admin', 'su')
+    ))
+  `).get(req.params.id, req.user.id, req.user.id);
   if (!vc) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Virtual contest not found.' });
-  }
-  if (vc.user_id !== req.user.id && !['admin','su'].includes(req.user.role)) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '无权访问他人虚拟比赛。' });
   }
   const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(vc.contest_id);
   if (!contest) {
@@ -69,12 +72,8 @@ router.get('/:id', requireAuth, async (req, res) => {
     ORDER BY s.id DESC
   `).all(vc.id);
 
-  // 更新状态
-  let status = vc.status;
-  if (new Date(vc.end_time).getTime() < Date.now()) status = 'finished';
-  if (status !== vc.status) {
-    db.prepare('UPDATE virtual_contests SET status = ? WHERE id = ?').run(status, vc.id);
-  }
+  // 状态仅在内存中推导，不写入数据库（避免 GET 触发状态变更）
+  const status = new Date(vc.end_time).getTime() < Date.now() ? 'finished' : vc.status;
 
   res.json({
     ...vc,
@@ -144,13 +143,9 @@ function myVirtualContests(req, res) {
     WHERE vc.user_id = ?
     ORDER BY vc.id DESC
   `).all(req.user.id);
-  // 更新状态
+  // 状态仅在内存中推导，不落库
   const updated = items.map(it => {
-    let status = it.status;
-    if (new Date(it.end_time).getTime() < Date.now()) status = 'finished';
-    if (status !== it.status) {
-      db.prepare('UPDATE virtual_contests SET status = ? WHERE id = ?').run(status, it.id);
-    }
+    const status = new Date(it.end_time).getTime() < Date.now() ? 'finished' : it.status;
     return { ...it, status };
   });
   res.json({ virtual_contests: updated });

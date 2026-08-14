@@ -5,6 +5,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { parsePageLimit } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -87,9 +88,7 @@ const upload = multer({
 
 router.get('/', requireAuth, requireRole('teacher'), (req, res) => {
   const { page = 1, limit = 50 } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
-  const offset = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
   let where = '';
   let params = [];
   if (req.user.role === 'user') {

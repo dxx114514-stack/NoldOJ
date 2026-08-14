@@ -1,15 +1,14 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { parsePageLimit } = require('../utils/pagination');
 
 const router = express.Router();
 
 // 公开比赛列表保持匿名可访问；挂 optionalAuth 以便识别登录用户角色
 router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, search = '' } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
-  const offset = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
   let where = '';
   const params = [];
   const fuzzy = search ? '%' + search.replace(/\s+/g, '') + '%' : null;
@@ -354,9 +353,7 @@ router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), (req, 
 // 功能8：比赛讨论列表
 router.get('/:id/discussions', optionalAuth, (req, res) => {
   const { page = 1, size = 20 } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const sizeNum = Math.min(50, Math.max(1, parseInt(size) || 20));
-  const offset = (pageNum - 1) * sizeNum;
+  const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 20, 50);
   const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });

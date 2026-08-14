@@ -171,6 +171,10 @@ module.exports = {
     noBreakaway: true          // 禁止子进程脱离沙箱
   },
   judge: judgeCfg,
+  ide: {
+    timeLimitMs: 10000,
+    memoryLimitMb: 256
+  },
   rateLimit: {
     submissions: { windowMs: 60000, max: 10 },
     ideRun: { windowMs: 60000, max: 20 }

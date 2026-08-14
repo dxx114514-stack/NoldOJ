@@ -1,14 +1,13 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { parsePageLimit } = require('../utils/pagination');
 
 const router = express.Router();
 
 router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 20, search = '' } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-  const offset = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 20, 100);
   let where = '';
   let params = [];
   if (!req.user || !['teacher', 'admin', 'su'].includes(req.user.role)) {

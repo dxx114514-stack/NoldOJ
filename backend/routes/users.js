@@ -1,8 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
-const { requireAuth, requireRole, getOnlineUsers, removeOnlineUser } = require('../middleware/auth');
+const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser } = require('../middleware/auth');
 const { sanitizeLog } = require('../utils/securityHelpers');
+const { parsePageLimit } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -17,13 +18,15 @@ router.get('/online', requireAuth, requireRole('admin'), (req, res) => {
   res.json({ total: users.length, users });
 });
 
-router.get('/rating', (req, res) => {
+// 公开排行榜。show_hidden=1 需要登录且 admin/su（optionalAuth 保持公开访问，同时对隐私分支显式认证）
+router.get('/rating', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, show_hidden = '' } = req.query;
-  const pageNum1 = Math.max(1, parseInt(page) || 1);
-  const limitNum1 = Math.min(100, Math.max(1, parseInt(limit) || 50));
-  const offset = (pageNum1 - 1) * limitNum1;
+  const { page: pageNum1, limit: limitNum1, offset } = parsePageLimit(page, limit, 50, 100);
   let where = 'WHERE hide_rating = 0';
-  if (show_hidden === '1' && req.user && ['admin', 'su'].includes(req.user.role)) {
+  if (show_hidden === '1') {
+    if (!req.user || !['admin', 'su'].includes(req.user.role)) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'show_hidden requires admin or su role.' });
+    }
     where = '';
   }
   const total = db.prepare(`SELECT COUNT(*) as c FROM users ${where}`).get().c;
@@ -126,9 +129,7 @@ router.put('/:id/upload-limits', requireAuth, requireRole('su'), (req, res) => {
 
 router.get('/', requireAuth, requireRole('admin'), (req, res) => {
   const { page = 1, limit = 50, search = '', role = '' } = req.query;
-  const pageNum2 = Math.max(1, parseInt(page) || 1);
-  const limitNum2 = Math.min(100, Math.max(1, parseInt(limit) || 50));
-  const offset = (pageNum2 - 1) * limitNum2;
+  const { page: pageNum2, limit: limitNum2, offset } = parsePageLimit(page, limit, 50, 100);
   let where = 'WHERE 1=1';
   const params = [];
   if (search) {

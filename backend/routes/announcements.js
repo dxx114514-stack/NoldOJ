@@ -2,15 +2,14 @@ const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { emitAnnouncement } = require('../services/socket');
+const { parsePageLimit } = require('../utils/pagination');
 
 const router = express.Router();
 
 // 列表（公开读取）支持 type 过滤与分页，置顶排前
 router.get('/', (req, res) => {
   const { type = 'global', page = 1, size = 10 } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const sizeNum = Math.min(50, Math.max(1, parseInt(size) || 10));
-  const offset = (pageNum - 1) * sizeNum;
+  const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 10, 50);
 
   let where = 'WHERE a.type = ?';
   const params = [type];

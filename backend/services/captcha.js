@@ -3,6 +3,8 @@ const crypto = require('crypto');
 
 const sessions = new Map();
 const CAPTCHA_TTL = 5 * 60 * 1000;
+// 防止高并发请求无限增长导致内存耗尽: 超出后淘汰最旧的验证码
+const MAX_SESSIONS = 10000;
 
 function darkenColor(attr, color) {
   const c = color.toLowerCase();
@@ -45,6 +47,11 @@ function generateCaptcha() {
   const id = crypto.randomUUID();
   const expiresAt = Date.now() + CAPTCHA_TTL;
   sessions.set(id, { text: captcha.text.toLowerCase(), expiresAt });
+  if (sessions.size > MAX_SESSIONS) {
+    // 淘汰最旧的验证码，防止 OOM
+    const oldestKey = sessions.keys().next().value;
+    if (oldestKey) sessions.delete(oldestKey);
+  }
   cleanup();
   return { id, svg: darkenSvg(captcha.data) };
 }

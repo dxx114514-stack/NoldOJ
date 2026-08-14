@@ -5,6 +5,7 @@ const fs = require('fs');
 const AdmZip = require('adm-zip');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { parsePageLimit } = require('../utils/pagination');
 
 const router = express.Router();
 const uploadDir = path.join(__dirname, '../../data/uploads');
@@ -28,9 +29,7 @@ function fullProblem(p) {
 
 router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, search = '', tag = '', tags = '', category = '', difficulty = '', sort = '', order = 'desc' } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
-  const offset = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
   let where = 'WHERE p.is_public = 1';
   const params = [];
   // 隐藏题目仅对 teacher/admin/su 可见；管理角色可加 include_hidden=1 在列表中查看
@@ -134,7 +133,7 @@ router.get('/', optionalAuth, (req, res) => {
     }
   }
 
-  res.json({ total, page: parseInt(page), limit: parseInt(limit), problems });
+  res.json({ total, page: pageNum, limit: limitNum, problems });
 });
 
 router.get('/:id', optionalAuth, (req, res) => {
@@ -752,9 +751,7 @@ router.delete('/:id/solutions/:sid', requireAuth, requireRole('teacher'), (req, 
 // 功能8：题目讨论列表
 router.get('/:id/discussions', (req, res) => {
   const { page = 1, size = 20 } = req.query;
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const sizeNum = Math.min(50, Math.max(1, parseInt(size) || 20));
-  const offset = (pageNum - 1) * sizeNum;
+  const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 20, 50);
   const problem = db.prepare('SELECT id FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });

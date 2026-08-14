@@ -1,4 +1,5 @@
 const db = require('../database/db');
+const config = require('../config/config');
 const { prepareWorkDir, compile, runCode, cleanupWorkDir, loadLanguageConfig } = require('../sandbox/executor');
 
 const ideQueue = [];
@@ -49,8 +50,8 @@ async function executeIdeRun(runId) {
 
     db.prepare("UPDATE ide_runs SET status = 'running' WHERE id = ?").run(runId);
 
-    const timeLimitMs = 10000;
-    const result = await runCode(workDir, srcFile, exeFile, lang, run.stdin || '', timeLimitMs, 256, prepared.isWindows);
+    const timeLimitMs = config.ide.timeLimitMs;
+    const result = await runCode(workDir, srcFile, exeFile, lang, run.stdin || '', timeLimitMs, config.ide.memoryLimitMb, prepared.isWindows);
     cleanupWorkDir(workDir);
 
     const finalStatus = result.exitCode === 0 ? 'accepted' : 'runtime_error';

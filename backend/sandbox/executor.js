@@ -121,11 +121,24 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
   const actualExe = isWindows ? exeFile + '.exe' : exeFile;
   let cmd = lang.compile;
 
-  // 多文件 C++: 显式收集 main 目录下所有 .cpp（不经 shell 通配符，避免注入）
+  // 多文件 C++: 收集工作目录下所有 .cpp（不经 shell 通配符，避免注入）。
+  // 兼容两种布局：prepareWorkDirMulti 平铺在根目录；旧布局可能在 main/ 子目录。
   let extraSources = [];
   if (isMultiFile && lang.ext === '.cpp') {
-    const mainDir = path.join(workDir, 'main');
-    extraSources = fs.readdirSync(mainDir).filter(f => f.endsWith('.cpp')).map(f => path.join(mainDir, f));
+    const candidates = [workDir, path.join(workDir, 'main')];
+    const seen = new Set();
+    for (const dir of candidates) {
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith('.cpp')) continue;
+        const full = path.join(dir, f);
+        if (seen.has(full)) continue;
+        seen.add(full);
+        extraSources.push(full);
+      }
+    }
+    // 主文件已作为 "{src}" 单独传入，避免重复编译同一文件
+    extraSources = extraSources.filter(full => path.resolve(full) !== path.resolve(srcFile));
     cmd = 'g++ -O2 -Wall -std=c++17 -o "{exe}" {extra} "{src}"';
   }
 
