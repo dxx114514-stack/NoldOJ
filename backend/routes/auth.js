@@ -5,7 +5,7 @@ const db = require('../database/db');
 const config = require('../config/config');
 const { requireAuth } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
-const { generateCode, sendVerificationEmail, saveCode, verifyCode } = require('../services/email');
+const { generateCode, sendVerificationEmail, sendPasswordResetEmail, saveCode, verifyCode } = require('../services/email');
 const { generateCaptcha, verifyCaptcha } = require('../services/captcha');
 const { generateAccessToken, generateRefreshToken } = require('../utils/tokens');
 const { isStrongPassword } = require('../utils/validation');
@@ -17,6 +17,9 @@ const refreshRateLimit = createRateLimit({ windowMs: 60000, max: 30 });
 const changePasswordRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
 // 验证码校验接口独立限流，防止 6 位验证码被暴力枚举
 const verifyCodeRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
+// 密码找回: 请求重置邮件独立限流，防止用他人邮箱轰炸
+const forgotPasswordRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
+const resetPasswordRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
 
 // 验证码校验中间件（login/register 共用）
 function requireCaptcha(req, res, next) {
@@ -78,6 +81,57 @@ router.post('/verify-code', verifyCodeRateLimit, (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '验证码无效或已过期。' });
   }
   res.json({ message: '验证成功。' });
+});
+
+// 密码找回第一步：校验用户名+邮箱匹配，向绑定邮箱发送重置验证码。
+// 未绑定邮箱 / 用户名不存在 / 邮箱不匹配 → 发送失败（不泄露账号是否存在）
+router.post('/forgot-password', forgotPasswordRateLimit, requireCaptcha, async (req, res) => {
+  const { username, email } = req.body;
+  if (!username || !email) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '用户名和邮箱不能为空。' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '请输入有效的邮箱地址。' });
+  }
+  const user = db.prepare('SELECT id, username, email, email_verified FROM users WHERE username = ?').get(username);
+  // 用户不存在、未绑定邮箱、邮箱不匹配均视为发送失败，返回同一提示，防止枚举已注册账号
+  if (!user || !user.email || !user.email_verified || user.email !== email) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '未找到与用户名匹配且已验证的邮箱，无法发送重置邮件。' });
+  }
+  if (!config.email.enabled || !config.email.apiKey) {
+    return res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: '邮件服务未启用，无法发送重置邮件。' });
+  }
+  const code = generateCode();
+  saveCode(email, code);
+  const sent = await sendPasswordResetEmail(email, code);
+  if (!sent) {
+    return res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: '重置邮件发送失败，请稍后重试。' });
+  }
+  res.json({ message: '重置邮件已发送，请查收。' });
+});
+
+// 密码找回第二步：校验验证码后设置新密码，并使该账号所有会话失效
+router.post('/reset-password', resetPasswordRateLimit, (req, res) => {
+  const { username, email, code, new_password } = req.body;
+  if (!username || !email || !code || !new_password) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '用户名、邮箱、验证码和新密码不能为空。' });
+  }
+  if (!isStrongPassword(new_password)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '密码至少 8 位，且须包含字母与数字或符号。' });
+  }
+  const user = db.prepare('SELECT id, username, email, email_verified FROM users WHERE username = ?').get(username);
+  if (!user || !user.email || !user.email_verified || user.email !== email) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '用户名与邮箱不匹配。' });
+  }
+  if (!verifyCode(email, code)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '验证码无效或已过期。' });
+  }
+  const hash = bcrypt.hashSync(new_password, 10);
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(hash, user.id);
+  // 重置后强制所有会话下线
+  db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user.id);
+  db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(user.id);
+  res.json({ message: '密码已重置，请使用新密码登录。' });
 });
 
 router.get('/email-enabled', (req, res) => {

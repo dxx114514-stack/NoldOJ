@@ -9,7 +9,8 @@ function generateCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
-async function sendVerificationEmail(email, code) {
+async function sendCodeEmail(email, code, opts) {
+  const { subject, title, hint } = opts || {};
   if (!config.email.enabled || !config.email.apiKey) {
     // 邮件禁用时不在控制台打印明文验证码，避免泄露
     console.log('[Email] Skipped (disabled).');
@@ -17,22 +18,43 @@ async function sendVerificationEmail(email, code) {
   }
   try {
     const resend = new Resend(config.email.apiKey);
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: config.email.from,
       to: email,
-      subject: 'WinOJ - 邮箱验证码',
+      subject,
       html: `<div style="font-family:sans-serif;max-width:400px;margin:0 auto;padding:20px">
-        <h2 style="color:#6366f1">WinOJ 邮箱验证</h2>
+        <h2 style="color:#6366f1">${title}</h2>
         <p>你的验证码是：</p>
         <div style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#1f2937;background:#f3f4f6;padding:16px;border-radius:8px;text-align:center">${code}</div>
-        <p style="color:#6b7280;font-size:13px;margin-top:16px">验证码 10 分钟内有效，请勿泄露给他人。</p>
+        <p style="color:#6b7280;font-size:13px;margin-top:16px">${hint}</p>
       </div>`
     });
+    // Resend v6 的 send 返回 { data, error } 而非抛错，需显式检查 error 字段
+    if (result && result.error) {
+      console.error('[Email] Resend returned error:', result.error.message || JSON.stringify(result.error));
+      return false;
+    }
     return true;
   } catch (err) {
     console.error('[Email] Send failed:', err.message);
     return false;
   }
+}
+
+async function sendVerificationEmail(email, code) {
+  return sendCodeEmail(email, code, {
+    subject: 'WinOJ - 邮箱验证码',
+    title: 'WinOJ 邮箱验证',
+    hint: '验证码 10 分钟内有效，请勿泄露给他人。'
+  });
+}
+
+async function sendPasswordResetEmail(email, code) {
+  return sendCodeEmail(email, code, {
+    subject: 'WinOJ - 密码重置',
+    title: 'WinOJ 密码重置',
+    hint: '重置验证码 10 分钟内有效，请勿泄露给他人。'
+  });
 }
 
 function hashCode(code) {
@@ -60,4 +82,4 @@ function verifyCode(email, code) {
   return true;
 }
 
-module.exports = { generateCode, sendVerificationEmail, saveCode, verifyCode };
+module.exports = { generateCode, sendVerificationEmail, sendPasswordResetEmail, saveCode, verifyCode };
