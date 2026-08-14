@@ -76,7 +76,7 @@
           document.getElementById('emailSection').classList.remove('hidden');
         }
       } catch {}
-      loadCaptcha().then((s) => {
+      loadCaptcha((s) => {
         captchaId = s.id;
         captchaEnabled = s.enabled;
       });
@@ -142,7 +142,10 @@
         btn.disabled = false; btn.textContent = '创建账户';
         if (captchaEnabled) {
           document.getElementById('captchaCode').value = '';
-          loadCaptcha();
+          loadCaptcha((s) => {
+            captchaId = s.id;
+            captchaEnabled = s.enabled;
+          });
         }
       }
     }

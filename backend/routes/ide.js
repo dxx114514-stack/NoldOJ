@@ -22,7 +22,7 @@ router.post('/review', optionalAuth, async (req, res) => {
   }
   try {
     const result = await reviewCode(source_code, language);
-        if (!result.safe && req.user) {
+    if (!result.safe && req.user) {
       banUserAndRevoke(req.user.id);
     }
     res.json(result);

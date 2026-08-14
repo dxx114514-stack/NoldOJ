@@ -289,9 +289,10 @@ router.post('/:id/rejudge', requireAuth, requireRole('teacher'), (req, res) => {
   if (!submission) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Submission not found.' });
   }
+  const prevStatus = submission.status;
   db.prepare("UPDATE submissions SET status = 'pending_rejudge', score = 0, time_used = 0, memory_used = 0 WHERE id = ?").run(submission.id);
   db.prepare('DELETE FROM submission_details WHERE submission_id = ?').run(submission.id);
-  enqueueSubmission(submission.id);
+  enqueueSubmission(submission.id, prevStatus);
   res.json({ message: 'Submission queued for re-judge.' });
 });
 

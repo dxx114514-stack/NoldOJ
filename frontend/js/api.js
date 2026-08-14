@@ -462,8 +462,9 @@ function clearAnnouncementUnread() {
   updateAnnouncementBadge();
 }
 
-// 加载验证码（login/register 共用）：成功则展示 SVG 并返回 {id, enabled}
-async function loadCaptcha() {
+// 加载验证码（login/register 共用）：成功则展示 SVG 并返回 {id, enabled}。
+// onLoaded 回调在每次加载（含点击刷新）后触发，页面据此同步 captchaId，防止刷新后携带旧 id 提交失败
+async function loadCaptcha(onLoaded) {
   const state = { id: '', enabled: false };
   try {
     const data = await apiCall('GET', '/auth/captcha');
@@ -474,13 +475,14 @@ async function loadCaptcha() {
     const container = document.getElementById('captchaImg');
     if (container) {
       container.innerHTML = data.svg;
-      container.onclick = () => loadCaptcha();
+      container.onclick = () => loadCaptcha(onLoaded);
     }
   } catch {
     state.enabled = false;
     const section = document.getElementById('captchaSection');
     if (section) section.classList.add('hidden');
   }
+  if (typeof onLoaded === 'function') onLoaded(state);
   return state;
 }
 

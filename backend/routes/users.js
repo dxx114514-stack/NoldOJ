@@ -7,6 +7,7 @@ const { parsePageLimit } = require('../utils/pagination');
 const { isValidRole, canManage, isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
 const { generateAccessToken } = require('../utils/tokens');
+const { isStrongPassword } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -217,7 +218,7 @@ router.post('/:id/force-logout', requireAuth, requireRole('admin'), (req, res) =
 router.post('/:id/reset-password', requireAuth, requireRole('su'), (req, res) => {
   const { new_password } = req.body;
   // 与注册/改密一致的强度要求: 至少 8 位，含字母，且含数字或符号；bcrypt 前 72 字节截断防御
-  if (!new_password || new_password.length < 8 || Buffer.byteLength(new_password, 'utf8') > 72 || !/[a-zA-Z]/.test(new_password) || !(/\d/.test(new_password) || /[^a-zA-Z0-9]/.test(new_password))) {
+  if (!isStrongPassword(new_password)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '密码至少 8 位，且须包含字母与数字或符号。' });
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
@@ -254,8 +255,9 @@ router.post('/', requireAuth, requireRole('su'), (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
   }
-  if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Password must be 8-72 characters.' });
+  // 与注册接口一致的强度要求
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '密码至少 8 位，且须包含字母与数字或符号。' });
   }
   // 与注册接口一致的字符集限制
   if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {

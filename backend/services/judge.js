@@ -224,7 +224,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           const detailId = detail.lastInsertRowid;
 
           try {
-const stdin = tc.input_data || readTestdata(tc.input_file);
+            const stdin = tc.input_data || readTestdata(tc.input_file);
             const expected = tc.output_data || readTestdata(tc.output_file);
             const tcTimeLimit = tc.time_limit || timeLimitMs;
             const tcMemLimit = tc.memory_limit || problem.memory_limit;
@@ -232,12 +232,12 @@ const stdin = tc.input_data || readTestdata(tc.input_file);
 
             const timeUsed = result.timeUsed;
             const passed = compareOutput(expected, result.stdout, problem);
-let status = passed ? 'accepted' : 'wrong_answer';
-          if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
-          else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
-          else if (result.exitCode !== 0) status = 'runtime_error';
+            let status = passed ? 'accepted' : 'wrong_answer';
+            if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
+            else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
+            else if (result.exitCode !== 0) status = 'runtime_error';
 
-          if (status !== 'accepted') groupAllAccepted = false;
+            if (status !== 'accepted') groupAllAccepted = false;
             const memKB = result.memoryUsed || 0;
             updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), result.exitCode, '', detailId);
             tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), stderr: (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), exitCode: result.exitCode, detailId });
@@ -525,9 +525,11 @@ async function judgeSubmission(submissionId) {
   const submission = db.prepare('SELECT * FROM submissions WHERE id = ?').get(submissionId);
   if (!submission) return;
 
-  // 记录判题前的状态，用于评分发放去重（rejudge 场景）
-  const wasAccepted = submission.status === 'accepted';
-  const wasCompileError = submission.status === 'compile_error';
+  // 记录判题前的状态，用于评分发放去重（rejudge 场景：路由层已把状态改为 pending_rejudge，
+  // 原始状态需经 rejudgePrevStatus 传入，否则 wasAccepted/wasCompileError 恒为 false）
+  const prevStatus = rejudgePrevStatus.get(submissionId) || submission.status;
+  const wasAccepted = prevStatus === 'accepted';
+  const wasCompileError = prevStatus === 'compile_error';
 
   db.prepare("UPDATE submissions SET status = 'judging' WHERE id = ?").run(submissionId);
   emitJudgeStatus(submissionId, submission.user_id, 'judging');
@@ -600,6 +602,10 @@ const queuedIds = new Set();
 const maxThreads = config.judge.maxThreads;
 const runningJobs = new Set();
 
+// rejudge 任务入队时记录原始状态（在路由层已被改为 pending_rejudge，无法回读），
+// 供评分发放去重判断（wasAccepted/wasCompileError）
+const rejudgePrevStatus = new Map();
+
 // 并发判题池：最多同时运行 maxThreads 条提交，各自独立判题线程
 async function runOne(submissionId) {
   try {
@@ -607,6 +613,8 @@ async function runOne(submissionId) {
   } catch (err) {
     console.error(`Judge error for submission ${submissionId}:`, sanitizeLog(String(err && err.message || err)));
     db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(submissionId);
+  } finally {
+    rejudgePrevStatus.delete(submissionId);
   }
 }
 
@@ -623,8 +631,9 @@ function pumpQueue() {
   }
 }
 
-function enqueueSubmission(submissionId) {
+function enqueueSubmission(submissionId, prevStatus) {
   if (queuedIds.has(submissionId)) return;
+  if (prevStatus) rejudgePrevStatus.set(submissionId, prevStatus);
   queuedIds.add(submissionId);
   judgeQueue.push(submissionId);
   pumpQueue();
