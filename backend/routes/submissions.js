@@ -5,7 +5,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
 const { enqueueSubmission } = require('../services/judge');
 const { reviewCode, CODE_LENGTH_LIMIT } = require('../services/security');
-const { sanitizeLog } = require('../utils/securityHelpers');
+const { sanitizeLog, banUserAndRevoke } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
 const config = require('../config/config');
 
@@ -196,10 +196,8 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
   if (mainCode && mainCode.length >= 50) {
     reviewCode(mainCode, language).then(result => {
       if (!result.safe) {
-        console.log(`[Security] Malicious code detected in submission #${newId} by user #${req.user.id}: ${result.reason}`);
-        db.prepare('UPDATE users SET banned = 1, updated_at = datetime(\'now\') WHERE id = ?').run(req.user.id);
-        db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(req.user.id);
-        db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(req.user.id);
+        console.log(`[Security] Malicious code detected in submission #${newId} by user #${req.user.id}: ${sanitizeLog(result.reason)}`);
+        banUserAndRevoke(req.user.id);
         db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(newId);
       } else {
         db.prepare("UPDATE submissions SET status = 'pending' WHERE id = ?").run(newId);

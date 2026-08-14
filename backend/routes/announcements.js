@@ -14,12 +14,8 @@ router.get('/', (req, res) => {
   const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 10, 50);
 
   let where = 'WHERE a.type = ?';
-  const params = [type];
-  if (type === 'contest') {
-    // 比赛公告由专用接口返回，此处仅返回全局公告
-    where = 'WHERE a.type = ?';
-    params[0] = 'global';
-  }
+  // 比赛公告由专用接口返回，此处仅返回全局公告
+  const params = [type === 'contest' ? 'global' : type];
 
   const total = db.prepare(`SELECT COUNT(*) as c FROM announcements a ${where}`).get(...params).c;
   const items = db.prepare(`

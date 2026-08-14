@@ -43,7 +43,7 @@ function virtualStart(req, res) {
 
 // 虚拟比赛详情（题目+剩余时间+提交）
 // ownership 校验并入 SQL，未授权与不存在统一返回 404，防 ID 枚举
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/:id', requireAuth, (req, res) => {
   const vc = db.prepare(`
     SELECT vc.* FROM virtual_contests vc
     WHERE vc.id = ? AND (vc.user_id = ? OR EXISTS(
@@ -112,8 +112,16 @@ router.get('/:id/ranking', requireAuth, (req, res) => {
   let totalScore = 0, totalTime = 0;
   const problemsMap = {};
   for (const s of submissions) {
-    if (!problemsMap[s.problem_id] || s.score > problemsMap[s.problem_id].score) {
+    const cur = problemsMap[s.problem_id];
+    if (!cur) {
       problemsMap[s.problem_id] = { score: s.score, time_used: s.time_used, status: s.status };
+    } else {
+      const curAc = cur.status === 'accepted';
+      const newAc = s.status === 'accepted';
+      if ((newAc && !curAc) ||
+          (newAc === curAc && (s.score > cur.score || (s.score === cur.score && s.time_used < cur.time_used)))) {
+        problemsMap[s.problem_id] = { score: s.score, time_used: s.time_used, status: s.status };
+      }
     }
   }
   for (const pid of problemIds) {

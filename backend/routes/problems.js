@@ -8,11 +8,20 @@ const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth')
 const { parsePageLimit } = require('../utils/pagination');
 const { isStaff } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
+const { sanitizeLog } = require('../utils/securityHelpers');
 
 const router = express.Router();
 const uploadDir = path.join(__dirname, '../../data/uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({ dest: uploadDir, limits: { fileSize: 200 * 1024 * 1024 } });
+
+// 纵深防御: 断言文件路径必须位于 baseDir 之内（ZIP 导入写入前调用）
+function assertInsideProblemDir(baseDir, filePath) {
+  const base = path.resolve(baseDir) + path.sep;
+  if (!path.resolve(filePath).startsWith(base)) {
+    throw new Error(`ZIP entry escapes problem directory: ${filePath}`);
+  }
+}
 
 // 公开脱敏视图: 移除 SPJ 脚本与评分脚本，防止泄露判题逻辑
 function sanitizeProblem(p) {
@@ -24,10 +33,7 @@ function sanitizeProblem(p) {
 }
 
 // 作者/管理视图: 保留 spj_code 与 scoring_script，用于题目编辑回显
-function fullProblem(p) {
-  if (!p) return null;
-  return { ...p };
-}
+// （fullProblem 恒等包装已移除，直接返回数据库对象）
 
 router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, search = '', tag = '', tags = '', category = '', difficulty = '', sort = '', order = 'desc' } = req.query;
@@ -156,7 +162,7 @@ router.get('/:id', optionalAuth, (req, res) => {
   }
   // 管理角色或创建者返回完整视图（含 spj_code/scoring_script），其余走公开脱敏视图
   const isOwner = !!(req.user && req.user.id === problem.created_by);
-  const result = (isManager || isOwner) ? fullProblem(problem) : sanitizeProblem(problem);
+  const result = (isManager || isOwner) ? problem : sanitizeProblem(problem);
   result.test_cases_count = db.prepare('SELECT COUNT(*) as c FROM test_cases WHERE problem_id = ?').get(problem.id).c;
   const cats = db.prepare(`
     SELECT c.id, c.name, c.description FROM categories c
@@ -203,7 +209,7 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     is_hidden !== undefined ? (is_hidden ? 1 : 0) : 0
   );
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(newId);
-  res.status(201).json(fullProblem(problem));
+  res.status(201).json(problem);
 });
 
 router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
@@ -236,7 +242,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   db.prepare(`UPDATE problems SET ${u.clause} WHERE id = ?`).run(...u.values, problem.id);
 
   const updated = db.prepare('SELECT * FROM problems WHERE id = ?').get(problem.id);
-  res.json(fullProblem(updated));
+  res.json(updated);
 });
 
 router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
@@ -255,8 +261,17 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
 });
 
 router.post('/:id/testdata', requireAuth, requireRole('teacher'), upload.array('files', 100), (req, res) => {
+  // 清理 multer 临时文件（含异常路径），避免磁盘残留
+  const cleanupFiles = () => {
+    if (!req.files) return;
+    for (const f of req.files) {
+      try { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); } catch {}
+    }
+  };
+
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
+    cleanupFiles();
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
   if (!req.files || req.files.length === 0) {
@@ -266,34 +281,35 @@ router.post('/:id/testdata', requireAuth, requireRole('teacher'), upload.array('
   const problemDir = path.join(__dirname, '../../problems', String(problem.id));
   fs.mkdirSync(problemDir, { recursive: true });
 
-  const pairs = {};
-  for (const file of req.files) {
-    const match = file.originalname.match(/^(.+)\.(in|out)$/);
-    if (!match) {
-      fs.unlinkSync(file.path);
-      continue;
+  try {
+    const pairs = {};
+    for (const file of req.files) {
+      const match = file.originalname.match(/^(.+)\.(in|out)$/);
+      if (!match) continue;
+      // 文件名消毒: 只允许安全字符，且必须是纯文件名（防止 ../ 路径穿越）
+      let name = path.basename(match[1]).replace(/[<>:"/\\|?*]/g, '_').replace(/^\.+/, '');
+      const ext = match[2];
+      if (!name) name = 'case';
+      if (!pairs[name]) pairs[name] = {};
+      const destPath = path.join(problemDir, `${name}.${ext}`);
+      fs.renameSync(file.path, destPath);
+      pairs[name][ext] = destPath;
     }
-    // 文件名消毒: 只允许安全字符，且必须是纯文件名（防止 ../ 路径穿越）
-    let name = path.basename(match[1]).replace(/[<>:"/\\|?*]/g, '_').replace(/^\.+/, '');
-    const ext = match[2];
-    if (!name) name = 'case';
-    if (!pairs[name]) pairs[name] = {};
-    const destPath = path.join(problemDir, `${name}.${ext}`);
-    fs.renameSync(file.path, destPath);
-    pairs[name][ext] = destPath;
+
+    const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_file, output_file, sort_order) VALUES (?, ?, ?, ?)');
+    let order = db.prepare('SELECT MAX(sort_order) as m FROM test_cases WHERE problem_id = ?').get(problem.id)?.m || 0;
+    let count = 0;
+
+    for (const [name, files] of Object.entries(pairs)) {
+      order++;
+      insertTC.run(problem.id, files.in || '', files.out || '', order);
+      count++;
+    }
+
+    res.json({ message: `Uploaded ${count} test case(s).` });
+  } finally {
+    cleanupFiles();
   }
-
-  const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_file, output_file, sort_order) VALUES (?, ?, ?, ?)');
-  let order = db.prepare('SELECT MAX(sort_order) as m FROM test_cases WHERE problem_id = ?').get(problem.id)?.m || 0;
-  let count = 0;
-
-  for (const [name, files] of Object.entries(pairs)) {
-    order++;
-    insertTC.run(problem.id, files.in || '', files.out || '', order);
-    count++;
-  }
-
-  res.json({ message: `Uploaded ${count} test case(s).` });
 });
 
 router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.single('file'), (req, res) => {
@@ -334,12 +350,15 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
       if (totalBytes > MAX_ZIP_TOTAL_BYTES) {
         throw new Error(`ZIP total uncompressed size exceeds ${MAX_ZIP_TOTAL_BYTES} bytes`);
       }
-      const entryPath = entry.entryName;
+      const entryPath = entry.entryName.replace(/\\/g, '/'); // 归一化反斜杠，防 Windows 风格路径穿越
       const parts = entryPath.split('/').filter(p => p);
       if (parts.length === 0) continue;
-      // Zip Slip 防御: 拒绝包含 .. 或绝对路径的条目
-      if (parts.some(p => p === '..') || path.isAbsolute(entryPath)) {
+      // Zip Slip 防御: 拒绝含 .. / 空段 / 绝对路径 / 危险字符的条目
+      if (path.isAbsolute(entryPath) || parts.some(p => p === '..' || p === '.')) {
         continue;
+      }
+      if (!parts.every(p => /^[\w.-]+$/.test(p))) {
+        continue; // 仅允许安全文件名（子任务名/用例名最终拼入磁盘路径）
       }
 
       const fileName = parts[parts.length - 1];
@@ -415,6 +434,8 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
         order++;
         const inputPath = path.join(problemDir, `${subtaskName}_${name}.in`);
         const outputPath = path.join(problemDir, `${subtaskName}_${name}.out`);
+        assertInsideProblemDir(problemDir, inputPath);
+        assertInsideProblemDir(problemDir, outputPath);
         if (files.in) fs.writeFileSync(inputPath, files.in);
         if (files.out) fs.writeFileSync(outputPath, files.out);
         db.prepare('INSERT INTO test_cases (problem_id, group_id, input_file, output_file, sort_order) VALUES (?, ?, ?, ?, ?)').run(
@@ -428,6 +449,8 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
       order++;
       const inputPath = path.join(problemDir, `${name}.in`);
       const outputPath = path.join(problemDir, `${name}.out`);
+      assertInsideProblemDir(problemDir, inputPath);
+      assertInsideProblemDir(problemDir, outputPath);
       if (files.in) fs.writeFileSync(inputPath, files.in);
       if (files.out) fs.writeFileSync(outputPath, files.out);
       db.prepare('INSERT INTO test_cases (problem_id, input_file, output_file, sort_order) VALUES (?, ?, ?, ?)').run(
@@ -440,7 +463,7 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
     res.json({ message: `Imported ${count} test case(s) from ${Object.keys(subtasks).length} subtask(s).` });
   } catch (err) {
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    console.error('[problems] ZIP import failed:', err);
+    console.error('[problems] ZIP import failed:', sanitizeLog(String(err && err.message || err)));
     res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'ZIP 数据导入失败，请检查文件格式。' });
   }
 });
@@ -597,7 +620,16 @@ router.delete('/:id/groups/:gid', requireAuth, requireRole('teacher'), (req, res
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Group not found.' });
   }
   db.prepare('UPDATE test_cases SET group_id = NULL WHERE group_id = ?').run(group.id);
-  db.prepare('UPDATE test_groups SET dependency = REPLACE(dependency, ?, ?)').run(String(group.id), '');
+  // 从所有分组 dependency JSON 中安全移除该分组 id（避免 REPLACE 字符串误伤 112/121 等）
+  const deps = db.prepare('SELECT id, dependency FROM test_groups WHERE problem_id = ? AND dependency IS NOT NULL').all(req.params.id);
+  const fixDep = db.prepare('UPDATE test_groups SET dependency = ? WHERE id = ?');
+  for (const d of deps) {
+    let arr = [];
+    try { arr = JSON.parse(d.dependency || '[]'); } catch { arr = []; }
+    if (Array.isArray(arr) && arr.includes(group.id)) {
+      fixDep.run(JSON.stringify(arr.filter(id => id !== group.id)), d.id);
+    }
+  }
   db.prepare('DELETE FROM test_groups WHERE id = ?').run(group.id);
   res.json({ message: 'Group deleted.' });
 });

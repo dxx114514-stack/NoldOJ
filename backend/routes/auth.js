@@ -1,13 +1,14 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const config = require('../config/config');
 const { requireAuth } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
 const { generateCode, sendVerificationEmail, saveCode, verifyCode } = require('../services/email');
 const { generateCaptcha, verifyCaptcha } = require('../services/captcha');
+const { generateAccessToken, generateRefreshToken } = require('../utils/tokens');
+const { isStrongPassword } = require('../utils/validation');
 
 const router = express.Router();
 const registerRateLimit = createRateLimit({ windowMs: 3600000, max: 1 });
@@ -17,30 +18,34 @@ const changePasswordRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
 // 验证码校验接口独立限流，防止 6 位验证码被暴力枚举
 const verifyCodeRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
 
-// 密码强度: 至少 8 位，含字母，且含数字或特殊符号
-function isStrongPassword(pw) {
-  if (!pw || pw.length < 8) return false;
-  // bcrypt 底层仅处理前 72 字节，超长密码会被截断导致认证绕过风险
-  if (Buffer.byteLength(pw, 'utf8') > 72) return false;
-  if (!/[a-zA-Z]/.test(pw)) return false;
-  return /\d/.test(pw) || /[^a-zA-Z0-9]/.test(pw);
+// 验证码校验中间件（login/register 共用）
+function requireCaptcha(req, res, next) {
+  if (config.captcha.enabled) {
+    const { captcha_id, captcha_code } = req.body;
+    if (!captcha_id || !captcha_code) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '请完成验证码。' });
+    }
+    const ok = verifyCaptcha(captcha_id, captcha_code);
+    if (!ok) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '验证码错误，请重试。' });
+    }
+  }
+  next();
 }
 
-function generateAccessToken(userId) {
-  return jwt.sign({ userId }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry, algorithm: 'HS256' });
-}
-function generateRefreshToken(userId) {
-  const token = jwt.sign({ userId }, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshExpiry, algorithm: 'HS256' });
-  const hash = bcrypt.hashSync(token, 10);
-  const prefix = token.slice(0, 24);
-  const expiresAt = new Date(Date.now() + config.jwt.refreshExpiryMs).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-  db.prepare('INSERT INTO refresh_tokens (user_id, token_hash, token_prefix, expires_at) VALUES (?, ?, ?, ?)').run(userId, hash, prefix, expiresAt);
-  return token;
+// 设置 refresh_token httpOnly cookie（login/register/refresh 共用）
+function setRefreshCookie(res, refreshToken) {
+  res.cookie('refresh_token', refreshToken, {
+    httpOnly: true,
+    secure: config.cookie.secure,
+    sameSite: 'strict',
+    maxAge: config.jwt.refreshExpiryMs
+  });
 }
 
 router.get('/captcha', (req, res) => {
   if (!config.captcha.enabled) {
-    return res.status(404).json({ error: 'Captcha disabled' });
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Captcha disabled' });
   }
   const { id, svg } = generateCaptcha();
   res.json({ id, svg });
@@ -79,20 +84,10 @@ router.get('/email-enabled', (req, res) => {
   res.json({ enabled: config.email.enabled });
 });
 
-router.post('/login', loginRateLimit, async (req, res) => {
-  const { username, password, captcha_id, captcha_code } = req.body;
+router.post('/login', loginRateLimit, requireCaptcha, async (req, res) => {
+  const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
-  }
-
-  if (config.captcha.enabled) {
-    if (!captcha_id || !captcha_code) {
-      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '请完成验证码。' });
-    }
-    const ok = verifyCaptcha(captcha_id, captcha_code);
-    if (!ok) {
-      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '验证码错误，请重试。' });
-    }
   }
 
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
@@ -105,12 +100,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
   const accessToken = generateAccessToken(user.id);
   const refreshToken = generateRefreshToken(user.id);
 
-  res.cookie('refresh_token', refreshToken, {
-    httpOnly: true,
-    secure: config.cookie.secure,
-    sameSite: 'strict',
-    maxAge: config.jwt.refreshExpiryMs
-  });
+  setRefreshCookie(res, refreshToken);
 
   res.json({
     access_token: accessToken,
@@ -118,20 +108,10 @@ router.post('/login', loginRateLimit, async (req, res) => {
   });
 });
 
-router.post('/register', registerRateLimit, async (req, res) => {
-  const { username, password, nickname, email, email_code, captcha_id, captcha_code } = req.body;
+router.post('/register', registerRateLimit, requireCaptcha, async (req, res) => {
+  const { username, password, nickname, email, email_code } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
-  }
-
-  if (config.captcha.enabled) {
-    if (!captcha_id || !captcha_code) {
-      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '请完成验证码。' });
-    }
-    const ok = verifyCaptcha(captcha_id, captcha_code);
-    if (!ok) {
-      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '验证码错误，请重试。' });
-    }
   }
 
   if (config.email.enabled) {
@@ -173,12 +153,7 @@ router.post('/register', registerRateLimit, async (req, res) => {
   const accessToken = generateAccessToken(newId);
   const refreshToken = generateRefreshToken(newId);
 
-  res.cookie('refresh_token', refreshToken, {
-    httpOnly: true,
-    secure: config.cookie.secure,
-    sameSite: 'strict',
-    maxAge: config.jwt.refreshExpiryMs
-  });
+  setRefreshCookie(res, refreshToken);
 
   res.status(201).json({
     access_token: accessToken,
@@ -228,12 +203,7 @@ router.post('/refresh', refreshRateLimit, (req, res) => {
     const newAccessToken = generateAccessToken(payload.userId);
     const newRefreshToken = generateRefreshToken(payload.userId);
 
-    res.cookie('refresh_token', newRefreshToken, {
-      httpOnly: true,
-      secure: config.cookie.secure,
-      sameSite: 'strict',
-      maxAge: config.jwt.refreshExpiryMs
-    });
+    setRefreshCookie(res, newRefreshToken);
 
     res.json({ access_token: newAccessToken });
   } catch {

@@ -18,7 +18,7 @@ router.post('/', requireAuth, requireRole('su'), (req, res) => {
   }
   const existing = db.prepare('SELECT id FROM languages WHERE name = ?').get(name);
   if (existing) {
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Language already exists.' });
+    return res.status(409).json({ code: 2, reason: 'ERR_CONFLICT', message: 'Language already exists.' });
   }
   const result = db.prepare('INSERT INTO languages (name, display_name, compile_cmd, run_cmd, extension) VALUES (?, ?, ?, ?, ?)').run(name, display_name, compile_cmd || '', run_cmd, extension);
   const lang = db.prepare('SELECT * FROM languages WHERE id = ?').get(result.lastInsertRowid);

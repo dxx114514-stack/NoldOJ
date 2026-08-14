@@ -23,8 +23,8 @@ const storage = multer.diskStorage({
 const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const DEFAULT_MAX_STORAGE = 2 * 1024 * 1024 * 1024; // 2GB
 
-// 允许的扩展名白名单（移除 svg: SVG 可内嵌 <script>，触发存储型 XSS）
-const ALLOWED_EXT = /\.(jpg|jpeg|png|gif|webp|pdf|zip|tar|gz|txt|md|csv|json|xml|cpp|c|py|java|js)$/i;
+// 允许的扩展名白名单（移除 svg: SVG 可内嵌 <script>；移除 js: 源码不应经 /uploads 以 text/javascript 输出）
+const ALLOWED_EXT = /\.(jpg|jpeg|png|gif|webp|pdf|zip|tar|gz|txt|md|csv|json|xml|cpp|c|py|java)$/i;
 
 // 文件头 magic bytes 校验: 防止伪装扩展名
 const MAGIC_BYTES = {
@@ -59,21 +59,6 @@ function verifyMagicBytes(filePath, ext) {
   }
 }
 
-// 动态创建 multer 实例，根据用户限制
-function createUploadMiddleware(maxFileSize) {
-  return multer({
-    storage,
-    limits: { fileSize: maxFileSize },
-    fileFilter: (req, file, cb) => {
-      if (ALLOWED_EXT.test(path.extname(file.originalname))) {
-        cb(null, true);
-      } else {
-        cb(new Error('File type not allowed.'));
-      }
-    }
-  });
-}
-
 const upload = multer({
   storage,
   limits: { fileSize: DEFAULT_MAX_FILE_SIZE },
@@ -89,18 +74,12 @@ const upload = multer({
 router.get('/', requireAuth, requireRole('teacher'), (req, res) => {
   const { page = 1, limit = 50 } = req.query;
   const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
-  let where = '';
-  let params = [];
-  if (req.user.role === 'user') {
-    where = 'WHERE f.user_id = ?';
-    params = [req.user.id];
-  }
-  const total = db.prepare(`SELECT COUNT(*) as c FROM uploaded_files f ${where}`).get(...params).c;
+  const total = db.prepare('SELECT COUNT(*) as c FROM uploaded_files').get().c;
   const files = db.prepare(`
     SELECT f.*, u.username
     FROM uploaded_files f LEFT JOIN users u ON f.user_id = u.id
-    ${where} ORDER BY f.id DESC LIMIT ? OFFSET ?
-  `).all(...params, limitNum, offset);
+    ORDER BY f.id DESC LIMIT ? OFFSET ?
+  `).all(limitNum, offset);
   res.json({ total, page: pageNum, limit: limitNum, files });
 });
 

@@ -4,6 +4,7 @@ const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
 const config = require('../config/config');
 const { reviewCode, CODE_LENGTH_LIMIT } = require('../services/security');
+const { banUserAndRevoke } = require('../utils/securityHelpers');
 const { enqueueIdeRun } = require('../services/ideJudge');
 
 const router = express.Router();
@@ -21,10 +22,8 @@ router.post('/review', optionalAuth, async (req, res) => {
   }
   try {
     const result = await reviewCode(source_code, language);
-    if (!result.safe && req.user) {
-      db.prepare('UPDATE users SET banned = 1 WHERE id = ?').run(req.user.id);
-      db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(req.user.id);
-      db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(req.user.id);
+        if (!result.safe && req.user) {
+      banUserAndRevoke(req.user.id);
     }
     res.json(result);
   } catch (e) {
@@ -53,9 +52,7 @@ router.post('/run', requireAuth, rateLimit, async (req, res) => {
     const securityReview = await reviewCode(source_code, language);
     if (!securityReview.safe) {
       if (req.user) {
-        db.prepare('UPDATE users SET banned = 1 WHERE id = ?').run(req.user.id);
-        db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(req.user.id);
-        db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(req.user.id);
+        banUserAndRevoke(req.user.id);
       }
       return res.status(403).json({
         code: 6,

@@ -1,22 +1,23 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
-const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser } = require('../middleware/auth');
+const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser, ONLINE_TTL_MS } = require('../middleware/auth');
 const { sanitizeLog } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
 const { isValidRole, canManage, isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
+const { generateAccessToken } = require('../utils/tokens');
 
 const router = express.Router();
 
-// 结构化审计日志: 记录敏感管理操作（操作者 → 目标）
+// 结构化审计日志: 记录敏感管理操作（操作者 → 目标），脱敏后输出
 function audit(operator, action, target) {
-  const t = target ? `${target.username}(id=${target.id})` : 'n/a';
-  console.log(`[AUDIT] ${action}: operator=${operator.username}(id=${operator.id}) -> target=${t} at ${new Date().toISOString()}`);
+  const t = target ? `${sanitizeLog(target.username)}(id=${target.id})` : 'n/a';
+  console.log(`[AUDIT] ${sanitizeLog(action)}: operator=${sanitizeLog(operator.username)}(id=${operator.id}) -> target=${t} at ${new Date().toISOString()}`);
 }
 
 router.get('/online', requireAuth, requireRole('admin'), (req, res) => {
-  const users = getOnlineUsers(5 * 60 * 1000);
+  const users = getOnlineUsers(ONLINE_TTL_MS);
   res.json({ total: users.length, users });
 });
 
@@ -63,7 +64,7 @@ router.put('/me', requireAuth, (req, res) => {
   const { nickname, signature, bio, hide_rating, preferred_language } = req.body;
   const u = buildUpdates([
     { key: 'nickname', value: nickname },
-    { key: 'signature', value: signature, transform: v => v.slice(0, 1000) },
+    { key: 'signature', value: signature, transform: v => String(v ?? '').slice(0, 1000) },
     { key: 'bio', value: bio },
     { key: 'hide_rating', value: hide_rating, transform: v => v ? 1 : 0 },
     { key: 'preferred_language', value: preferred_language }
@@ -243,9 +244,7 @@ router.post('/sudo-login', requireAuth, requireRole('su'), (req, res) => {
   if (target.banned) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '该用户已被封禁，无法登录。' });
   }
-  const jwt = require('jsonwebtoken');
-  const config = require('../config/config');
-  const token = jwt.sign({ userId: target.id }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry, algorithm: 'HS256' });
+  const token = generateAccessToken(target.id);
   audit(req.user, 'sudo-login', target);
   res.json({ access_token: token, user: { id: target.id, username: target.username, nickname: target.nickname, role: target.role } });
 });
@@ -287,6 +286,15 @@ router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {
     }
   }
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(target.id);
+  // 清理该用户作为作者/创建者的依赖数据（FK 已开启，需在删除前处理，避免 500）
+  db.prepare('DELETE FROM discussion_replies WHERE author_id = ?').run(target.id);
+  db.prepare('DELETE FROM discussions WHERE author_id = ?').run(target.id);
+  db.prepare('DELETE FROM articles WHERE author_id = ?').run(target.id); // problem_solutions 级联
+  db.prepare('DELETE FROM announcements WHERE author_id = ?').run(target.id);
+  db.prepare('DELETE FROM problem_sets WHERE creator_id = ?').run(target.id); // items/progress 级联
+  db.prepare('UPDATE problems SET created_by = NULL WHERE created_by = ?').run(target.id);
+  db.prepare('UPDATE contests SET created_by = NULL WHERE created_by = ?').run(target.id);
+  db.prepare('DELETE FROM submissions WHERE user_id = ?').run(target.id); // submission_details 级联
   db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
   audit(req.user, 'delete-user', target);
   res.json({ message: 'User deleted.' });

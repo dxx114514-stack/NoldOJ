@@ -5,10 +5,13 @@ const { ROLE_HIERARCHY } = require('../utils/roles');
 
 const onlineUsers = new Map();
 
+// 在线用户有效窗口
+const ONLINE_TTL_MS = 5 * 60 * 1000;
+
 // 定时清理过期在线用户，防止 Map 无限增长（每 5 分钟，配合 getOnlineUsers 的惰性清理）
 setInterval(() => {
   getOnlineUsers();
-}, 5 * 60 * 1000);
+}, ONLINE_TTL_MS);
 
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -63,7 +66,7 @@ function optionalAuth(req, res, next) {
   next();
 }
 
-function getOnlineUsers(timeoutMs = 5 * 60 * 1000) {
+function getOnlineUsers(timeoutMs = ONLINE_TTL_MS) {
   const now = Date.now();
   const result = [];
   for (const [id, info] of onlineUsers) {
@@ -97,4 +100,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { requireAuth, optionalAuth, requireRole, getOnlineUsers, removeOnlineUser };
+module.exports = { requireAuth, optionalAuth, requireRole, getOnlineUsers, removeOnlineUser, ONLINE_TTL_MS };

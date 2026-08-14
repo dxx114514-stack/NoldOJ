@@ -394,17 +394,13 @@ async function initSocket() {
       transports: ['websocket', 'polling']
     });
 
-    winojSocket.on('connect', () => {
-      console.log('[Socket] Connected');
-    });
+    winojSocket.on('connect', () => {});
 
     winojSocket.on('connect_error', (err) => {
       console.warn('[Socket] Connection error:', err.message);
     });
 
-    winojSocket.on('disconnect', () => {
-      console.log('[Socket] Disconnected');
-    });
+    winojSocket.on('disconnect', () => {});
 
     // 公告推送
     winojSocket.on('announcement', (msg) => {
@@ -464,6 +460,28 @@ function clearAnnouncementUnread() {
   announcementUnread = 0;
   localStorage.setItem('winoj_ann_unread', '0');
   updateAnnouncementBadge();
+}
+
+// 加载验证码（login/register 共用）：成功则展示 SVG 并返回 {id, enabled}
+async function loadCaptcha() {
+  const state = { id: '', enabled: false };
+  try {
+    const data = await apiCall('GET', '/auth/captcha');
+    state.id = data.id;
+    state.enabled = true;
+    const section = document.getElementById('captchaSection');
+    if (section) section.classList.remove('hidden');
+    const container = document.getElementById('captchaImg');
+    if (container) {
+      container.innerHTML = data.svg;
+      container.onclick = () => loadCaptcha();
+    }
+  } catch {
+    state.enabled = false;
+    const section = document.getElementById('captchaSection');
+    if (section) section.classList.add('hidden');
+  }
+  return state;
 }
 
 // 页面加载后初始化 socket

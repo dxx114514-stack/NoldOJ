@@ -48,7 +48,9 @@ function saveCode(email, code) {
 }
 
 function verifyCode(email, code) {
-  const row = db.prepare('SELECT * FROM email_codes WHERE email = ? AND used = 0 AND expires_at > datetime(\'now\') ORDER BY id DESC LIMIT 1').get(email);
+  // datetime(expires_at) 归一化 ISO(…T…Z) 与 SQLite(空格) 两种时间格式，
+  // 避免字符串比较使 'T' > ' ' 导致验证码当日恒有效
+  const row = db.prepare("SELECT * FROM email_codes WHERE email = ? AND used = 0 AND datetime(expires_at) > datetime('now') ORDER BY id DESC LIMIT 1").get(email);
   if (!row) return false;
   const expected = Buffer.from(row.code, 'hex');
   const actual = Buffer.from(hashCode(code), 'hex');

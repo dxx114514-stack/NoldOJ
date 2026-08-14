@@ -88,10 +88,6 @@ function initSocket(server) {
   return io;
 }
 
-function getIO() {
-  return io;
-}
-
 // 推送评测状态给提交者
 function emitJudgeStatus(submissionId, userId, status) {
   if (!io) return;
@@ -127,4 +123,4 @@ function emitAnnouncement(announcement) {
   });
 }
 
-module.exports = { initSocket, getIO, emitJudgeStatus, emitContestRanking, emitAnnouncement };
+module.exports = { initSocket, emitJudgeStatus, emitContestRanking, emitAnnouncement };

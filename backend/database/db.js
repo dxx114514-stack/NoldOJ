@@ -39,8 +39,13 @@ function exec(sql) {
   sqlDb.exec(sql);
 }
 
-// node:sqlite 同步直接写盘，无需手动导出。保留空函数以兼容旧调用。
-function saveDB() {}
+// 关闭数据库连接（进程退出时调用，确保 WAL 数据落盘）
+function closeDB() {
+  if (sqlDb) {
+    try { sqlDb.close(); } catch {}
+    sqlDb = null;
+  }
+}
 
 // 读取表列名（用于渐进式 ALTER 迁移）
 function tableCols(table) {
@@ -351,6 +356,6 @@ async function initDB() {
   return sqlDb;
 }
 
-const db = { prepare, exec, saveDB, findNextId };
+const db = { prepare, exec, findNextId, closeDB };
 module.exports = db;
 module.exports.initDB = initDB;

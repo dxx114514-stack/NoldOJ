@@ -119,34 +119,30 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
   if (!lang.compile) return { success: true, output: '' };
 
   const actualExe = isWindows ? exeFile + '.exe' : exeFile;
-  let cmd = lang.compile;
 
-  // 多文件 C++: 收集工作目录下所有 .cpp（不经 shell 通配符，避免注入）。
-  // 兼容两种布局：prepareWorkDirMulti 平铺在根目录；旧布局可能在 main/ 子目录。
-  let extraSources = [];
+  // 多文件 C++: 参数数组直传 spawnSync，不经 shell/token 化，杜绝参数注入。
   if (isMultiFile && lang.ext === '.cpp') {
-    const candidates = [workDir, path.join(workDir, 'main')];
-    const seen = new Set();
-    for (const dir of candidates) {
-      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
-      for (const f of fs.readdirSync(dir)) {
-        if (!f.endsWith('.cpp')) continue;
-        const full = path.join(dir, f);
-        if (seen.has(full)) continue;
-        seen.add(full);
-        extraSources.push(full);
-      }
+    const extraSources = collectExtraSources(workDir, srcFile);
+    try {
+      const result = spawnSync('g++', ['-O2', '-Wall', '-std=c++17', '-o', actualExe, ...extraSources, srcFile], {
+        cwd: workDir,
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true
+      });
+      if (result.status === 0) return { success: true, output: String(result.stdout || '') };
+      return { success: false, output: String(result.stderr || result.stdout || errMsg(result)) };
+    } catch (err) {
+      return { success: false, output: String(err.message || 'Compilation failed') };
     }
-    // 主文件已作为 "{src}" 单独传入，避免重复编译同一文件
-    extraSources = extraSources.filter(full => path.resolve(full) !== path.resolve(srcFile));
-    cmd = 'g++ -O2 -Wall -std=c++17 -o "{exe}" {extra} "{src}"';
   }
+
+  let cmd = lang.compile;
 
   cmd = cmd
     .replace('{src}', srcFile)
     .replace('{exe}', actualExe)
-    .replace('{workdir}', workDir)
-    .replace('{extra}', extraSources.join(' '));
+    .replace('{workdir}', workDir);
 
   // 解析为可执行文件 + 参数数组，使用 spawnSync 不经 shell，杜绝命令注入
   const parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [cmd];
@@ -163,11 +159,33 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
     if (result.status === 0) {
       return { success: true, output: String(result.stdout || '') };
     }
-    return { success: false, output: String(result.stderr || result.stdout || errMsg()) };
+    return { success: false, output: String(result.stderr || result.stdout || errMsg(result)) };
   } catch (err) {
     return { success: false, output: String(err.stderr || err.stdout || err.message || 'Compilation failed') };
   }
-  function errMsg() { return 'Compilation failed (exit ' + (result.status ?? '?') + ')'; }
+  function errMsg(result) { return 'Compilation failed (exit ' + (result.status ?? '?') + ')'; }
+}
+
+// 收集工作目录下的额外 .cpp 源文件。文件名必须为安全字符（无空白/引号/前导 -），
+// 否则跳过，防止把上传文件名当作 gcc 编译选项注入。
+function collectExtraSources(workDir, srcFile) {
+  const candidates = [workDir, path.join(workDir, 'main')];
+  const seen = new Set();
+  const extraSources = [];
+  for (const dir of candidates) {
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.cpp')) continue;
+      const full = path.join(dir, f);
+      if (seen.has(full)) continue;
+      seen.add(full);
+      // 主文件已作为 srcFile 单独传入，避免重复编译同一文件
+      if (path.resolve(full) === path.resolve(srcFile)) continue;
+      if (f.startsWith('-') || !/^[A-Za-z0-9_.-]+$/.test(f)) continue;
+      extraSources.push(full);
+    }
+  }
+  return extraSources;
 }
 
 function killProc(proc, isWindows) {

@@ -1,5 +1,6 @@
 // 共享安全工具: 日志脱敏 + 审计日志
 const crypto = require('crypto');
+const db = require('../database/db');
 
 // 日志脱敏: 屏蔽 JWT、Authorization、密码、token 等潜在敏感数据
 const SENSITIVE_PATTERNS = [
@@ -22,4 +23,11 @@ function hmacDigest(value, secret) {
   return crypto.createHmac('sha256', String(secret)).update(String(value)).digest('hex');
 }
 
-module.exports = { sanitizeLog, hmacDigest };
+// 封禁用户并吊销其会话（恶意代码检测后调用，ide/submissions 共用）
+function banUserAndRevoke(userId) {
+  db.prepare('UPDATE users SET banned = 1, updated_at = datetime(\'now\') WHERE id = ?').run(userId);
+  db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(userId);
+  db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(userId);
+}
+
+module.exports = { sanitizeLog, hmacDigest, banUserAndRevoke };

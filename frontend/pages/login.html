@@ -49,22 +49,10 @@
     let captchaId = '';
     let captchaEnabled = false;
 
-    async function loadCaptcha() {
-      try {
-        const data = await apiCall('GET', '/auth/captcha');
-        captchaId = data.id;
-        captchaEnabled = true;
-        const section = document.getElementById('captchaSection');
-        section.classList.remove('hidden');
-        const container = document.getElementById('captchaImg');
-        container.innerHTML = data.svg;
-        container.onclick = loadCaptcha;
-      } catch {
-        captchaEnabled = false;
-        document.getElementById('captchaSection').classList.add('hidden');
-      }
-    }
-    loadCaptcha();
+    loadCaptcha().then((s) => {
+      captchaId = s.id;
+      captchaEnabled = s.enabled;
+    });
 
     async function handleLogin(e) {
       e.preventDefault();

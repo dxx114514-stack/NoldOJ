@@ -6,6 +6,15 @@ const sandbox = require('../sandbox/executor');
 const config = require('../config/config');
 const { runScoringScript } = require('../sandbox/scorer');
 const { emitJudgeStatus, emitContestRanking } = require('./socket');
+const { sanitizeLog } = require('../utils/securityHelpers');
+
+// 魔法数字常量: 评分规则 / 日志截断 / 资源限制
+const RATING_DELTA_COMPILE_ERROR = -2;
+const RATING_DELTA_ACCEPTED = 10;
+const MAX_OUTPUT_LOG_CHARS = 4096;
+const SPJ_TIMEOUT_MS = 1000;
+const MAX_GROUP_EVAL_ITERATIONS = 100;
+const MAX_TESTDATA_BYTES = 16 * 1024 * 1024; // 16MB 单测试数据文件上限
 
 function compareTextStrict(expected, actual) {
   return expected.trimEnd() === actual.trimEnd();
@@ -47,6 +56,20 @@ function compareOutput(expected, actual, problem) {
   return compareTextStrict(expected, actual);
 }
 
+// 读取测试数据文件，限制单文件大小防止超大用例整读入内存导致 OOM
+function readTestdata(filePath) {
+  if (!filePath) return '';
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > MAX_TESTDATA_BYTES) {
+      throw new Error('Test data file exceeds 16MB limit');
+    }
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (err) {
+    throw new Error('Failed to read test data: ' + err.message);
+  }
+}
+
 // SPJ 执行: 使用 vm 沙箱隔离，剥离 require/process/fs 等危险全局对象
 // 注意: vm 并非绝对安全的沙箱，但相比 eval 已杜绝直接访问主进程上下文
 function runSPJ(spjCode, expected, actual) {
@@ -57,7 +80,7 @@ function runSPJ(spjCode, expected, actual) {
     // 使沙箱内的一切（包括全局对象、构造函数）都属于 vm 的独立 realm。
     const sandbox = vm.createContext({});
     const script = new vm.Script(`(function(stdin, stdout, answer) { ${spjCode} })(JSON.parse(${JSON.stringify(JSON.stringify(''))}), JSON.parse(${JSON.stringify(JSON.stringify(String(actual ?? '')))}), JSON.parse(${JSON.stringify(JSON.stringify(String(expected ?? '')))}))`);
-    const result = script.runInContext(sandbox, { timeout: 1000 });
+    const result = script.runInContext(sandbox, { timeout: SPJ_TIMEOUT_MS });
     return result === true || result === 1 || result === 'AC';
   } catch {
     return false;
@@ -90,6 +113,42 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
   // 检查是否有多文件记录
   const subFiles = db.prepare('SELECT filename, content FROM submission_files WHERE submission_id = ? ORDER BY id').all(submission.id);
+
+  // submit_answer 题型：无需编译运行，直接比较提交的 answer_data 与预期输出
+  if (problem.problem_type === 'submit_answer') {
+    const tcResults = [];
+    for (const tc of testCases) {
+      const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running');
+      const detailId = detail.lastInsertRowid;
+      let expected = tc.output_data || '';
+      try {
+        expected = tc.output_data || readTestdata(tc.output_file);
+      } catch (err) {
+        updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
+        tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: err.message, exitCode: -1, detailId });
+        continue;
+      }
+      const answer = submission.answer_data || '';
+      const passed = compareOutput(expected, answer, problem);
+      const status = passed ? 'accepted' : 'wrong_answer';
+      updateDetail.run(status, 0, 0, 0, answer.slice(0, MAX_OUTPUT_LOG_CHARS), '', 0, '', detailId);
+      tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed: 0, memoryUsed: 0, stdout: answer.slice(0, MAX_OUTPUT_LOG_CHARS), stderr: '', exitCode: 0, detailId });
+    }
+
+    let finalScore, finalStatus, finalTime, finalMemory;
+    if (hasGroups) {
+      const result = evaluateWithGroups(problem, groups, tcResults);
+      finalScore = result.score; finalStatus = result.status; finalTime = result.time; finalMemory = result.memory;
+    } else {
+      const result = evaluateSimple(problem, tcResults);
+      finalScore = result.score; finalStatus = result.status; finalTime = result.time; finalMemory = result.memory;
+    }
+    for (const tc of tcResults) {
+      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, tc.stdout || '', tc.stderr || '', typeof tc.exitCode === 'number' ? tc.exitCode : -1, '', tc.detailId);
+    }
+    updateSubmission.run(finalStatus, finalScore, finalTime, finalMemory, '', submission.id);
+    return;
+  }
 
   try {
     let prepared;
@@ -165,23 +224,23 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           const detailId = detail.lastInsertRowid;
 
           try {
-            const stdin = tc.input_data || (tc.input_file ? fs.readFileSync(tc.input_file, 'utf8') : '');
-            const expected = tc.output_data || (tc.output_file ? fs.readFileSync(tc.output_file, 'utf8') : '');
+const stdin = tc.input_data || readTestdata(tc.input_file);
+            const expected = tc.output_data || readTestdata(tc.output_file);
             const tcTimeLimit = tc.time_limit || timeLimitMs;
             const tcMemLimit = tc.memory_limit || problem.memory_limit;
             const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
 
             const timeUsed = result.timeUsed;
             const passed = compareOutput(expected, result.stdout, problem);
-            let status = passed ? 'accepted' : 'wrong_answer';
-            if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
-            else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
-            else if (result.exitCode !== 0 && !passed) status = 'runtime_error';
+let status = passed ? 'accepted' : 'wrong_answer';
+          if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
+          else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
+          else if (result.exitCode !== 0) status = 'runtime_error';
 
-            if (status !== 'accepted') groupAllAccepted = false;
+          if (status !== 'accepted') groupAllAccepted = false;
             const memKB = result.memoryUsed || 0;
-            updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, 4096), (result.stderr || '').slice(0, 4096), result.exitCode, '', detailId);
-            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, 4096), stderr: (result.stderr || '').slice(0, 4096), exitCode: result.exitCode, detailId });
+            updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), result.exitCode, '', detailId);
+            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), stderr: (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), exitCode: result.exitCode, detailId });
           } catch (err) {
             groupAllAccepted = false;
             updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
@@ -199,8 +258,8 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
         const detailId = detail.lastInsertRowid;
 
         try {
-          const stdin = tc.input_data || (tc.input_file ? fs.readFileSync(tc.input_file, 'utf8') : '');
-          const expected = tc.output_data || (tc.output_file ? fs.readFileSync(tc.output_file, 'utf8') : '');
+          const stdin = tc.input_data || readTestdata(tc.input_file);
+          const expected = tc.output_data || readTestdata(tc.output_file);
           const tcTimeLimit = tc.time_limit || timeLimitMs;
           const tcMemLimit = tc.memory_limit || problem.memory_limit;
           const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
@@ -210,11 +269,11 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           let status = passed ? 'accepted' : 'wrong_answer';
           if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
           else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
-          else if (result.exitCode !== 0 && !passed) status = 'runtime_error';
+          else if (result.exitCode !== 0) status = 'runtime_error';
 
           const memKB = result.memoryUsed || 0;
-          updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, 4096), (result.stderr || '').slice(0, 4096), result.exitCode, '', detailId);
-          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, 4096), stderr: (result.stderr || '').slice(0, 4096), exitCode: result.exitCode, detailId });
+          updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), result.exitCode, '', detailId);
+          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), stderr: (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), exitCode: result.exitCode, detailId });
         } catch (err) {
           updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
           tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: err.message, exitCode: -1, detailId });
@@ -339,7 +398,7 @@ function evaluateWithGroups(problem, groups, tcResults) {
   const pendingGroups = new Set(groups.map(g => g.id));
   let iterations = 0;
 
-  while (pendingGroups.size > 0 && iterations < 100) {
+  while (pendingGroups.size > 0 && iterations < MAX_GROUP_EVAL_ITERATIONS) {
     iterations++;
     let madeProgress = false;
 
@@ -466,6 +525,10 @@ async function judgeSubmission(submissionId) {
   const submission = db.prepare('SELECT * FROM submissions WHERE id = ?').get(submissionId);
   if (!submission) return;
 
+  // 记录判题前的状态，用于评分发放去重（rejudge 场景）
+  const wasAccepted = submission.status === 'accepted';
+  const wasCompileError = submission.status === 'compile_error';
+
   db.prepare("UPDATE submissions SET status = 'judging' WHERE id = ?").run(submissionId);
   emitJudgeStatus(submissionId, submission.user_id, 'judging');
 
@@ -493,16 +556,18 @@ async function judgeSubmission(submissionId) {
     // 推送最终评测状态
     emitJudgeStatus(submissionId, submission.user_id, updated.status);
 
-    if (updated.status === 'compile_error') {
-      db.prepare('UPDATE users SET rating = rating - 2 WHERE id = ?').run(submission.user_id);
+    if (updated.status === 'compile_error' && !wasCompileError) {
+      db.prepare('UPDATE users SET rating = rating + ? WHERE id = ?').run(RATING_DELTA_COMPILE_ERROR, submission.user_id);
     }
 
     if (updated.status === 'accepted') {
       const prevAccepted = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND problem_id = ? AND status = ? AND id < ?').get(
         submission.user_id, submission.problem_id, 'accepted', submissionId
       ).c;
-      if (prevAccepted === 0) {
-        db.prepare('UPDATE users SET rating = rating + 10 WHERE id = ?').run(submission.user_id);
+      // 提交本身此前已 AC（rejudge 场景）或已有更早 AC 记录时不再重复发放 Rating
+      const firstAccepted = !wasAccepted && prevAccepted === 0;
+      if (firstAccepted) {
+        db.prepare('UPDATE users SET rating = rating + ? WHERE id = ?').run(RATING_DELTA_ACCEPTED, submission.user_id);
       }
       // 推送比赛排行榜更新（若该题目属于某比赛）
       const contestProblem = db.prepare('SELECT cp.contest_id FROM contest_problems cp WHERE cp.problem_id = ?').get(submission.problem_id);
@@ -540,7 +605,7 @@ async function runOne(submissionId) {
   try {
     await judgeSubmission(submissionId);
   } catch (err) {
-    console.error(`Judge error for submission ${submissionId}:`, err);
+    console.error(`Judge error for submission ${submissionId}:`, sanitizeLog(String(err && err.message || err)));
     db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(submissionId);
   }
 }
@@ -565,4 +630,14 @@ function enqueueSubmission(submissionId) {
   pumpQueue();
 }
 
-module.exports = { judgeSubmission, enqueueSubmission, compareOutput };
+// 服务重启后恢复中断的判题任务（内存队列随进程死亡而丢失，需重置中断态重新入队）
+function recoverInterruptedSubmissions() {
+  const rows = db.prepare("SELECT id FROM submissions WHERE status IN ('pending','pending_rejudge','running','compiling','judging')").all();
+  for (const r of rows) {
+    try { db.prepare('DELETE FROM submission_details WHERE submission_id = ?').run(r.id); } catch {}
+    enqueueSubmission(r.id);
+  }
+  return rows.length;
+}
+
+module.exports = { judgeSubmission, enqueueSubmission, compareOutput, recoverInterruptedSubmissions };

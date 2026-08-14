@@ -29,7 +29,7 @@ router.post('/', requireAuth, requireRole('admin'), (req, res) => {
   }
   const existing = db.prepare('SELECT id FROM categories WHERE name = ?').get(name);
   if (existing) {
-    return res.status(400).json({ code: 2, reason: 'ERR_DUPLICATE', message: 'Category name already exists.' });
+    return res.status(409).json({ code: 2, reason: 'ERR_CONFLICT', message: 'Category name already exists.' });
   }
   const result = db.prepare('INSERT INTO categories (name, description, sort_order) VALUES (?, ?, ?)').run(
     name, description || '', sort_order || 0

@@ -26,7 +26,6 @@ function log(level, tag, ...args) {
   console.log(prefix, ...args);
 }
 
-function logStartup(tag, msg) { log('INFO', tag, msg); }
 function logInfo(tag, msg) { log('INFO', tag, msg); }
 function logWarn(tag, msg) { log('WARN', tag, msg); }
 function logError(tag, msg) { log('ERROR', tag, msg); }
@@ -34,15 +33,22 @@ function logError(tag, msg) { log('ERROR', tag, msg); }
 // 日志脱敏逻辑集中到 utils/securityHelpers.js，各路由共享
 const { sanitizeLog } = require('../utils/securityHelpers');
 
+// 仅给内联 <script>（无 src 属性）注入 CSP nonce，使页面可在无 unsafe-inline 下执行
+function injectNonce(html, nonce) {
+  return html.replace(/<script(?![^>]*\bsrc\s*=)[^>]*>/gi, (tag) => {
+    return tag.replace(/<script/i, `<script nonce="${nonce}"`);
+  });
+}
+
 async function main() {
-  logStartup('BOOT', '==========================================');
-  logStartup('BOOT', '  WinOJ Server Starting');
-  logStartup('BOOT', '==========================================');
-  logStartup('BOOT', `Platform: ${os.platform()} ${os.arch()}`);
-  logStartup('BOOT', `Node.js: ${process.version}`);
-  logStartup('BOOT', `CPU: ${os.cpus()[0]?.model || 'unknown'} (${os.cpus().length} cores)`);
-  logStartup('BOOT', `Memory: ${(os.totalmem() / 1024 / 1024).toFixed(0)} MB total`);
-  logStartup('BOOT', `Workdir: ${process.cwd()}`);
+  logInfo('BOOT', '==========================================');
+  logInfo('BOOT', '  WinOJ Server Starting');
+  logInfo('BOOT', '==========================================');
+  logInfo('BOOT', `Platform: ${os.platform()} ${os.arch()}`);
+  logInfo('BOOT', `Node.js: ${process.version}`);
+  logInfo('BOOT', `CPU: ${os.cpus()[0]?.model || 'unknown'} (${os.cpus().length} cores)`);
+  logInfo('BOOT', `Memory: ${(os.totalmem() / 1024 / 1024).toFixed(0)} MB total`);
+  logInfo('BOOT', `Workdir: ${process.cwd()}`);
 
   logInfo('DB', 'Initializing database...');
   await initDB();
@@ -141,11 +147,7 @@ async function main() {
     fs.readFile(path.join(pagesRoot, rel), 'utf8', (err, html) => {
       if (err) return next();
       const nonce = res.locals.cspNonce;
-      // 仅给内联 <script>（无 src 属性）注入 nonce
-      const out = html.replace(/<script(?![^>]*\bsrc\s*=)[^>]*>/gi, (tag) => {
-        return tag.replace(/<script/i, `<script nonce="${nonce}"`);
-      });
-      res.type('html').send(out);
+      res.type('html').send(injectNonce(html, nonce));
     });
   });
   app.use(express.static(pagesRoot, { dotfiles: 'deny' }));
@@ -162,7 +164,16 @@ async function main() {
   app.get('/api/v1/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
   app.get('/output.txt', (req, res) => res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Use /api/v1/health instead.' }));
 
-  app.use('/uploads', express.static(path.join(__dirname, '../../data/uploads')));
+  // 上传文件静态服务: nosniff 防 MIME 嗅探；仅图片内联，其余类型强制下载防 HTML/JS 内联执行
+  app.use('/uploads', express.static(path.join(__dirname, '../../data/uploads'), {
+    setHeaders: (res, filePath) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      const ext = path.extname(filePath).toLowerCase();
+      if (!/\.(png|jpe?g|gif|webp)$/.test(ext)) {
+        res.setHeader('Content-Disposition', 'attachment');
+      }
+    }
+  }));
 
   const authRoutes = require('../routes/auth');
   const problemRoutes = require('../routes/problems');
@@ -249,10 +260,7 @@ async function main() {
     fs.readFile(path.join(pagesRoot, 'index.html'), 'utf8', (err, html) => {
       if (err) return res.status(404).send('Not found');
       const nonce = res.locals.cspNonce;
-      const out = html.replace(/<script(?![^>]*\bsrc\s*=)[^>]*>/gi, (tag) => {
-        return tag.replace(/<script/i, `<script nonce="${nonce}"`);
-      });
-      res.type('html').send(out);
+      res.type('html').send(injectNonce(html, nonce));
     });
   });
 
@@ -278,12 +286,17 @@ async function main() {
   const { initSocket } = require('../services/socket');
   initSocket(server);
 
+  // 重启后恢复中断的判题任务（内存队列在进程退出时丢失）
+  const { recoverInterruptedSubmissions } = require('../services/judge');
+  const recovered = recoverInterruptedSubmissions();
+  if (recovered > 0) logInfo('JUDGE', `Recovered ${recovered} interrupted submission(s).`);
+
   server.listen(config.port, () => {
-    logStartup('READY', `==========================================`);
-    logStartup('READY', `  WinOJ Server is READY`);
-    logStartup('READY', `  URL: http://localhost:${config.port}`);
-    logStartup('READY', `  初始管理员密码在数据库首次初始化时已显示，请勿在日志中明文记录凭据`);
-    logStartup('READY', `==========================================`);
+    logInfo('READY', `==========================================`);
+    logInfo('READY', `  WinOJ Server is READY`);
+    logInfo('READY', `  URL: http://localhost:${config.port}`);
+    logInfo('READY', `  初始管理员密码在数据库首次初始化时已显示，请勿在日志中明文记录凭据`);
+    logInfo('READY', `==========================================`);
   });
 
   setInterval(() => {
@@ -291,29 +304,38 @@ async function main() {
     log('DEBUG', 'MEM', `RSS: ${(mem.rss / 1024 / 1024).toFixed(1)}MB, Heap: ${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`);
   }, 60 * 1000);
 
-  process.on('SIGINT', () => {
-    logWarn('SHUTDOWN', 'Received SIGINT, shutting down...');
+  let shuttingDown = false;
+  function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logWarn('SHUTDOWN', `Received ${signal}, shutting down...`);
+    const db = require('../database/db');
     server.close(() => {
       logInfo('SHUTDOWN', 'Server closed.');
+      db.closeDB();
       process.exit(0);
     });
-  });
+    // 强制超时兜底，防止活动连接未关闭阻塞退出
+    setTimeout(() => {
+      logWarn('SHUTDOWN', 'Forced exit after shutdown timeout.');
+      db.closeDB();
+      process.exit(1);
+    }, 5000).unref();
+  }
 
-  process.on('SIGTERM', () => {
-    logWarn('SHUTDOWN', 'Received SIGTERM, shutting down...');
-    server.close(() => {
-      logInfo('SHUTDOWN', 'Server closed.');
-      process.exit(0);
-    });
-  });
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 
   process.on('uncaughtException', (err) => {
     logError('FATAL', `Uncaught exception: ${sanitizeLog(String(err && err.message))}`);
     logError('FATAL', sanitizeLog(String(err && err.stack)));
+    // 致命异常后进程状态不可信，退出让进程管理器（systemd/PM2）拉起，避免半死状态
+    process.exit(1);
   });
 
   process.on('unhandledRejection', (reason) => {
     logError('FATAL', `Unhandled rejection: ${sanitizeLog(String(reason))}`);
+    process.exit(1);
   });
 }
 

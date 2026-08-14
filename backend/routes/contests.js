@@ -252,6 +252,9 @@ router.get('/:id/leaderboard', optionalAuth, (req, res) => {
     timeFilter = 'AND s.created_at <= ?';
     params.push(freezeAt.toISOString().replace('T', ' ').substring(0, 19));
   }
+  // 榜单仅统计已报名参赛的用户
+  timeFilter += ' AND s.user_id IN (SELECT user_id FROM contest_participants WHERE contest_id = ?)';
+  params.push(contest.id);
 
   const submissions = db.prepare(`
     SELECT s.user_id, s.problem_id, s.score, s.time_used, s.status, u.username, u.nickname
@@ -268,9 +271,17 @@ router.get('/:id/leaderboard', optionalAuth, (req, res) => {
       userMap[s.user_id] = { user_id: s.user_id, username: s.username, nickname: s.nickname, total_score: 0, total_time: 0, problems: {} };
     }
     const um = userMap[s.user_id];
-    if (!um.problems[s.problem_id] || s.score > um.problems[s.problem_id].score ||
-        (s.score === um.problems[s.problem_id].score && s.time_used < um.problems[s.problem_id].time_used)) {
+    const cur = um.problems[s.problem_id];
+    if (!cur) {
       um.problems[s.problem_id] = { score: s.score, time_used: s.time_used, status: s.status };
+    } else {
+      const curAc = cur.status === 'accepted';
+      const newAc = s.status === 'accepted';
+      // AC 优先 → 同 AC 比分数 → 同分数比用时，防止 AC 被同分更快的 WA 顶成 0 分
+      if ((newAc && !curAc) ||
+          (newAc === curAc && (s.score > cur.score || (s.score === cur.score && s.time_used < cur.time_used)))) {
+        um.problems[s.problem_id] = { score: s.score, time_used: s.time_used, status: s.status };
+      }
     }
   }
 
