@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   token_hash TEXT UNIQUE NOT NULL,
+  token_prefix TEXT DEFAULT '',
   expires_at TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS problems (
   sample_output TEXT DEFAULT '',
   difficulty INTEGER DEFAULT 0,
   is_public INTEGER DEFAULT 1,
+  is_hidden INTEGER DEFAULT 0,
   provider TEXT DEFAULT '',
   created_by INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
@@ -147,6 +149,7 @@ CREATE TABLE IF NOT EXISTS contests (
   freeze_minutes INTEGER DEFAULT 0,
   unfrozen INTEGER DEFAULT 0,
   unfrozen_at TEXT,
+  is_hidden INTEGER DEFAULT 0,
   created_by INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (created_by) REFERENCES users(id)
@@ -238,6 +241,7 @@ CREATE TABLE IF NOT EXISTS articles (
   author_id INTEGER NOT NULL,
   provider TEXT DEFAULT '',
   is_published INTEGER DEFAULT 0,
+  is_hidden INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (author_id) REFERENCES users(id)

@@ -2,6 +2,7 @@ const { Resend } = require('resend');
 const crypto = require('crypto');
 const db = require('../database/db');
 const config = require('../config/config');
+const { hmacDigest } = require('../utils/securityHelpers');
 
 // 使用 CSPRNG (crypto.randomInt) 生成 6 位验证码，避免 Math.random 可预测
 function generateCode() {
@@ -34,15 +35,25 @@ async function sendVerificationEmail(email, code) {
   }
 }
 
+function hashCode(code) {
+  // HMAC-SHA256 + 服务端密钥，防止数据库泄露后彩虹表反查验证码
+  return hmacDigest(code, config.jwt.accessSecret);
+}
+
 function saveCode(email, code) {
   db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-  db.prepare('INSERT INTO email_codes (email, code, expires_at) VALUES (?, ?, ?)').run(email, code, expiresAt);
+  // 只存哈希，避免数据库泄露时验证码明文外泄（6 位码 + 校验速率限制下足够安全）
+  db.prepare('INSERT INTO email_codes (email, code, expires_at) VALUES (?, ?, ?)').run(email, hashCode(code), expiresAt);
 }
 
 function verifyCode(email, code) {
-  const row = db.prepare('SELECT * FROM email_codes WHERE email = ? AND code = ? AND used = 0 AND expires_at > datetime(\'now\') ORDER BY id DESC LIMIT 1').get(email, code);
+  const row = db.prepare('SELECT * FROM email_codes WHERE email = ? AND used = 0 AND expires_at > datetime(\'now\') ORDER BY id DESC LIMIT 1').get(email);
   if (!row) return false;
+  const expected = Buffer.from(row.code, 'hex');
+  const actual = Buffer.from(hashCode(code), 'hex');
+  const ok = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  if (!ok) return false;
   db.prepare('UPDATE email_codes SET used = 1 WHERE id = ?').run(row.id);
   return true;
 }

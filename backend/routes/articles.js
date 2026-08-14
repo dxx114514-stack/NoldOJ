@@ -12,7 +12,7 @@ router.get('/', optionalAuth, (req, res) => {
   let where = '';
   let params = [];
   if (!req.user || !['teacher', 'admin', 'su'].includes(req.user.role)) {
-    where = 'WHERE a.is_published = 1';
+    where = 'WHERE a.is_published = 1 AND a.is_hidden = 0';
   }
   if (search) {
     const fuzzy = '%' + search.replace(/\s+/g, '') + '%';
@@ -22,7 +22,7 @@ router.get('/', optionalAuth, (req, res) => {
   }
   const total = db.prepare(`SELECT COUNT(*) as c FROM articles a ${where}`).get(...params).c;
   const articles = db.prepare(`
-    SELECT a.id, a.title, a.author_id, a.provider, a.is_published, a.created_at, a.updated_at,
+    SELECT a.id, a.title, a.author_id, a.provider, a.is_published, a.is_hidden, a.created_at, a.updated_at,
            u.username, u.nickname
     FROM articles a LEFT JOIN users u ON a.author_id = u.id
     ${where} ORDER BY a.id DESC LIMIT ? OFFSET ?
@@ -30,7 +30,7 @@ router.get('/', optionalAuth, (req, res) => {
   res.json({ total, page: pageNum, limit: limitNum, articles });
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', optionalAuth, (req, res) => {
   const article = db.prepare(`
     SELECT a.*, u.username, u.nickname
     FROM articles a LEFT JOIN users u ON a.author_id = u.id
@@ -39,19 +39,24 @@ router.get('/:id', (req, res) => {
   if (!article) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Article not found.' });
   }
-  if (!article.is_published && (!req.user || (req.user.id !== article.author_id && !['teacher', 'admin', 'su'].includes(req.user.role)))) {
+  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  // 隐藏文章: 仅作者或管理角色可见
+  if (article.is_hidden && !(isStaff || (req.user && req.user.id === article.author_id))) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Article not found.' });
+  }
+  if (!article.is_published && (!req.user || (req.user.id !== article.author_id && !isStaff))) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Article is not published.' });
   }
   res.json(article);
 });
 
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, content, provider, is_published } = req.body;
+  const { title, content, provider, is_published, is_hidden } = req.body;
   if (!title) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
-  const result = db.prepare('INSERT INTO articles (title, content, author_id, provider, is_published) VALUES (?, ?, ?, ?, ?)').run(
-    title, content || '', req.user.id, provider || '', is_published ? 1 : 0
+  const result = db.prepare('INSERT INTO articles (title, content, author_id, provider, is_published, is_hidden) VALUES (?, ?, ?, ?, ?, ?)').run(
+    title, content || '', req.user.id, provider || '', is_published ? 1 : 0, is_hidden ? 1 : 0
   );
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(article);
@@ -65,13 +70,14 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (req.user.id !== article.author_id && !['admin', 'su'].includes(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit other users\' articles.' });
   }
-  const { title, content, provider, is_published } = req.body;
+  const { title, content, provider, is_published, is_hidden } = req.body;
   const updates = [];
   const values = [];
   if (title !== undefined) { updates.push('title = ?'); values.push(title); }
   if (content !== undefined) { updates.push('content = ?'); values.push(content); }
   if (provider !== undefined) { updates.push('provider = ?'); values.push(provider); }
   if (is_published !== undefined) { updates.push('is_published = ?'); values.push(is_published ? 1 : 0); }
+  if (is_hidden !== undefined) { updates.push('is_hidden = ?'); values.push(is_hidden ? 1 : 0); }
   if (updates.length === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }

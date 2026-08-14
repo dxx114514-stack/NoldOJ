@@ -11,6 +11,7 @@ const uploadDir = path.join(__dirname, '../../data/uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({ dest: uploadDir, limits: { fileSize: 200 * 1024 * 1024 } });
 
+// 公开脱敏视图: 移除 SPJ 脚本与评分脚本，防止泄露判题逻辑
 function sanitizeProblem(p) {
   if (!p) return null;
   const result = { ...p };
@@ -19,13 +20,24 @@ function sanitizeProblem(p) {
   return result;
 }
 
-router.get('/', (req, res) => {
+// 作者/管理视图: 保留 spj_code 与 scoring_script，用于题目编辑回显
+function fullProblem(p) {
+  if (!p) return null;
+  return { ...p };
+}
+
+router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, search = '', tag = '', tags = '', category = '', difficulty = '', sort = '', order = 'desc' } = req.query;
   const pageNum = Math.max(1, parseInt(page) || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
   const offset = (pageNum - 1) * limitNum;
   let where = 'WHERE p.is_public = 1';
   const params = [];
+  // 隐藏题目仅对 teacher/admin/su 可见；管理角色可加 include_hidden=1 在列表中查看
+  const isManager = !!(req.user && ['teacher', 'admin', 'su'].includes(req.user.role));
+  if (!isManager) {
+    where += ' AND p.is_hidden = 0';
+  }
 
   if (search) {
     const fuzzy = '%' + search.replace(/\s+/g, '') + '%';
@@ -69,41 +81,71 @@ router.get('/', (req, res) => {
 
   const total = db.prepare(`SELECT COUNT(*) as c FROM problems p ${where}`).get(...params).c;
   const problems = db.prepare(`
-    SELECT p.id, p.title, p.problem_type, p.time_limit, p.memory_limit, p.is_public, p.difficulty, p.created_at,
-      (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id) as sub_count,
-      (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'accepted') as ac_count,
-      CASE WHEN (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id) > 0
-        THEN (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'accepted') * 1.0 / (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id)
+    SELECT p.id, p.title, p.problem_type, p.time_limit, p.memory_limit, p.is_public, p.is_hidden, p.difficulty, p.created_at,
+      COALESCE(agg.sub_count, 0) as sub_count,
+      COALESCE(agg.ac_count, 0) as ac_count,
+      CASE WHEN COALESCE(agg.sub_count, 0) > 0
+        THEN COALESCE(agg.ac_count, 0) * 1.0 / agg.sub_count
         ELSE 0 END as ac_rate
-    FROM problems p ${where} ${orderClause} LIMIT ? OFFSET ?
+    FROM problems p
+    LEFT JOIN (
+      SELECT problem_id,
+        COUNT(*) as sub_count,
+        SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as ac_count
+      FROM submissions
+      GROUP BY problem_id
+    ) agg ON agg.problem_id = p.id
+    ${where} ${orderClause} LIMIT ? OFFSET ?
   `).all(...params, limitNum, offset);
 
-  for (const problem of problems) {
-    const ac = problem.ac_count || 0;
-    const sub = problem.sub_count || 0;
-    problem.accept_rate = sub > 0 ? Math.round((ac / sub) * 1000) / 10 : 0;
-    const tags = db.prepare(`
-      SELECT t.id, t.name, t.color FROM tags t
+  if (problems.length > 0) {
+    const ids = problems.map(p => p.id);
+    const qmarks = ids.map(() => '?').join(',');
+    // 一次批量取标签
+    const tagRows = db.prepare(`
+      SELECT pt.problem_id, t.id, t.name, t.color FROM tags t
       JOIN problem_tags pt ON t.id = pt.tag_id
-      WHERE pt.problem_id = ?
-    `).all(problem.id);
-    problem.tags = tags;
-
-    const cats = db.prepare(`
-      SELECT c.id, c.name, c.description FROM categories c
+      WHERE pt.problem_id IN (${qmarks})
+    `).all(...ids);
+    const tagsByProblem = new Map();
+    for (const r of tagRows) {
+      const list = tagsByProblem.get(r.problem_id) || [];
+      list.push({ id: r.id, name: r.name, color: r.color });
+      tagsByProblem.set(r.problem_id, list);
+    }
+    // 一次批量取分类
+    const catRows = db.prepare(`
+      SELECT pc.problem_id, c.id, c.name, c.description FROM categories c
       JOIN problem_categories pc ON c.id = pc.category_id
-      WHERE pc.problem_id = ?
-    `).all(problem.id);
-    problem.categories = cats;
+      WHERE pc.problem_id IN (${qmarks})
+    `).all(...ids);
+    const catsByProblem = new Map();
+    for (const r of catRows) {
+      const list = catsByProblem.get(r.problem_id) || [];
+      list.push({ id: r.id, name: r.name, description: r.description });
+      catsByProblem.set(r.problem_id, list);
+    }
+    for (const problem of problems) {
+      const ac = problem.ac_count || 0;
+      const sub = problem.sub_count || 0;
+      problem.accept_rate = sub > 0 ? Math.round((ac / sub) * 1000) / 10 : 0;
+      problem.tags = tagsByProblem.get(problem.id) || [];
+      problem.categories = catsByProblem.get(problem.id) || [];
+    }
   }
 
   res.json({ total, page: parseInt(page), limit: parseInt(limit), problems });
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', optionalAuth, (req, res) => {
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  const isManager = !!(req.user && ['teacher', 'admin', 'su'].includes(req.user.role));
+  // 隐藏题目: 非管理角色不可见（即使 is_public=1）
+  if (problem.is_hidden && !isManager) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
   }
   if (!problem.is_public) {
     const inContest = db.prepare('SELECT cp.contest_id FROM contest_problems cp WHERE cp.problem_id = ?').get(problem.id);
@@ -111,7 +153,9 @@ router.get('/:id', (req, res) => {
       return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
     }
   }
-  const result = sanitizeProblem(problem);
+  // 管理角色或创建者返回完整视图（含 spj_code/scoring_script），其余走公开脱敏视图
+  const isOwner = !!(req.user && req.user.id === problem.created_by);
+  const result = (isManager || isOwner) ? fullProblem(problem) : sanitizeProblem(problem);
   result.test_cases_count = db.prepare('SELECT COUNT(*) as c FROM test_cases WHERE problem_id = ?').get(problem.id).c;
   const cats = db.prepare(`
     SELECT c.id, c.name, c.description FROM categories c
@@ -129,12 +173,12 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode, difficulty } = req.body;
+  const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode, difficulty, is_hidden } = req.body;
   if (!title) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
   const newId = db.findNextId('problems');
-  db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     newId,
     title,
     description || '',
@@ -154,10 +198,11 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     sample_input || '',
     sample_output || '',
     subtask_mode || 'simple',
-    difficulty !== undefined ? parseInt(difficulty) || 0 : 0
+    difficulty !== undefined ? parseInt(difficulty) || 0 : 0,
+    is_hidden !== undefined ? (is_hidden ? 1 : 0) : 0
   );
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(newId);
-  res.status(201).json(sanitizeProblem(problem));
+  res.status(201).json(fullProblem(problem));
 });
 
 router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
@@ -170,15 +215,19 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot edit a problem that is part of a contest.' });
   }
 
-  const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode', 'difficulty'];
+  const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode', 'difficulty', 'is_hidden'];
   const updates = [];
   const values = [];
   for (const field of fields) {
     if (req.body[field] !== undefined) {
+      // 防御纵深：列名仅允许合法标识符，杜绝任何注入 SQL SET 子句的可能
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
+        return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Invalid field: ${field}` });
+      }
       updates.push(`${field} = ?`);
       if (field === 'real_number_tolerance' || field === 'allowed_languages') {
         values.push(JSON.stringify(req.body[field]));
-      } else if (field === 'is_public') {
+      } else if (field === 'is_public' || field === 'is_hidden') {
         values.push(req.body[field] ? 1 : 0);
       } else if (field === 'difficulty') {
         values.push(parseInt(req.body[field]) || 0);
@@ -195,7 +244,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   db.prepare(`UPDATE problems SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
   const updated = db.prepare('SELECT * FROM problems WHERE id = ?').get(problem.id);
-  res.json(sanitizeProblem(updated));
+  res.json(fullProblem(updated));
 });
 
 router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
@@ -275,12 +324,24 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
     const zip = new AdmZip(req.file.path);
     const entries = zip.getEntries();
 
+    // Zip Bomb 防御: 限制条目数量与解压后总大小
+    const MAX_ZIP_ENTRIES = 1000;
+    const MAX_ZIP_TOTAL_BYTES = 500 * 1024 * 1024; // 500MB
+    let totalBytes = 0;
+    if (entries.length > MAX_ZIP_ENTRIES) {
+      throw new Error(`ZIP contains too many entries (max ${MAX_ZIP_ENTRIES})`);
+    }
+
     const rootScript = [];
     const subtasks = {};
     const rootTestCases = {};
 
     for (const entry of entries) {
       if (entry.isDirectory) continue;
+      totalBytes += entry.header.size;
+      if (totalBytes > MAX_ZIP_TOTAL_BYTES) {
+        throw new Error(`ZIP total uncompressed size exceeds ${MAX_ZIP_TOTAL_BYTES} bytes`);
+      }
       const entryPath = entry.entryName;
       const parts = entryPath.split('/').filter(p => p);
       if (parts.length === 0) continue;
@@ -291,6 +352,9 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
 
       const fileName = parts[parts.length - 1];
       const dirPath = parts.slice(0, -1).join('/');
+      // 仅允许文本类数据文件，防止 zip 内藏任意二进制/脚本被写入磁盘
+      const extOk = /\.(in|out|ans|txt)$/i.test(fileName) || fileName.toLowerCase() === 'script.txt' || fileName.toLowerCase() === 'require.txt';
+      if (!extOk) continue;
 
       if (parts.length === 1) {
         if (fileName.toLowerCase() === 'script.txt') {

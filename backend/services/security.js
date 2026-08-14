@@ -112,7 +112,8 @@ async function reviewCode(sourceCode, language) {
 
     if (!response.ok) {
       console.error(`AI review error: ${response.status}`);
-      return { safe: true, reason: '审查服务暂时不可用', threat_level: 'none' };
+      // Fail-Closed: 审查服务异常时拒绝放行，避免攻击者通过压垮 AI 服务绕过审查
+      return { safe: false, reason: `审查服务暂时不可用 (HTTP ${response.status})，请稍后重试`, threat_level: 'critical' };
     }
 
     const data = await response.json();
@@ -120,7 +121,7 @@ async function reviewCode(sourceCode, language) {
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return { safe: true, reason: '无法解析审查结果', threat_level: 'none' };
+      return { safe: false, reason: '无法解析审查结果，拒绝执行', threat_level: 'critical' };
     }
 
     const result = JSON.parse(jsonMatch[0]);
@@ -139,7 +140,8 @@ async function reviewCode(sourceCode, language) {
     };
   } catch (err) {
     console.error('Security review error:', err.message);
-    return { safe: true, reason: '审查服务暂时不可用', threat_level: 'none' };
+    // Fail-Closed: 审查异常时拒绝执行
+    return { safe: false, reason: '审查服务异常，拒绝执行', threat_level: 'critical' };
   }
 }
 

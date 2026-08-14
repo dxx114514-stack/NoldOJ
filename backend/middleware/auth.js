@@ -4,6 +4,11 @@ const db = require('../database/db');
 
 const onlineUsers = new Map();
 
+// 定时清理过期在线用户，防止 Map 无限增长（每 5 分钟，配合 getOnlineUsers 的惰性清理）
+setInterval(() => {
+  getOnlineUsers();
+}, 5 * 60 * 1000);
+
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -11,7 +16,7 @@ function requireAuth(req, res, next) {
   }
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, config.jwt.accessSecret);
+    const payload = jwt.verify(token, config.jwt.accessSecret, { algorithms: ['HS256'] });
     const user = db.prepare('SELECT id, username, nickname, role, banned, force_logout_at, submit_lock_exempt FROM users WHERE id = ?').get(payload.userId);
     if (!user) {
       return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'User not found.' });
@@ -41,7 +46,7 @@ function optionalAuth(req, res, next) {
   }
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, config.jwt.accessSecret);
+    const payload = jwt.verify(token, config.jwt.accessSecret, { algorithms: ['HS256'] });
     const user = db.prepare('SELECT id, username, nickname, role, banned FROM users WHERE id = ?').get(payload.userId);
     if (user && user.banned) {
       req.user = null;

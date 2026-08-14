@@ -45,8 +45,14 @@ router.get('/:id', optionalAuth, (req, res) => {
       ORDER BY r.id ASC
     `).all(...replyIds);
   }
-  // 组织树形结构
-  const tree = replies.map(r => ({ ...r, children: children.filter(c => c.parent_id === r.id) }));
+  // 组织树形结构: 用 Map 按 parent_id 分组，O(n) 而非 O(n*m)
+  const childrenByParent = new Map();
+  for (const c of children) {
+    const list = childrenByParent.get(c.parent_id) || [];
+    list.push(c);
+    childrenByParent.set(c.parent_id, list);
+  }
+  const tree = replies.map(r => ({ ...r, children: childrenByParent.get(r.id) || [] }));
   res.json({ ...disc, replies: tree });
 });
 

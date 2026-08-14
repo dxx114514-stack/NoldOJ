@@ -12,9 +12,14 @@ router.get('/', optionalAuth, (req, res) => {
   const offset = (pageNum - 1) * limitNum;
   let where = '';
   const params = [];
+  const fuzzy = search ? '%' + search.replace(/\s+/g, '') + '%' : null;
+  // 隐藏比赛仅对 teacher/admin/su 可见
+  if (!req.user || !['teacher', 'admin', 'su'].includes(req.user.role)) {
+    where = 'WHERE c.is_hidden = 0';
+  }
   if (search) {
-    const fuzzy = '%' + search.replace(/\s+/g, '') + '%';
-    where = 'WHERE REPLACE(c.title, \' \', \'\') LIKE ? OR REPLACE(c.description, \' \', \'\') LIKE ?';
+    const cond = "REPLACE(c.title, ' ', '') LIKE ? OR REPLACE(c.description, ' ', '') LIKE ?";
+    where = where ? `${where} AND (${cond})` : `WHERE (${cond})`;
     params.push(fuzzy, fuzzy);
   }
   const total = db.prepare(`SELECT COUNT(*) as c FROM contests c ${where}`).get(...params).c;
@@ -33,8 +38,13 @@ router.get('/:id', optionalAuth, (req, res) => {
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
+  // 隐藏比赛仅对管理角色可见
+  if (contest.is_hidden && !(req.user && ['teacher', 'admin', 'su'].includes(req.user.role))) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Contest not found.' });
+  }
   const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
   let problems = [];
+  const hiddenFilter = isStaff ? '' : ' AND p.is_hidden = 0';
   if (isStaff) {
     problems = db.prepare(`
       SELECT cp.sort_order, cp.alias, p.id, p.title, p.time_limit, p.memory_limit, p.is_public
@@ -51,7 +61,7 @@ router.get('/:id', optionalAuth, (req, res) => {
       problems = db.prepare(`
       SELECT cp.sort_order, cp.alias, p.id, p.title, p.time_limit, p.memory_limit
       FROM contest_problems cp JOIN problems p ON cp.problem_id = p.id
-      WHERE cp.contest_id = ? ORDER BY cp.sort_order
+      WHERE cp.contest_id = ?${hiddenFilter} ORDER BY cp.sort_order
     `).all(contest.id);
     }
   }
@@ -60,12 +70,12 @@ router.get('/:id', optionalAuth, (req, res) => {
 });
 
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description, start_time, end_time, is_virtual, freeze_minutes } = req.body;
+  const { title, description, start_time, end_time, is_virtual, freeze_minutes, is_hidden } = req.body;
   if (!title || !start_time || !end_time) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'title, start_time, and end_time are required.' });
   }
   const fm = Math.max(0, parseInt(freeze_minutes) || 0);
-  const result = db.prepare('INSERT INTO contests (title, description, start_time, end_time, is_virtual, freeze_minutes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(title, description || '', start_time, end_time, is_virtual ? 1 : 0, fm, req.user.id);
+  const result = db.prepare('INSERT INTO contests (title, description, start_time, end_time, is_virtual, freeze_minutes, is_hidden, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(title, description || '', start_time, end_time, is_virtual ? 1 : 0, fm, is_hidden ? 1 : 0, req.user.id);
   const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(contest);
 });
@@ -75,7 +85,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
-  const { title, description, start_time, end_time, is_virtual, freeze_minutes } = req.body;
+  const { title, description, start_time, end_time, is_virtual, freeze_minutes, is_hidden } = req.body;
   const updates = [];
   const values = [];
   if (title !== undefined) { updates.push('title = ?'); values.push(title); }
@@ -84,6 +94,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (end_time !== undefined) { updates.push('end_time = ?'); values.push(end_time); }
   if (is_virtual !== undefined) { updates.push('is_virtual = ?'); values.push(is_virtual ? 1 : 0); }
   if (freeze_minutes !== undefined) { updates.push('freeze_minutes = ?'); values.push(Math.max(0, parseInt(freeze_minutes) || 0)); }
+  if (is_hidden !== undefined) { updates.push('is_hidden = ?'); values.push(is_hidden ? 1 : 0); }
 
   if (updates.length === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
@@ -302,7 +313,7 @@ router.post('/:id/unfreeze', requireAuth, requireRole('admin'), (req, res) => {
 });
 
 // 比赛内公告
-router.get('/:id/announcements', (req, res) => {
+router.get('/:id/announcements', optionalAuth, (req, res) => {
   const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
@@ -341,7 +352,7 @@ router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), (req, 
 });
 
 // 功能8：比赛讨论列表
-router.get('/:id/discussions', (req, res) => {
+router.get('/:id/discussions', optionalAuth, (req, res) => {
   const { page = 1, size = 20 } = req.query;
   const pageNum = Math.max(1, parseInt(page) || 1);
   const sizeNum = Math.min(50, Math.max(1, parseInt(size) || 20));

@@ -5,6 +5,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
 const { enqueueSubmission } = require('../services/judge');
 const { reviewCode, CODE_LENGTH_LIMIT } = require('../services/security');
+const { sanitizeLog } = require('../utils/securityHelpers');
 const config = require('../config/config');
 
 const router = express.Router();
@@ -206,9 +207,9 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
         enqueueSubmission(newId);
       }
     }).catch(e => {
-      console.error('Async security review error:', e.message);
-      db.prepare("UPDATE submissions SET status = 'pending' WHERE id = ?").run(newId);
-      enqueueSubmission(newId);
+      console.error('Async security review error:', sanitizeLog(String(e && e.message)));
+      // Fail-Closed: 审查服务异常时不放行，标记 system_error 由管理员处理
+      db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(newId);
     });
   } else {
     db.prepare("UPDATE submissions SET status = 'pending' WHERE id = ?").run(newId);

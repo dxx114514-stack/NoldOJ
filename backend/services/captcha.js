@@ -4,39 +4,31 @@ const crypto = require('crypto');
 const sessions = new Map();
 const CAPTCHA_TTL = 5 * 60 * 1000;
 
+function darkenColor(attr, color) {
+  const c = color.toLowerCase();
+  if (c === '#000000' || c === '#000' || c === 'black' || c === 'none') return `${attr}="${color}"`;
+  const m = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!m) return `${attr}="${color}"`;
+  let r, g, b;
+  if (m[1].length === 3) {
+    r = parseInt(m[1][0] + m[1][0], 16);
+    g = parseInt(m[1][1] + m[1][1], 16);
+    b = parseInt(m[1][2] + m[1][2], 16);
+  } else {
+    r = parseInt(m[1].substring(0, 2), 16);
+    g = parseInt(m[1].substring(2, 4), 16);
+    b = parseInt(m[1].substring(4, 6), 16);
+  }
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b);
+  if (lum > 220 || lum < 90) return `${attr}="${color}"`;
+  const nr = Math.floor(r * 0.4);
+  const ng = Math.floor(g * 0.4);
+  const nb = Math.floor(b * 0.4);
+  return `${attr}="#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}"`;
+}
+
 function darkenSvg(svg) {
-  return svg.replace(/(fill|stroke)="([^"]+)"/g, (match, attr, color) => {
-    if (color === 'none') return match;
-    const c = color.toLowerCase();
-    if (c === '#000000' || c === '#000' || c === 'black') return match;
-    const m = c.match(/^#([0-9a-f]{6})$/i);
-    if (m) {
-      const r = parseInt(m[1].substring(0, 2), 16);
-      const g = parseInt(m[1].substring(2, 4), 16);
-      const b = parseInt(m[1].substring(4, 6), 16);
-      const lum = (0.299 * r + 0.587 * g + 0.114 * b);
-      if (lum > 220) return match;
-      if (lum < 90) return match;
-      const nr = Math.floor(r * 0.4);
-      const ng = Math.floor(g * 0.4);
-      const nb = Math.floor(b * 0.4);
-      return `${attr}="#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}"`;
-    }
-    const m3 = c.match(/^#([0-9a-f]{3})$/i);
-    if (m3) {
-      const r = parseInt(m3[1][0] + m3[1][0], 16);
-      const g = parseInt(m3[1][1] + m3[1][1], 16);
-      const b = parseInt(m3[1][2] + m3[1][2], 16);
-      const lum = (0.299 * r + 0.587 * g + 0.114 * b);
-      if (lum > 220) return match;
-      if (lum < 90) return match;
-      const nr = Math.floor(r * 0.4);
-      const ng = Math.floor(g * 0.4);
-      const nb = Math.floor(b * 0.4);
-      return `${attr}="#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}"`;
-    }
-    return match;
-  });
+  return svg.replace(/(fill|stroke)="([^"]+)"/g, (match, attr, color) => darkenColor(attr, color));
 }
 
 function generateCaptcha() {

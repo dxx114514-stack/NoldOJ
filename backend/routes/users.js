@@ -2,8 +2,15 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const { requireAuth, requireRole, getOnlineUsers, removeOnlineUser } = require('../middleware/auth');
+const { sanitizeLog } = require('../utils/securityHelpers');
 
 const router = express.Router();
+
+// 结构化审计日志: 记录敏感管理操作（操作者 → 目标）
+function audit(operator, action, target) {
+  const t = target ? `${target.username}(id=${target.id})` : 'n/a';
+  console.log(`[AUDIT] ${action}: operator=${operator.username}(id=${operator.id}) -> target=${t} at ${new Date().toISOString()}`);
+}
 
 router.get('/online', requireAuth, requireRole('admin'), (req, res) => {
   const users = getOnlineUsers(5 * 60 * 1000);
@@ -125,8 +132,10 @@ router.get('/', requireAuth, requireRole('admin'), (req, res) => {
   let where = 'WHERE 1=1';
   const params = [];
   if (search) {
-    where += ' AND (username LIKE ? OR nickname LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`);
+    // 转义 LIKE 通配符，防止 % _ \ 被当作模式匹配
+    const esc = String(search).replace(/[\\%_]/g, m => `\\${m}`);
+    where += ' AND (username LIKE ? ESCAPE ? OR nickname LIKE ? ESCAPE ?)';
+    params.push(`%${esc}%`, '\\', `%${esc}%`, '\\');
   }
   if (role) {
     where += ' AND role = ?';
@@ -163,6 +172,7 @@ router.put('/:id/role', requireAuth, requireRole('su'), (req, res) => {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot demote another super administrator.' });
   }
   db.prepare('UPDATE users SET role = ?, updated_at = datetime(\'now\') WHERE id = ?').run(role, req.params.id);
+  audit(req.user, 'change-role', { ...user, username: user.username, id: user.id });
   res.json({ message: 'Role updated.', user: { id: user.id, username: user.username, role } });
 });
 
@@ -181,6 +191,7 @@ router.post('/:id/ban', requireAuth, requireRole('admin'), (req, res) => {
   db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(target.id);
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(target.id);
   removeOnlineUser(target.id);
+  audit(req.user, 'ban', target);
   res.json({ message: 'User banned and logged out.' });
 });
 
@@ -190,6 +201,7 @@ router.post('/:id/unban', requireAuth, requireRole('admin'), (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
   db.prepare('UPDATE users SET banned = 0, updated_at = datetime(\'now\') WHERE id = ?').run(target.id);
+  audit(req.user, 'unban', target);
   res.json({ message: 'User unbanned.' });
 });
 
@@ -207,13 +219,14 @@ router.post('/:id/force-logout', requireAuth, requireRole('admin'), (req, res) =
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(target.id);
   db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(target.id);
   removeOnlineUser(target.id);
+  audit(req.user, 'force-logout', target);
   res.json({ message: 'User forced to logout.' });
 });
 
 router.post('/:id/reset-password', requireAuth, requireRole('su'), (req, res) => {
   const { new_password } = req.body;
-  // 与注册/改密一致的强度要求: 至少 8 位，含字母，且含数字或符号
-  if (!new_password || new_password.length < 8 || !/[a-zA-Z]/.test(new_password) || !(/\d/.test(new_password) || /[^a-zA-Z0-9]/.test(new_password))) {
+  // 与注册/改密一致的强度要求: 至少 8 位，含字母，且含数字或符号；bcrypt 前 72 字节截断防御
+  if (!new_password || new_password.length < 8 || Buffer.byteLength(new_password, 'utf8') > 72 || !/[a-zA-Z]/.test(new_password) || !(/\d/.test(new_password) || /[^a-zA-Z0-9]/.test(new_password))) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '密码至少 8 位，且须包含字母与数字或符号。' });
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
@@ -223,6 +236,7 @@ router.post('/:id/reset-password', requireAuth, requireRole('su'), (req, res) =>
   const hash = bcrypt.hashSync(new_password, 10);
   db.prepare('UPDATE users SET password_hash = ?, updated_at = datetime(\'now\') WHERE id = ?').run(hash, req.params.id);
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user.id);
+  audit(req.user, 'reset-password', user);
   res.json({ message: 'Password reset successfully.' });
 });
 
@@ -241,7 +255,8 @@ router.post('/sudo-login', requireAuth, requireRole('su'), (req, res) => {
   }
   const jwt = require('jsonwebtoken');
   const config = require('../config/config');
-  const token = jwt.sign({ userId: target.id }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry });
+  const token = jwt.sign({ userId: target.id }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry, algorithm: 'HS256' });
+  audit(req.user, 'sudo-login', target);
   res.json({ access_token: token, user: { id: target.id, username: target.username, nickname: target.nickname, role: target.role } });
 });
 
@@ -249,6 +264,13 @@ router.post('/', requireAuth, requireRole('su'), (req, res) => {
   const { username, password, nickname, role } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
+  }
+  if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Password must be 8-72 characters.' });
+  }
+  // 与注册接口一致的字符集限制
+  if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username may only contain letters, digits, underscore, dot and dash.' });
   }
   const validRoles = ['user', 'teacher', 'admin', 'su'];
   if (role && !validRoles.includes(role)) {
@@ -277,6 +299,7 @@ router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {
   }
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(target.id);
   db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
+  audit(req.user, 'delete-user', target);
   res.json({ message: 'User deleted.' });
 });
 

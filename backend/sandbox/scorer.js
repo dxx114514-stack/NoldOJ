@@ -3,6 +3,8 @@ class Scorer {
     this.script = script || '';
     this.vars = {};
     this.pos = 0;
+    this.depth = 0;          // 嵌套深度计数器，防栈溢出
+    this.MAX_DEPTH = 100;
   }
 
   getLineCol(pos) {
@@ -83,17 +85,25 @@ class Scorer {
   }
 
   parseIf() {
-    this.eat('if');
-    const cond = this.parseCondExpr();
-    this.expect(';'); this.expect('then');
-    if (cond) {
-      this.parseBlock(); this.skipWs();
-      if (this.match('else')) { this.eat('else'); this.skipTilFi(0); }
-    } else {
-      this.skipTilFi(0); this.skipWs();
-      if (this.match('else')) { this.eat('else'); this.parseBlock(); }
+    if (this.depth >= this.MAX_DEPTH) {
+      throw this.err(`Nested if/else exceeds max depth of ${this.MAX_DEPTH}`);
     }
-    this.expect('fi');
+    this.depth++;
+    try {
+      this.eat('if');
+      const cond = this.parseCondExpr();
+      this.expect(';'); this.expect('then');
+      if (cond) {
+        this.parseBlock(); this.skipWs();
+        if (this.match('else')) { this.eat('else'); this.skipTilFi(0); }
+      } else {
+        this.skipTilFi(0); this.skipWs();
+        if (this.match('else')) { this.eat('else'); this.parseBlock(); }
+      }
+      this.expect('fi');
+    } finally {
+      this.depth--;
+    }
   }
 
   skipTilFi(depth) {

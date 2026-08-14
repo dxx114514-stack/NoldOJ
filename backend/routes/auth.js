@@ -20,19 +20,21 @@ const verifyCodeRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
 // 密码强度: 至少 8 位，含字母，且含数字或特殊符号
 function isStrongPassword(pw) {
   if (!pw || pw.length < 8) return false;
+  // bcrypt 底层仅处理前 72 字节，超长密码会被截断导致认证绕过风险
+  if (Buffer.byteLength(pw, 'utf8') > 72) return false;
   if (!/[a-zA-Z]/.test(pw)) return false;
   return /\d/.test(pw) || /[^a-zA-Z0-9]/.test(pw);
 }
 
 function generateAccessToken(userId) {
-  return jwt.sign({ userId }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry });
+  return jwt.sign({ userId }, config.jwt.accessSecret, { expiresIn: config.jwt.accessExpiry, algorithm: 'HS256' });
 }
-
 function generateRefreshToken(userId) {
-  const token = jwt.sign({ userId }, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshExpiry });
+  const token = jwt.sign({ userId }, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshExpiry, algorithm: 'HS256' });
   const hash = bcrypt.hashSync(token, 10);
+  const prefix = token.slice(0, 24);
   const expiresAt = new Date(Date.now() + config.jwt.refreshExpiryMs).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-  db.prepare('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(userId, hash, expiresAt);
+  db.prepare('INSERT INTO refresh_tokens (user_id, token_hash, token_prefix, expires_at) VALUES (?, ?, ?, ?)').run(userId, hash, prefix, expiresAt);
   return token;
 }
 
@@ -152,6 +154,10 @@ router.post('/register', registerRateLimit, async (req, res) => {
   if (username.length < 3 || username.length > 32) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username must be 3-32 characters.' });
   }
+  // 限制字符集，防止控制字符/HTML 标记进入存储触发存储型 XSS
+  if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username may only contain letters, digits, underscore, dot and dash.' });
+  }
   if (!isStrongPassword(password)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '密码至少 8 位，且须包含字母与数字或符号。' });
   }
@@ -186,7 +192,7 @@ router.post('/refresh', refreshRateLimit, (req, res) => {
     return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'No refresh token provided.' });
   }
   try {
-    const payload = jwt.verify(refreshToken, config.jwt.refreshSecret);
+    const payload = jwt.verify(refreshToken, config.jwt.refreshSecret, { algorithms: ['HS256'] });
     const user = db.prepare('SELECT id, banned, force_logout_at FROM users WHERE id = ?').get(payload.userId);
     if (!user) {
       return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'User not found.' });
@@ -202,7 +208,7 @@ router.post('/refresh', refreshRateLimit, (req, res) => {
         return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'You have been logged out.' });
       }
     }
-    const tokens = db.prepare('SELECT * FROM refresh_tokens WHERE user_id = ? AND expires_at > datetime(\'now\')').all(payload.userId);
+    const tokens = db.prepare('SELECT * FROM refresh_tokens WHERE user_id = ? AND token_prefix = ? AND expires_at > datetime(\'now\')').all(payload.userId, refreshToken.slice(0, 24));
     let validToken = null;
     for (const t of tokens) {
       if (bcrypt.compareSync(refreshToken, t.token_hash)) {
@@ -239,7 +245,7 @@ router.post('/logout', (req, res) => {
   const refreshToken = req.cookies?.refresh_token;
   if (refreshToken) {
     try {
-      const payload = jwt.verify(refreshToken, config.jwt.refreshSecret);
+      const payload = jwt.verify(refreshToken, config.jwt.refreshSecret, { algorithms: ['HS256'] });
       // 仅删除当前使用的 refresh token，不影响其他登录会话
       const tokens = db.prepare('SELECT id, token_hash FROM refresh_tokens WHERE user_id = ?').all(payload.userId);
       for (const t of tokens) {

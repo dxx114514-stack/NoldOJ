@@ -1,4 +1,5 @@
 const buckets = new Map();
+const MAX_BUCKETS = 10000; // 容量上限，防止伪造 IP 头耗尽内存
 
 function createRateLimit({ windowMs = 60000, max = 10 } = {}) {
   return (req, res, next) => {
@@ -18,6 +19,18 @@ function createRateLimit({ windowMs = 60000, max = 10 } = {}) {
     bucket.count++;
     if (bucket.count > max) {
       return res.status(429).json({ code: 4, reason: 'ERR_SUBMIT_LIMIT_EXCEEDED', message: 'Rate limit exceeded. Please try again later.' });
+    }
+    // 超出容量时按最旧优先淘汰，保证内存有界
+    if (buckets.size > MAX_BUCKETS) {
+      let oldestKey = null;
+      let oldestStart = Infinity;
+      for (const [k, b] of buckets) {
+        if (b.windowStart < oldestStart) {
+          oldestStart = b.windowStart;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey) buckets.delete(oldestKey);
     }
     next();
   };

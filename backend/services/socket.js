@@ -25,10 +25,20 @@ function initSocket(server) {
       return next(new Error('No token provided'));
     }
     try {
-      const payload = jwt.verify(token, config.jwt.accessSecret);
-      const user = db.prepare('SELECT id, username, nickname, role FROM users WHERE id = ?').get(payload.userId);
+      const payload = jwt.verify(token, config.jwt.accessSecret, { algorithms: ['HS256'] });
+      const user = db.prepare('SELECT id, username, nickname, role, banned, force_logout_at FROM users WHERE id = ?').get(payload.userId);
       if (!user) {
         return next(new Error('User not found'));
+      }
+      // 封禁 / 强制登出用户不允许建立 WebSocket 连接（与 requireAuth 行为一致）
+      if (user.banned) {
+        return next(new Error('Account has been banned'));
+      }
+      if (user.force_logout_at && payload.iat) {
+        const forceTime = Math.floor(new Date(user.force_logout_at + 'Z').getTime() / 1000);
+        if (payload.iat < forceTime) {
+          return next(new Error('You have been logged out'));
+        }
       }
       socket.userId = user.id;
       socket.user = user;

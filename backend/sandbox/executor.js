@@ -160,7 +160,8 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
 function killProc(proc, isWindows) {
   try {
     if (isWindows && proc.pid) {
-      exec(`taskkill /F /PID ${proc.pid} /T`, () => {});
+      // 不经 shell 拼接，避免 PID/路径注入（spawnSync 参数数组形式）
+      spawnSync('taskkill', ['/F', '/PID', String(proc.pid), '/T'], { windowsHide: true, timeout: 5000 });
     } else {
       proc.kill('SIGKILL');
     }
@@ -330,9 +331,11 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
     if (isWindows && memoryLimitKB > 0) {
       memPollTimer = setInterval(() => {
         try {
-          const out = execSync(`tasklist /FI "PID eq ${proc.pid}" /FO CSV /NH`, { encoding: 'utf8', windowsHide: true, timeout: 3000 });
-          const line = out.trim().split('\n')[0] || '';
-          const match = line.match(/,"([\d,.]+)\s*K"/);
+          if (!Number.isInteger(proc.pid) || proc.pid <= 0) return;
+          // 参数数组形式，不经 shell 拼接，杜绝命令注入
+          const memRes = spawnSync('tasklist', ['/FI', `PID eq ${proc.pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
+          const out = (memRes.stdout || '').trim().split('\n')[0] || '';
+          const match = out.match(/,"([\d,.]+)\s*K"/);
           if (match) {
             const kb = Math.round(parseFloat(match[1].replace(/,/g, '')));
             if (kb > peakMemoryKB) peakMemoryKB = kb;

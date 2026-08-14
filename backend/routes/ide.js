@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../database/db');
-const { optionalAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
 const config = require('../config/config');
 const { reviewCode, CODE_LENGTH_LIMIT } = require('../services/security');
@@ -28,11 +28,13 @@ router.post('/review', optionalAuth, async (req, res) => {
     }
     res.json(result);
   } catch (e) {
-    res.json({ safe: true });
+    // Fail-Closed: 审查异常时提示不可用而非放行
+    res.json({ safe: false, reason: '审查服务异常，请稍后重试', threat_level: 'critical' });
   }
 });
 
-router.post('/run', optionalAuth, rateLimit, async (req, res) => {
+// 匿名用户可通过反复调用本接口消耗服务器资源：仅允许登录用户执行代码
+router.post('/run', requireAuth, rateLimit, async (req, res) => {
   const { language, source_code, stdin } = req.body;
 
   if (!language || !source_code) {

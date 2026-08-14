@@ -5,6 +5,8 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const fs = require('fs');
 const config = require('../config/config');
 const { initDB } = require('../database/db');
 const db = require('../database/db');
@@ -28,6 +30,9 @@ function logStartup(tag, msg) { log('INFO', tag, msg); }
 function logInfo(tag, msg) { log('INFO', tag, msg); }
 function logWarn(tag, msg) { log('WARN', tag, msg); }
 function logError(tag, msg) { log('ERROR', tag, msg); }
+
+// 日志脱敏逻辑集中到 utils/securityHelpers.js，各路由共享
+const { sanitizeLog } = require('../utils/securityHelpers');
 
 async function main() {
   logStartup('BOOT', '==========================================');
@@ -62,16 +67,24 @@ async function main() {
     next();
   });
 
-  // 安全 HTTP 头
+  // 安全 HTTP 头: 每请求生成唯一 nonce 供 CSP 使用, 摆脱 scriptSrc unsafe-inline
+  app.use((req, res, next) => {
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    next();
+  });
+
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'",
-                     "https://cdn.tailwindcss.com",
-                     "https://cdnjs.cloudflare.com",
-                     "https://cdn.jsdelivr.net"],
-        scriptSrcAttr: ["'unsafe-inline'"],
+        scriptSrc: [
+          "'self'",
+          (req, res) => `'nonce-${res.locals.cspNonce}'`,
+          "https://cdn.tailwindcss.com",
+          "https://cdnjs.cloudflare.com",
+          "https://cdn.jsdelivr.net"
+        ],
+        // 仅允许非内联事件属性，脚本本身一律走 self/CDN + nonce
         styleSrc: ["'self'", "'unsafe-inline'",
                     "https://cdnjs.cloudflare.com"],
         imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
@@ -90,6 +103,16 @@ async function main() {
 
   // CORS 白名单: 仅允许配置的源携带凭据访问
   const allowedOrigins = new Set(config.cors.origins);
+  // 无 Origin 的写请求若携带凭据直接拒绝, 阻断 DNS rebinding / 无源 CSRF。
+  // 同源浏览器导航与 curl 裸调 GET/HEAD/OPTIONS 不受影响。
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    const hasCreds = !!(req.headers.cookie || /^Bearer\b/i.test(req.headers.authorization || ''));
+    if (!origin && hasCreds && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      return res.status(403).json({ code: 4, reason: 'ERR_FORBIDDEN', message: 'Origin header is required for credentialed requests.' });
+    }
+    next();
+  });
   app.use(cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
@@ -104,10 +127,28 @@ async function main() {
 
   // 静态资源仅暴露安全子目录，避免整个前端目录被遍历
   const frontendRoot = path.join(__dirname, '../../frontend');
+  const pagesRoot = path.join(frontendRoot, 'pages');
   app.use('/css', express.static(path.join(frontendRoot, 'css'), { dotfiles: 'deny' }));
   app.use('/js', express.static(path.join(frontendRoot, 'js'), { dotfiles: 'deny' }));
   app.use('/img', express.static(path.join(frontendRoot, 'img'), { dotfiles: 'deny' }));
-  app.use(express.static(path.join(frontendRoot, 'pages'), { dotfiles: 'deny' }));
+  // HTML 页面经 nonce 注入中间件，使 CSP 无需 unsafe-inline 即可执行内联脚本；
+  // 其余静态资源（css/js/img 外的）回退到 express.static。
+  app.use((req, res, next) => {
+    let rel = null;
+    if (req.path === '/') rel = 'index.html';
+    else if (req.path.endsWith('.html')) rel = req.path.replace(/^\/pages\//, '').replace(/^\//, '');
+    if (!rel || /\.\.|\\/.test(rel)) return next();
+    fs.readFile(path.join(pagesRoot, rel), 'utf8', (err, html) => {
+      if (err) return next();
+      const nonce = res.locals.cspNonce;
+      // 仅给内联 <script>（无 src 属性）注入 nonce
+      const out = html.replace(/<script(?![^>]*\bsrc\s*=)[^>]*>/gi, (tag) => {
+        return tag.replace(/<script/i, `<script nonce="${nonce}"`);
+      });
+      res.type('html').send(out);
+    });
+  });
+  app.use(express.static(pagesRoot, { dotfiles: 'deny' }));
   app.get('/favicon.svg', (req, res) => res.sendFile(path.join(frontendRoot, 'favicon.svg')));
 
   // 安全公告文件 (RFC 9116)
@@ -180,13 +221,22 @@ async function main() {
     logInfo('ROUTER', `  ${path}  (${name})`);
   }
 
+  // /api/v1/stats 首页高频接口: 30s TTL 短时缓存
+  let statsCache = null;
+  let statsCacheAt = 0;
   app.get('/api/v1/stats', (req, res) => {
-    const problems = db.prepare('SELECT COUNT(*) as c FROM problems WHERE is_public = 1').get().c;
+    const now = Date.now();
+    if (statsCache && now - statsCacheAt < 30000) {
+      return res.json(statsCache);
+    }
+    const problems = db.prepare('SELECT COUNT(*) as c FROM problems WHERE is_public = 1 AND is_hidden = 0').get().c;
     const submissions = db.prepare('SELECT COUNT(*) as c FROM submissions').get().c;
     const users = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
     const languages = db.prepare('SELECT COUNT(*) as c FROM languages WHERE is_enabled = 1').get().c;
+    statsCache = { problems, submissions, users, languages };
+    statsCacheAt = now;
     logInfo('STATS', `Problems: ${problems}, Submissions: ${submissions}, Users: ${users}, Languages: ${languages}`);
-    res.json({ problems, submissions, users, languages });
+    res.json(statsCache);
   });
 
   app.get('/api/v1/jobs', (req, res) => res.redirect('/api/v1/submissions'));
@@ -196,13 +246,22 @@ async function main() {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'API endpoint not found.' });
     }
-    res.sendFile(path.join(__dirname, '../../frontend/pages/index.html'));
+    fs.readFile(path.join(pagesRoot, 'index.html'), 'utf8', (err, html) => {
+      if (err) return res.status(404).send('Not found');
+      const nonce = res.locals.cspNonce;
+      const out = html.replace(/<script(?![^>]*\bsrc\s*=)[^>]*>/gi, (tag) => {
+        return tag.replace(/<script/i, `<script nonce="${nonce}"`);
+      });
+      res.type('html').send(out);
+    });
   });
 
   app.use((err, req, res, next) => {
     const reqId = res.locals.reqId || 'unknown';
-    logError('ERROR', `[${reqId}] ${req.method} ${req.originalUrl} => ${err.message}`);
-    logError('ERROR', err.stack || err);
+    const msg = sanitizeLog(String(err.message || err));
+    const stack = sanitizeLog(String(err.stack || err));
+    logError('ERROR', `[${reqId}] ${req.method} ${sanitizeLog(req.originalUrl || '')} => ${msg}`);
+    logError('ERROR', stack);
     res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Internal server error.' });
   });
 
@@ -223,7 +282,7 @@ async function main() {
     logStartup('READY', `==========================================`);
     logStartup('READY', `  WinOJ Server is READY`);
     logStartup('READY', `  URL: http://localhost:${config.port}`);
-    logStartup('READY', `  Admin: admin / admin123`);
+    logStartup('READY', `  初始管理员密码在数据库首次初始化时已显示，请勿在日志中明文记录凭据`);
     logStartup('READY', `==========================================`);
   });
 
@@ -249,16 +308,16 @@ async function main() {
   });
 
   process.on('uncaughtException', (err) => {
-    logError('FATAL', `Uncaught exception: ${err.message}`);
-    logError('FATAL', err.stack);
+    logError('FATAL', `Uncaught exception: ${sanitizeLog(String(err && err.message))}`);
+    logError('FATAL', sanitizeLog(String(err && err.stack)));
   });
 
   process.on('unhandledRejection', (reason) => {
-    logError('FATAL', `Unhandled rejection: ${reason}`);
+    logError('FATAL', `Unhandled rejection: ${sanitizeLog(String(reason))}`);
   });
 }
 
 main().catch(err => {
-  console.error(`[${ts()}] [ERROR] [BOOT] Failed to start server:`, err);
+  console.error(`[${ts()}] [ERROR] [BOOT] Failed to start server:`, sanitizeLog(String(err && err.stack || err)));
   process.exit(1);
 });

@@ -23,18 +23,16 @@ const ALLOWED_TABLES = new Set([
   'discussions', 'discussion_replies', 'virtual_contests', 'plagiarism_tasks', 'plagiarism_pairs'
 ]);
 
+// 返回表中的下一个可用 ID。
+// node:sqlite 全程同步执行，调用方均在 findNextId 与 INSERT 之间无异步间隙，
+// 单线程模型下不存在并发取到相同 ID 的竞态窗口。
+// 使用 MAX(id)+1 保证 O(1) 性能（不复用空洞，避免大表线性扫描）。
 function findNextId(table) {
   if (!ALLOWED_TABLES.has(table)) {
     throw new Error(`findNextId: invalid table name "${table}"`);
   }
-  const rows = sqlDb.prepare(`SELECT id FROM ${table} ORDER BY id`).all();
-  if (rows.length === 0) return 1;
-  const ids = rows.map(r => r.id).sort((a, b) => a - b);
-  if (ids[0] > 1) return 1;
-  for (let i = 0; i < ids.length - 1; i++) {
-    if (ids[i + 1] - ids[i] > 1) return ids[i] + 1;
-  }
-  return ids[ids.length - 1] + 1;
+  const row = sqlDb.prepare(`SELECT MAX(id) as m FROM ${table}`).get();
+  return (row?.m || 0) + 1;
 }
 
 function exec(sql) {
@@ -79,9 +77,15 @@ async function initDB() {
   if (!probCols.includes('sample_input')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_input TEXT DEFAULT ''");
   if (!probCols.includes('sample_output')) sqlDb.exec("ALTER TABLE problems ADD COLUMN sample_output TEXT DEFAULT ''");
   if (!probCols.includes('difficulty')) sqlDb.exec("ALTER TABLE problems ADD COLUMN difficulty INTEGER DEFAULT 0");
+  // 隐藏功能: 后台可设为隐藏，公开列表/详情对非授权用户不可见
+  if (!probCols.includes('is_hidden')) sqlDb.exec("ALTER TABLE problems ADD COLUMN is_hidden INTEGER DEFAULT 0");
 
   const artCols = tableCols('articles');
   if (!artCols.includes('provider')) sqlDb.exec("ALTER TABLE articles ADD COLUMN provider TEXT DEFAULT ''");
+  if (!artCols.includes('is_hidden')) sqlDb.exec("ALTER TABLE articles ADD COLUMN is_hidden INTEGER DEFAULT 0");
+
+  const ctestCols = tableCols('contests');
+  if (!ctestCols.includes('is_hidden')) sqlDb.exec("ALTER TABLE contests ADD COLUMN is_hidden INTEGER DEFAULT 0");
 
   const subRow = sqlDb.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='submissions'").get();
   if (subRow && !String(subRow.sql).includes('pending_review')) {
@@ -115,6 +119,10 @@ async function initDB() {
   if (!ideCols.includes('status')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN status TEXT DEFAULT 'pending'");
   if (!ideCols.includes('compile_output')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN compile_output TEXT DEFAULT ''");
   if (!ideCols.includes('memory_used')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN memory_used INTEGER DEFAULT 0");
+
+  const rtCols = tableCols('refresh_tokens');
+  if (!rtCols.includes('token_prefix')) sqlDb.exec("ALTER TABLE refresh_tokens ADD COLUMN token_prefix TEXT DEFAULT ''");
+  sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_refresh_tokens_prefix ON refresh_tokens(user_id, token_prefix)');
 
   if (!cols.includes('submit_lock_exempt')) sqlDb.exec("ALTER TABLE users ADD COLUMN submit_lock_exempt INTEGER DEFAULT 0");
   if (!cols.includes('email')) sqlDb.exec("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''");
