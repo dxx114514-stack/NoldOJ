@@ -3,6 +3,8 @@ const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { emitAnnouncement } = require('../services/socket');
 const { parsePageLimit } = require('../utils/pagination');
+const { isAdminOrSu } = require('../utils/roles');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -72,25 +74,24 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!ann) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Announcement not found.' });
   }
-  if (req.user.id !== ann.author_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== ann.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit others\' announcements.' });
   }
   const { title, content, type, contest_id, pinned } = req.body;
-  const updates = [];
-  const values = [];
-  if (title !== undefined) { updates.push('title = ?'); values.push(title.trim()); }
-  if (content !== undefined) { updates.push('content = ?'); values.push(content.trim()); }
+  const u = buildUpdates([
+    { key: 'title', value: title !== undefined ? title.trim() : undefined },
+    { key: 'content', value: content !== undefined ? content.trim() : undefined },
+    { key: 'pinned', value: pinned, transform: v => v ? 1 : 0 }
+  ], { touchUpdatedAt: true });
+  // type 联动 contest_id 属于特例，单独追加
   if (type !== undefined) {
-    updates.push('type = ?'); values.push(type);
-    updates.push('contest_id = ?'); values.push(type === 'contest' ? contest_id : null);
+    u.set.push('type = ?', 'contest_id = ?');
+    u.values.push(type, type === 'contest' ? contest_id : null);
   }
-  if (pinned !== undefined) { updates.push('pinned = ?'); values.push(pinned ? 1 : 0); }
-  if (updates.length === 0) {
+  if (u.set.length === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  updates.push("updated_at = datetime('now')");
-  values.push(ann.id);
-  db.prepare(`UPDATE announcements SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE announcements SET ${u.set.join(', ')} WHERE id = ?`).run(...u.values, ann.id);
   const updated = db.prepare('SELECT * FROM announcements WHERE id = ?').get(ann.id);
   res.json(updated);
 });
@@ -101,7 +102,7 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!ann) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Announcement not found.' });
   }
-  if (req.user.id !== ann.author_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== ann.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete others\' announcements.' });
   }
   db.prepare('DELETE FROM announcements WHERE id = ?').run(ann.id);

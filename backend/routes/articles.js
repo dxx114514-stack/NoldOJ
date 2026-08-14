@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
+const { isStaff, isAdminOrSu } = require('../utils/roles');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -10,7 +12,7 @@ router.get('/', optionalAuth, (req, res) => {
   const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 20, 100);
   let where = '';
   let params = [];
-  if (!req.user || !['teacher', 'admin', 'su'].includes(req.user.role)) {
+  if (!req.user || !isStaff(req.user.role)) {
     where = 'WHERE a.is_published = 1 AND a.is_hidden = 0';
   }
   if (search) {
@@ -38,12 +40,12 @@ router.get('/:id', optionalAuth, (req, res) => {
   if (!article) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Article not found.' });
   }
-  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  const staff = !!req.user && isStaff(req.user.role);
   // 隐藏文章: 仅作者或管理角色可见
-  if (article.is_hidden && !(isStaff || (req.user && req.user.id === article.author_id))) {
+  if (article.is_hidden && !(staff || (req.user && req.user.id === article.author_id))) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Article not found.' });
   }
-  if (!article.is_published && (!req.user || (req.user.id !== article.author_id && !isStaff))) {
+  if (!article.is_published && (!req.user || (req.user.id !== article.author_id && !staff))) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Article is not published.' });
   }
   res.json(article);
@@ -66,23 +68,21 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!article) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Article not found.' });
   }
-  if (req.user.id !== article.author_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== article.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit other users\' articles.' });
   }
   const { title, content, provider, is_published, is_hidden } = req.body;
-  const updates = [];
-  const values = [];
-  if (title !== undefined) { updates.push('title = ?'); values.push(title); }
-  if (content !== undefined) { updates.push('content = ?'); values.push(content); }
-  if (provider !== undefined) { updates.push('provider = ?'); values.push(provider); }
-  if (is_published !== undefined) { updates.push('is_published = ?'); values.push(is_published ? 1 : 0); }
-  if (is_hidden !== undefined) { updates.push('is_hidden = ?'); values.push(is_hidden ? 1 : 0); }
-  if (updates.length === 0) {
+  const u = buildUpdates([
+    { key: 'title', value: title },
+    { key: 'content', value: content },
+    { key: 'provider', value: provider },
+    { key: 'is_published', value: is_published, transform: v => v ? 1 : 0 },
+    { key: 'is_hidden', value: is_hidden, transform: v => v ? 1 : 0 }
+  ], { touchUpdatedAt: true });
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  updates.push("updated_at = datetime('now')");
-  values.push(article.id);
-  db.prepare(`UPDATE articles SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE articles SET ${u.clause} WHERE id = ?`).run(...u.values, article.id);
   const updated = db.prepare('SELECT * FROM articles WHERE id = ?').get(article.id);
   res.json(updated);
 });
@@ -92,7 +92,7 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!article) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Article not found.' });
   }
-  if (req.user.id !== article.author_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== article.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete other users\' articles.' });
   }
   db.prepare('DELETE FROM problem_solutions WHERE article_id = ?').run(article.id);

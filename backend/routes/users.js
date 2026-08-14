@@ -4,6 +4,8 @@ const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser } = require('../middleware/auth');
 const { sanitizeLog } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
+const { isValidRole, canManage, isAdminOrSu } = require('../utils/roles');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -21,10 +23,10 @@ router.get('/online', requireAuth, requireRole('admin'), (req, res) => {
 // 公开排行榜。show_hidden=1 需要登录且 admin/su（optionalAuth 保持公开访问，同时对隐私分支显式认证）
 router.get('/rating', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, show_hidden = '' } = req.query;
-  const { page: pageNum1, limit: limitNum1, offset } = parsePageLimit(page, limit, 50, 100);
+  const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
   let where = 'WHERE hide_rating = 0';
   if (show_hidden === '1') {
-    if (!req.user || !['admin', 'su'].includes(req.user.role)) {
+    if (!req.user || !isAdminOrSu(req.user.role)) {
       return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'show_hidden requires admin or su role.' });
     }
     where = '';
@@ -33,8 +35,8 @@ router.get('/rating', optionalAuth, (req, res) => {
   const users = db.prepare(`
     SELECT id, username, nickname, role, rating, created_at
     FROM users ${where} ORDER BY rating DESC, created_at ASC LIMIT ? OFFSET ?
-  `).all(limitNum1, offset);
-  res.json({ total, page: pageNum1, limit: limitNum1, users });
+  `).all(limitNum, offset);
+  res.json({ total, page: pageNum, limit: limitNum, users });
 });
 
 // 公开用户资料 API（所有人可访问）
@@ -59,19 +61,17 @@ router.get('/me/virtual-contests', requireAuth, (req, res) => {
 
 router.put('/me', requireAuth, (req, res) => {
   const { nickname, signature, bio, hide_rating, preferred_language } = req.body;
-  const updates = [];
-  const values = [];
-  if (nickname !== undefined) { updates.push('nickname = ?'); values.push(nickname); }
-  if (signature !== undefined) { updates.push('signature = ?'); values.push(signature.slice(0, 1000)); }
-  if (bio !== undefined) { updates.push('bio = ?'); values.push(bio); }
-  if (hide_rating !== undefined) { updates.push('hide_rating = ?'); values.push(hide_rating ? 1 : 0); }
-  if (preferred_language !== undefined) { updates.push('preferred_language = ?'); values.push(preferred_language); }
-  if (updates.length === 0) {
+  const u = buildUpdates([
+    { key: 'nickname', value: nickname },
+    { key: 'signature', value: signature, transform: v => v.slice(0, 1000) },
+    { key: 'bio', value: bio },
+    { key: 'hide_rating', value: hide_rating, transform: v => v ? 1 : 0 },
+    { key: 'preferred_language', value: preferred_language }
+  ], { touchUpdatedAt: true });
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  updates.push("updated_at = datetime('now')");
-  values.push(req.user.id);
-  db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE users SET ${u.clause} WHERE id = ?`).run(...u.values, req.user.id);
   const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, hide_rating, preferred_language FROM users WHERE id = ?').get(req.user.id);
   res.json(user);
 });
@@ -95,10 +95,7 @@ router.put('/:id/hide-rating', requireAuth, requireRole('admin'), (req, res) => 
   if (!target) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
-  const hierarchy = ['user', 'teacher', 'admin', 'su'];
-  const myLevel = hierarchy.indexOf(req.user.role);
-  const targetLevel = hierarchy.indexOf(target.role);
-  if (targetLevel > myLevel || (targetLevel === myLevel && String(target.id) !== String(req.user.id))) {
+  if (!canManage(req.user, target)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot modify a user with equal or higher privileges (except yourself).' });
   }
   db.prepare('UPDATE users SET hide_rating = ?, updated_at = datetime(\'now\') WHERE id = ?').run(hide_rating ? 1 : 0, req.params.id);
@@ -129,7 +126,7 @@ router.put('/:id/upload-limits', requireAuth, requireRole('su'), (req, res) => {
 
 router.get('/', requireAuth, requireRole('admin'), (req, res) => {
   const { page = 1, limit = 50, search = '', role = '' } = req.query;
-  const { page: pageNum2, limit: limitNum2, offset } = parsePageLimit(page, limit, 50, 100);
+  const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
   let where = 'WHERE 1=1';
   const params = [];
   if (search) {
@@ -143,8 +140,8 @@ router.get('/', requireAuth, requireRole('admin'), (req, res) => {
     params.push(role);
   }
   const total = db.prepare(`SELECT COUNT(*) as c FROM users ${where}`).get(...params).c;
-  const users = db.prepare(`SELECT id, username, nickname, email, role, banned, rating, hide_rating, created_at FROM users ${where} ORDER BY id LIMIT ? OFFSET ?`).all(...params, limitNum2, offset);
-  res.json({ total, page: pageNum2, limit: limitNum2, users });
+  const users = db.prepare(`SELECT id, username, nickname, email, role, banned, rating, hide_rating, created_at FROM users ${where} ORDER BY id LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
+  res.json({ total, page: pageNum, limit: limitNum, users });
 });
 
 router.get('/:id', requireAuth, requireRole('admin'), (req, res) => {
@@ -157,8 +154,7 @@ router.get('/:id', requireAuth, requireRole('admin'), (req, res) => {
 
 router.put('/:id/role', requireAuth, requireRole('su'), (req, res) => {
   const { role } = req.body;
-  const validRoles = ['user', 'teacher', 'admin', 'su'];
-  if (!validRoles.includes(role)) {
+  if (!isValidRole(role)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Invalid role.' });
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
@@ -168,7 +164,6 @@ router.put('/:id/role', requireAuth, requireRole('su'), (req, res) => {
   if (user.id === req.user.id) {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot change your own role.' });
   }
-  const hierarchy = ['user', 'teacher', 'admin', 'su'];
   if (user.role === 'su' && role !== 'su') {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot demote another super administrator.' });
   }
@@ -182,10 +177,7 @@ router.post('/:id/ban', requireAuth, requireRole('admin'), (req, res) => {
   if (!target) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
-  const hierarchy = ['user', 'teacher', 'admin', 'su'];
-  const banMyLevel = hierarchy.indexOf(req.user.role);
-  const banTargetLevel = hierarchy.indexOf(target.role);
-  if (banTargetLevel > banMyLevel || (banTargetLevel === banMyLevel && String(target.id) !== String(req.user.id))) {
+  if (!canManage(req.user, target)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot ban a user with equal or higher privileges (except yourself).' });
   }
   db.prepare('UPDATE users SET banned = 1, updated_at = datetime(\'now\') WHERE id = ?').run(target.id);
@@ -211,10 +203,7 @@ router.post('/:id/force-logout', requireAuth, requireRole('admin'), (req, res) =
   if (!target) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
-  const hierarchy = ['user', 'teacher', 'admin', 'su'];
-  const flMyLevel = hierarchy.indexOf(req.user.role);
-  const flTargetLevel = hierarchy.indexOf(target.role);
-  if (flTargetLevel > flMyLevel || (flTargetLevel === flMyLevel && String(target.id) !== String(req.user.id))) {
+  if (!canManage(req.user, target)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot force logout a user with equal or higher privileges (except yourself).' });
   }
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(target.id);
@@ -273,8 +262,7 @@ router.post('/', requireAuth, requireRole('su'), (req, res) => {
   if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username may only contain letters, digits, underscore, dot and dash.' });
   }
-  const validRoles = ['user', 'teacher', 'admin', 'su'];
-  if (role && !validRoles.includes(role)) {
+  if (role && !isValidRole(role)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Invalid role.' });
   }
   const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);

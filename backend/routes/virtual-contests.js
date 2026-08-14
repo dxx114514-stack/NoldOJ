@@ -87,12 +87,14 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // 虚拟比赛排行榜（只返回自己）
 router.get('/:id/ranking', requireAuth, (req, res) => {
-  const vc = db.prepare('SELECT * FROM virtual_contests WHERE id = ?').get(req.params.id);
+  const vc = db.prepare(`
+    SELECT vc.* FROM virtual_contests vc
+    WHERE vc.id = ? AND (vc.user_id = ? OR EXISTS(
+      SELECT 1 FROM users u WHERE u.id = ? AND u.role IN ('admin', 'su')
+    ))
+  `).get(req.params.id, req.user.id, req.user.id);
   if (!vc) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Virtual contest not found.' });
-  }
-  if (vc.user_id !== req.user.id && !['admin','su'].includes(req.user.role)) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '无权访问他人虚拟比赛。' });
   }
   const contestProblems = db.prepare('SELECT problem_id FROM contest_problems WHERE contest_id = ?').all(vc.contest_id);
   const problemIds = contestProblems.map(p => p.problem_id);

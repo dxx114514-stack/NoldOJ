@@ -1,6 +1,8 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { isAdminOrSu } = require('../utils/roles');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -100,30 +102,24 @@ router.put('/:id', requireAuth, (req, res) => {
   if (!disc) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Discussion not found.' });
   }
-  if (req.user.id !== disc.author_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== disc.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit others\' discussions.' });
   }
   const { title, content } = req.body;
-  const updates = [];
-  const values = [];
-  if (title !== undefined) {
-    if (String(title).length > MAX_TITLE_LENGTH) {
-      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Title must be at most ${MAX_TITLE_LENGTH} characters.` });
-    }
-    updates.push('title = ?'); values.push(title.trim());
+  if (title !== undefined && String(title).length > MAX_TITLE_LENGTH) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Title must be at most ${MAX_TITLE_LENGTH} characters.` });
   }
-  if (content !== undefined) {
-    if (String(content).length > MAX_CONTENT_LENGTH) {
-      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Content must be at most ${MAX_CONTENT_LENGTH} characters.` });
-    }
-    updates.push('content = ?'); values.push(content.trim());
+  if (content !== undefined && String(content).length > MAX_CONTENT_LENGTH) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Content must be at most ${MAX_CONTENT_LENGTH} characters.` });
   }
-  if (updates.length === 0) {
+  const u = buildUpdates([
+    { key: 'title', value: title !== undefined ? title.trim() : undefined },
+    { key: 'content', value: content !== undefined ? content.trim() : undefined }
+  ], { touchUpdatedAt: true });
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  updates.push("updated_at = datetime('now')");
-  values.push(disc.id);
-  db.prepare(`UPDATE discussions SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE discussions SET ${u.clause} WHERE id = ?`).run(...u.values, disc.id);
   const updated = db.prepare('SELECT * FROM discussions WHERE id = ?').get(disc.id);
   res.json(updated);
 });
@@ -134,7 +130,7 @@ router.delete('/:id', requireAuth, (req, res) => {
   if (!disc) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Discussion not found.' });
   }
-  if (req.user.id !== disc.author_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== disc.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete others\' discussions.' });
   }
   db.prepare('DELETE FROM discussion_replies WHERE discussion_id = ?').run(disc.id);
@@ -189,7 +185,7 @@ router.delete('/:id/replies/:rid', requireAuth, (req, res) => {
   if (!reply) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Reply not found.' });
   }
-  if (req.user.id !== reply.author_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== reply.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete others\' replies.' });
   }
   // 级联删除该回复的所有直接子回复

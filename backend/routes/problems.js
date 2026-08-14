@@ -6,6 +6,8 @@ const AdmZip = require('adm-zip');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
+const { isStaff } = require('../utils/roles');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 const uploadDir = path.join(__dirname, '../../data/uploads');
@@ -33,7 +35,7 @@ router.get('/', optionalAuth, (req, res) => {
   let where = 'WHERE p.is_public = 1';
   const params = [];
   // 隐藏题目仅对 teacher/admin/su 可见；管理角色可加 include_hidden=1 在列表中查看
-  const isManager = !!(req.user && ['teacher', 'admin', 'su'].includes(req.user.role));
+  const isManager = !!(req.user && isStaff(req.user.role));
   if (!isManager) {
     where += ' AND p.is_hidden = 0';
   }
@@ -141,7 +143,7 @@ router.get('/:id', optionalAuth, (req, res) => {
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
-  const isManager = !!(req.user && ['teacher', 'admin', 'su'].includes(req.user.role));
+  const isManager = !!(req.user && isStaff(req.user.role));
   // 隐藏题目: 非管理角色不可见（即使 is_public=1）
   if (problem.is_hidden && !isManager) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
@@ -215,32 +217,23 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   }
 
   const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode', 'difficulty', 'is_hidden'];
-  const updates = [];
-  const values = [];
+  // 防御纵深：列名仅允许合法标识符，杜绝任何注入 SQL SET 子句的可能
   for (const field of fields) {
-    if (req.body[field] !== undefined) {
-      // 防御纵深：列名仅允许合法标识符，杜绝任何注入 SQL SET 子句的可能
-      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
-        return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Invalid field: ${field}` });
-      }
-      updates.push(`${field} = ?`);
-      if (field === 'real_number_tolerance' || field === 'allowed_languages') {
-        values.push(JSON.stringify(req.body[field]));
-      } else if (field === 'is_public' || field === 'is_hidden') {
-        values.push(req.body[field] ? 1 : 0);
-      } else if (field === 'difficulty') {
-        values.push(parseInt(req.body[field]) || 0);
-      } else {
-        values.push(req.body[field]);
-      }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Invalid field: ${field}` });
     }
   }
-  if (updates.length === 0) {
+  const transformValue = (field, value) => {
+    if (field === 'real_number_tolerance' || field === 'allowed_languages') return JSON.stringify(value);
+    if (field === 'is_public' || field === 'is_hidden') return value ? 1 : 0;
+    if (field === 'difficulty') return parseInt(value) || 0;
+    return value;
+  };
+  const u = buildUpdates(fields.map(f => ({ key: f, value: req.body[f], transform: v => transformValue(f, v) })), { touchUpdatedAt: true });
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  updates.push("updated_at = datetime('now')");
-  values.push(problem.id);
-  db.prepare(`UPDATE problems SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE problems SET ${u.clause} WHERE id = ?`).run(...u.values, problem.id);
 
   const updated = db.prepare('SELECT * FROM problems WHERE id = ?').get(problem.id);
   res.json(fullProblem(updated));
@@ -583,18 +576,17 @@ router.put('/:id/groups/:gid', requireAuth, requireRole('teacher'), (req, res) =
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Group not found.' });
   }
   const { subtask_id, score, aggregator, dependency, scoring_script } = req.body;
-  const updates = [];
-  const values = [];
-  if (subtask_id !== undefined) { updates.push('subtask_id = ?'); values.push(subtask_id); }
-  if (score !== undefined) { updates.push('score = ?'); values.push(score); }
-  if (aggregator !== undefined) { updates.push('aggregator = ?'); values.push(aggregator); }
-  if (dependency !== undefined) { updates.push('dependency = ?'); values.push(JSON.stringify(dependency)); }
-  if (scoring_script !== undefined) { updates.push('scoring_script = ?'); values.push(scoring_script); }
-  if (updates.length === 0) {
+  const u = buildUpdates([
+    { key: 'subtask_id', value: subtask_id },
+    { key: 'score', value: score },
+    { key: 'aggregator', value: aggregator },
+    { key: 'dependency', value: dependency, transform: v => JSON.stringify(v) },
+    { key: 'scoring_script', value: scoring_script }
+  ]);
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  values.push(group.id);
-  db.prepare(`UPDATE test_groups SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE test_groups SET ${u.clause} WHERE id = ?`).run(...u.values, group.id);
   const updated = db.prepare('SELECT * FROM test_groups WHERE id = ?').get(group.id);
   res.json({ ...updated, dependency: JSON.parse(updated.dependency || '[]') });
 });
@@ -636,20 +628,19 @@ router.put('/:id/testcases/:tcid', requireAuth, requireRole('teacher'), (req, re
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Test case not found.' });
   }
   const { input_data, output_data, score, group_id, sort_order, time_limit, memory_limit } = req.body;
-  const updates = [];
-  const values = [];
-  if (input_data !== undefined) { updates.push('input_data = ?'); values.push(input_data); }
-  if (output_data !== undefined) { updates.push('output_data = ?'); values.push(output_data); }
-  if (score !== undefined) { updates.push('score = ?'); values.push(score); }
-  if (group_id !== undefined) { updates.push('group_id = ?'); values.push(group_id || null); }
-  if (sort_order !== undefined) { updates.push('sort_order = ?'); values.push(sort_order); }
-  if (time_limit !== undefined) { updates.push('time_limit = ?'); values.push(time_limit ? parseInt(time_limit) : null); }
-  if (memory_limit !== undefined) { updates.push('memory_limit = ?'); values.push(memory_limit ? parseInt(memory_limit) : null); }
-  if (updates.length === 0) {
+  const u = buildUpdates([
+    { key: 'input_data', value: input_data },
+    { key: 'output_data', value: output_data },
+    { key: 'score', value: score },
+    { key: 'group_id', value: group_id, transform: v => v || null },
+    { key: 'sort_order', value: sort_order },
+    { key: 'time_limit', value: time_limit, transform: v => v ? parseInt(v) : null },
+    { key: 'memory_limit', value: memory_limit, transform: v => v ? parseInt(v) : null }
+  ]);
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  values.push(tc.id);
-  db.prepare(`UPDATE test_cases SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE test_cases SET ${u.clause} WHERE id = ?`).run(...u.values, tc.id);
   res.json({ message: 'Test case updated.' });
 });
 
@@ -669,32 +660,22 @@ router.put('/:id/batch-testcases', requireAuth, requireRole('teacher'), (req, re
   }
 
   const { score, time_limit, memory_limit } = req.body;
-  const updates = [];
-  const values = [];
+  const notEmpty = v => v !== undefined && v !== null && v !== '';
+  const u = buildUpdates([
+    { key: 'score', value: notEmpty(score) ? score : undefined },
+    { key: 'time_limit', value: notEmpty(time_limit) ? time_limit : undefined, transform: parseInt },
+    { key: 'memory_limit', value: notEmpty(memory_limit) ? memory_limit : undefined, transform: parseInt }
+  ]);
 
-  if (score !== undefined && score !== null && score !== '') {
-    updates.push('score = ?');
-    values.push(score);
-  }
-  if (time_limit !== undefined && time_limit !== null && time_limit !== '') {
-    updates.push('time_limit = ?');
-    values.push(parseInt(time_limit));
-  }
-  if (memory_limit !== undefined && memory_limit !== null && memory_limit !== '') {
-    updates.push('memory_limit = ?');
-    values.push(parseInt(memory_limit));
-  }
-
-  if (updates.length > 0) {
-    values.push(problem.id);
-    db.prepare(`UPDATE test_cases SET ${updates.join(', ')} WHERE problem_id = ?`).run(...values);
+  if (u.count > 0) {
+    db.prepare(`UPDATE test_cases SET ${u.clause} WHERE problem_id = ?`).run(...u.values, problem.id);
   }
 
   const parts = [];
-  if (updates.length > 0) {
-    if (score !== undefined && score !== null && score !== '') parts.push('分数');
-    if (time_limit !== undefined && time_limit !== null && time_limit !== '') parts.push('时间限制');
-    if (memory_limit !== undefined && memory_limit !== null && memory_limit !== '') parts.push('内存限制');
+  if (u.count > 0) {
+    if (notEmpty(score)) parts.push('分数');
+    if (notEmpty(time_limit)) parts.push('时间限制');
+    if (notEmpty(memory_limit)) parts.push('内存限制');
   }
   res.json({ message: parts.length > 0 ? parts.join('、') + '已更新。' : '没有需要更新的内容。' });
 });
@@ -713,8 +694,8 @@ router.get('/:id/solutions', optionalAuth, (req, res) => {
     LEFT JOIN users u ON a.author_id = u.id
     WHERE ps.problem_id = ? ORDER BY ps.sort_order
   `).all(problem.id);
-  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
-  if (isStaff) {
+  const staff = !!req.user && isStaff(req.user.role);
+  if (staff) {
     return res.json(solutions);
   }
   // 非教师只看已发布题解且隐藏未发布文章内容

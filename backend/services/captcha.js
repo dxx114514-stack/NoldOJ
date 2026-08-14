@@ -1,59 +1,78 @@
-const svgCaptcha = require('svg-captcha');
 const crypto = require('crypto');
+
+// 自绘 SVG 验证码：替代已停止维护的 svg-captcha（1.4.0，2019 年后无更新）。
+// 无第三方依赖，字符以 <text> 元素渲染（便于测试解析），内置噪线/噪点/旋转干扰。
 
 const sessions = new Map();
 const CAPTCHA_TTL = 5 * 60 * 1000;
 // 防止高并发请求无限增长导致内存耗尽: 超出后淘汰最旧的验证码
 const MAX_SESSIONS = 10000;
 
-function darkenColor(attr, color) {
-  const c = color.toLowerCase();
-  if (c === '#000000' || c === '#000' || c === 'black' || c === 'none') return `${attr}="${color}"`;
-  const m = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (!m) return `${attr}="${color}"`;
-  let r, g, b;
-  if (m[1].length === 3) {
-    r = parseInt(m[1][0] + m[1][0], 16);
-    g = parseInt(m[1][1] + m[1][1], 16);
-    b = parseInt(m[1][2] + m[1][2], 16);
-  } else {
-    r = parseInt(m[1].substring(0, 2), 16);
-    g = parseInt(m[1].substring(2, 4), 16);
-    b = parseInt(m[1].substring(4, 6), 16);
-  }
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b);
-  if (lum > 220 || lum < 90) return `${attr}="${color}"`;
-  const nr = Math.floor(r * 0.4);
-  const ng = Math.floor(g * 0.4);
-  const nb = Math.floor(b * 0.4);
-  return `${attr}="#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}"`;
+const CHAR_PRESET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const WIDTH = 120;
+const HEIGHT = 44;
+
+function randInt(a, b) {
+  return a + Math.floor(Math.random() * (b - a + 1));
 }
 
-function darkenSvg(svg) {
-  return svg.replace(/(fill|stroke)="([^"]+)"/g, (match, attr, color) => darkenColor(attr, color));
+function randColor() {
+  const r = randInt(40, 180);
+  const g = randInt(40, 180);
+  const b = randInt(40, 180);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+function pickText() {
+  let text = '';
+  for (let i = 0; i < 4; i++) {
+    text += CHAR_PRESET[randInt(0, CHAR_PRESET.length - 1)];
+  }
+  return text;
+}
+
+function generateSvg(text) {
+  const chars = text.split('');
+  const fontSize = 24;
+  const glyphs = chars.map((ch, i) => {
+    const x = 18 + i * 26;
+    const y = randInt(26, 34);
+    const rotate = randInt(-18, 18);
+    const color = randColor();
+    return `<text x="${x}" y="${y}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="bold" fill="${color}" transform="rotate(${rotate} ${x} ${y})">${ch}</text>`;
+  }).join('');
+
+  // 噪线
+  const lines = [];
+  for (let i = 0; i < 3; i++) {
+    const x1 = randInt(0, WIDTH * 0.3);
+    const y1 = randInt(0, HEIGHT);
+    const x2 = randInt(WIDTH * 0.7, WIDTH);
+    const y2 = randInt(0, HEIGHT);
+    lines.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${randColor()}" stroke-width="1" opacity="0.6"/>`);
+  }
+
+  // 噪点
+  const dots = [];
+  for (let i = 0; i < 30; i++) {
+    dots.push(`<circle cx="${randInt(0, WIDTH)}" cy="${randInt(0, HEIGHT)}" r="${randInt(1, 2)}" fill="${randColor()}" opacity="0.5"/>`);
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}"><rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>${dots.join('')}${lines.join('')}${glyphs}</svg>`;
 }
 
 function generateCaptcha() {
-  const captcha = svgCaptcha.create({
-    size: 4,
-    noise: 2,
-    color: true,
-    background: '#ffffff',
-    width: 120,
-    height: 44,
-    fontSize: 26,
-    charPreset: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  });
+  const text = pickText();
   const id = crypto.randomUUID();
   const expiresAt = Date.now() + CAPTCHA_TTL;
-  sessions.set(id, { text: captcha.text.toLowerCase(), expiresAt });
+  sessions.set(id, { text: text.toLowerCase(), expiresAt });
   if (sessions.size > MAX_SESSIONS) {
     // 淘汰最旧的验证码，防止 OOM
     const oldestKey = sessions.keys().next().value;
     if (oldestKey) sessions.delete(oldestKey);
   }
   cleanup();
-  return { id, svg: darkenSvg(captcha.data) };
+  return { id, svg: generateSvg(text) };
 }
 
 function verifyCaptcha(id, text) {
@@ -62,7 +81,7 @@ function verifyCaptcha(id, text) {
   sessions.delete(id);
   if (Date.now() > session.expiresAt) return false;
   if (!text) return false;
-  return session.text === text.toLowerCase();
+  return session.text === String(text).toLowerCase().replace(/\s+/g, '');
 }
 
 function cleanup() {

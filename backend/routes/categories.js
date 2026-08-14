@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -43,16 +44,15 @@ router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Category not found.' });
   }
   const { name, description, sort_order } = req.body;
-  const updates = [];
-  const values = [];
-  if (name !== undefined) { updates.push('name = ?'); values.push(name); }
-  if (description !== undefined) { updates.push('description = ?'); values.push(description); }
-  if (sort_order !== undefined) { updates.push('sort_order = ?'); values.push(sort_order); }
-  if (updates.length === 0) {
+  const u = buildUpdates([
+    { key: 'name', value: name },
+    { key: 'description', value: description },
+    { key: 'sort_order', value: sort_order }
+  ]);
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  values.push(category.id);
-  db.prepare(`UPDATE categories SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE categories SET ${u.clause} WHERE id = ?`).run(...u.values, category.id);
   const updated = db.prepare('SELECT * FROM categories WHERE id = ?').get(category.id);
   res.json(updated);
 });

@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
+const { isAdminOrSu } = require('../utils/roles');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -48,7 +50,7 @@ router.get('/:id', optionalAuth, (req, res) => {
   if (!ps) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem set not found.' });
   }
-  if (!ps.is_public && (!req.user || !['admin', 'su'].includes(req.user.role)) && req.user?.id !== ps.creator_id) {
+  if (!ps.is_public && (!req.user || !isAdminOrSu(req.user.role)) && req.user?.id !== ps.creator_id) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'This set is private.' });
   }
 
@@ -118,20 +120,19 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!ps) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem set not found.' });
   }
-  if (req.user.id !== ps.creator_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== ps.creator_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit others\' problem sets.' });
   }
   const { title, description, is_public } = req.body;
-  const updates = [];
-  const values = [];
-  if (title !== undefined) { updates.push('title = ?'); values.push(title.trim()); }
-  if (description !== undefined) { updates.push('description = ?'); values.push(description); }
-  if (is_public !== undefined) { updates.push('is_public = ?'); values.push(is_public ? 1 : 0); }
-  if (updates.length === 0) {
+  const u = buildUpdates([
+    { key: 'title', value: title !== undefined ? title.trim() : undefined },
+    { key: 'description', value: description },
+    { key: 'is_public', value: is_public, transform: v => v ? 1 : 0 }
+  ]);
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  values.push(ps.id);
-  db.prepare(`UPDATE problem_sets SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE problem_sets SET ${u.clause} WHERE id = ?`).run(...u.values, ps.id);
   const updated = db.prepare('SELECT * FROM problem_sets WHERE id = ?').get(ps.id);
   res.json(updated);
 });
@@ -142,7 +143,7 @@ router.put('/:id/problems', requireAuth, requireRole('teacher'), (req, res) => {
   if (!ps) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem set not found.' });
   }
-  if (req.user.id !== ps.creator_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== ps.creator_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot modify others\' problem sets.' });
   }
   const { problemIds } = req.body;
@@ -161,7 +162,7 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!ps) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem set not found.' });
   }
-  if (req.user.id !== ps.creator_id && !['admin', 'su'].includes(req.user.role)) {
+  if (req.user.id !== ps.creator_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete others\' problem sets.' });
   }
   db.prepare('DELETE FROM problem_set_progress WHERE set_id = ?').run(ps.id);

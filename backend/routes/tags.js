@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -49,15 +50,14 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
       return res.status(409).json({ code: 2, reason: 'ERR_CONFLICT', message: 'Tag name already exists.' });
     }
   }
-  const updates = [];
-  const values = [];
-  if (name !== undefined) { updates.push('name = ?'); values.push(name.trim()); }
-  if (color !== undefined) { updates.push('color = ?'); values.push(color); }
-  if (updates.length === 0) {
+  const updatesAndVals = buildUpdates([
+    { key: 'name', value: name !== undefined ? name.trim() : undefined },
+    { key: 'color', value: color }
+  ]);
+  if (updatesAndVals.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  values.push(tag.id);
-  db.prepare(`UPDATE tags SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE tags SET ${updatesAndVals.clause} WHERE id = ?`).run(...updatesAndVals.values, tag.id);
   const updated = db.prepare('SELECT * FROM tags WHERE id = ?').get(tag.id);
   res.json(updated);
 });

@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -30,20 +31,19 @@ router.put('/:id', requireAuth, requireRole('su'), (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Language not found.' });
   }
   const { name, display_name, compile_cmd, run_cmd, extension, is_enabled } = req.body;
-  const updates = [];
-  const values = [];
-  if (name !== undefined) { updates.push('name = ?'); values.push(name); }
-  if (display_name !== undefined) { updates.push('display_name = ?'); values.push(display_name); }
-  if (compile_cmd !== undefined) { updates.push('compile_cmd = ?'); values.push(compile_cmd); }
-  if (run_cmd !== undefined) { updates.push('run_cmd = ?'); values.push(run_cmd); }
-  if (extension !== undefined) { updates.push('extension = ?'); values.push(extension); }
-  if (is_enabled !== undefined) { updates.push('is_enabled = ?'); values.push(is_enabled ? 1 : 0); }
+  const u = buildUpdates([
+    { key: 'name', value: name },
+    { key: 'display_name', value: display_name },
+    { key: 'compile_cmd', value: compile_cmd },
+    { key: 'run_cmd', value: run_cmd },
+    { key: 'extension', value: extension },
+    { key: 'is_enabled', value: is_enabled, transform: v => v ? 1 : 0 }
+  ]);
 
-  if (updates.length === 0) {
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  values.push(lang.id);
-  db.prepare(`UPDATE languages SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE languages SET ${u.clause} WHERE id = ?`).run(...u.values, lang.id);
   const updated = db.prepare('SELECT * FROM languages WHERE id = ?').get(lang.id);
   res.json(updated);
 });

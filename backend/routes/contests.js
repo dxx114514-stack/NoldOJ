@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
+const { isStaff } = require('../utils/roles');
+const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
@@ -13,7 +15,7 @@ router.get('/', optionalAuth, (req, res) => {
   const params = [];
   const fuzzy = search ? '%' + search.replace(/\s+/g, '') + '%' : null;
   // 隐藏比赛仅对 teacher/admin/su 可见
-  if (!req.user || !['teacher', 'admin', 'su'].includes(req.user.role)) {
+  if (!req.user || !isStaff(req.user.role)) {
     where = 'WHERE c.is_hidden = 0';
   }
   if (search) {
@@ -38,13 +40,13 @@ router.get('/:id', optionalAuth, (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
   // 隐藏比赛仅对管理角色可见
-  if (contest.is_hidden && !(req.user && ['teacher', 'admin', 'su'].includes(req.user.role))) {
+  if (contest.is_hidden && !(req.user && isStaff(req.user.role))) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Contest not found.' });
   }
-  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  const staff = !!req.user && isStaff(req.user.role);
   let problems = [];
-  const hiddenFilter = isStaff ? '' : ' AND p.is_hidden = 0';
-  if (isStaff) {
+  const hiddenFilter = staff ? '' : ' AND p.is_hidden = 0';
+  if (staff) {
     problems = db.prepare(`
       SELECT cp.sort_order, cp.alias, p.id, p.title, p.time_limit, p.memory_limit, p.is_public
       FROM contest_problems cp JOIN problems p ON cp.problem_id = p.id
@@ -85,21 +87,20 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
   const { title, description, start_time, end_time, is_virtual, freeze_minutes, is_hidden } = req.body;
-  const updates = [];
-  const values = [];
-  if (title !== undefined) { updates.push('title = ?'); values.push(title); }
-  if (description !== undefined) { updates.push('description = ?'); values.push(description); }
-  if (start_time !== undefined) { updates.push('start_time = ?'); values.push(start_time); }
-  if (end_time !== undefined) { updates.push('end_time = ?'); values.push(end_time); }
-  if (is_virtual !== undefined) { updates.push('is_virtual = ?'); values.push(is_virtual ? 1 : 0); }
-  if (freeze_minutes !== undefined) { updates.push('freeze_minutes = ?'); values.push(Math.max(0, parseInt(freeze_minutes) || 0)); }
-  if (is_hidden !== undefined) { updates.push('is_hidden = ?'); values.push(is_hidden ? 1 : 0); }
+  const u = buildUpdates([
+    { key: 'title', value: title },
+    { key: 'description', value: description },
+    { key: 'start_time', value: start_time },
+    { key: 'end_time', value: end_time },
+    { key: 'is_virtual', value: is_virtual, transform: v => v ? 1 : 0 },
+    { key: 'freeze_minutes', value: freeze_minutes, transform: v => Math.max(0, parseInt(v) || 0) },
+    { key: 'is_hidden', value: is_hidden, transform: v => v ? 1 : 0 }
+  ]);
 
-  if (updates.length === 0) {
+  if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  values.push(contest.id);
-  db.prepare(`UPDATE contests SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE contests SET ${u.clause} WHERE id = ?`).run(...u.values, contest.id);
   const updated = db.prepare('SELECT * FROM contests WHERE id = ?').get(contest.id);
   res.json(updated);
 });
@@ -230,12 +231,12 @@ router.get('/:id/leaderboard', optionalAuth, (req, res) => {
   }
 
   // 仅参赛者可查看完整排行榜；教师/管理员/站长放行；非参赛者只返回冻结状态，不泄露排名
-  const isStaff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  const staff = !!req.user && isStaff(req.user.role);
   const participant = req.user
     ? db.prepare('SELECT id FROM contest_participants WHERE contest_id = ? AND user_id = ?').get(contest.id, req.user.id)
     : null;
   const frozenState = { leaderboard: [], problem_ids: [], frozen, freeze_at: freezeAt ? freezeAt.toISOString() : null };
-  if (!isStaff && !participant) {
+  if (!staff && !participant) {
     return res.json(frozenState);
   }
   const contestProblems = db.prepare('SELECT problem_id FROM contest_problems WHERE contest_id = ?').all(contest.id);
