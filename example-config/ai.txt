@@ -1,0 +1,12 @@
+# AI 审查服务配置（代码安全审查 / 反作弊）
+# 说明：
+#  - 默认接入本地 Ollama（OpenAI 兼容 /api/chat 接口），也可配置其他兼容端点。
+#  - AI_ENABLED=false 时 AI 审查关闭，IDE 运行与提交仍可正常执行。
+#  - KEY 仅当远程端点需要鉴权时填写，留空表示无鉴权。
+
+AI_ENABLED=false
+URL=http://localhost:11434/api/chat
+MODEL=qwen3:1.7b
+KEY=
+# 单次提交源码最大字符数（超出直接拒绝，防止内存耗尽）
+CODE_LENGTH_LIMIT=131072

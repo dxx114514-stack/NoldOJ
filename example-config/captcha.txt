@@ -1,0 +1,7 @@
+# 图形验证码配置
+# 说明：
+#  - CAPTCHA_ENABLED=true 时，登录/注册/找回密码需完成图形验证码。
+#  - 验证码为自绘 SVG，无第三方依赖。
+#  - 若该文件缺失，默认开启（enabled=true）。
+
+CAPTCHA_ENABLED=true

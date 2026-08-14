@@ -1,0 +1,9 @@
+# Email (Resend) 配置
+# 说明：
+#  - 仅当配置了有效的 RESEND_API_KEY（不等于占位符 re_xxxxxxxxx）时，EMAIL_ENABLED 才会被自动置为 true。
+#  - 邮件服务的启用状态可通过 GET /api/v1/auth/email-enabled 查询。
+#  - 发件人必须是已在 Resend 完成域名/邮箱验证的地址。
+
+RESEND_API_KEY=re_xxxxxxxxx
+EMAIL_FROM=WinOJ <onboarding@resend.dev>
+EMAIL_ENABLED=false
