@@ -107,7 +107,7 @@ async function main() {
     crossOriginResourcePolicy: false
   }));
 
-  // CORS 白名单: 仅允许配置的源携带凭据访问
+  // CORS: restricted 时仅允许配置的源携带凭据；放开时反射任意 Origin（供 @[url] 内嵌网页跨源调用）
   const allowedOrigins = new Set(config.cors.origins);
   // 无 Origin 的写请求若携带凭据直接拒绝, 阻断 DNS rebinding / 无源 CSRF。
   // 同源浏览器导航与 curl 裸调 GET/HEAD/OPTIONS 不受影响。
@@ -122,6 +122,7 @@ async function main() {
   app.use(cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
+      if (!config.cors.restricted) return cb(null, true);
       if (allowedOrigins.has(origin)) return cb(null, true);
       return cb(null, false);
     },

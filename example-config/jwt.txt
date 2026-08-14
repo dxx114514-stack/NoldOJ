@@ -1,9 +1,0 @@
-# JWT 密钥配置
-# 说明：
-#  - 若 config/jwt.txt 不存在，服务启动时会自动生成 64 字节强随机密钥并写入该文件，无需手动填写。
-#  - Access Token 有效期 15 分钟，Refresh Token 有效期 7 天（见 config.js）。
-#  - 修改密钥后所有已签发的 token 将立即失效，请谨慎操作。
-#  - 请勿提交真实密钥到公开仓库（config/ 已被 .gitignore 忽略）。
-
-JWT_ACCESS_SECRET=在此填入 64 字节十六进制随机串（或删除本文件由服务自动生成）
-JWT_REFRESH_SECRET=在此填入 64 字节十六进制随机串（或删除本文件由服务自动生成）

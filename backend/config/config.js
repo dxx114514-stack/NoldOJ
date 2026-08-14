@@ -118,8 +118,12 @@ function loadJwtConfig() {
 
 const jwt = loadJwtConfig();
 
-// ── CORS 白名单: 本地 OJ 默认允许本机各端口，可经 config/cors.txt 扩展 ──
-function loadCorsOrigins() {
+// ── CORS 配置: config/cors.txt ──
+// CORS_RESTRICTED=true 启用白名单（仅允许内置+列出的源携带凭据）；false 放开限制
+//（反射任意 Origin 并允许凭据，供 @[url](URL) 内嵌网页跨源调用 OJ API 的场景）。
+// 内嵌页受 SameSite=strict Cookie 与 localStorage Token 双约束，放开后凭证不随第三方页自动带出。
+function loadCorsConfig() {
+  let restricted = true;
   const origins = new Set([
     'http://localhost',
     'http://localhost:3000',
@@ -131,13 +135,18 @@ function loadCorsOrigins() {
     const content = fs.readFileSync(p, 'utf8');
     for (const line of content.split('\n')) {
       const t = line.trim();
-      if (t && !t.startsWith('#')) origins.add(t.replace(/\/$/, ''));
+      if (!t || t.startsWith('#')) continue;
+      if (/^CORS_RESTRICTED=/i.test(t)) {
+        restricted = t.split('=')[1].trim() !== 'false';
+      } else {
+        origins.add(t.replace(/\/$/, ''));
+      }
     }
   } catch {}
-  return Array.from(origins);
+  return { restricted, origins: Array.from(origins) };
 }
 
-const corsOrigins = loadCorsOrigins();
+const corsCfg = loadCorsConfig();
 
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
@@ -149,7 +158,8 @@ module.exports = {
     refreshExpiryMs: 7 * 24 * 60 * 60 * 1000
   },
   cors: {
-    origins: corsOrigins
+    restricted: corsCfg.restricted,
+    origins: corsCfg.origins
   },
   cookie: {
     // 生产环境（HTTPS）应设为 true；本地 HTTP 部署保持 false

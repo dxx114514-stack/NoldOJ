@@ -327,28 +327,24 @@ EMAIL_FROM=onboarding@resend.dev
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `EMAIL_ENABLED` | `false` | 是否启用邮箱功能（注册验证） |
+| `EMAIL_ENABLED` | `false` | 是否启用邮箱功能（注册验证、密码找回） |
 | `RESEND_API_KEY` | 空 | Resend API Key |
 | `EMAIL_FROM` | `onboarding@resend.dev` | 发件人地址 |
 
-#### `config/captcha.txt` — 验证码开关
+#### `config/cors.txt` — 跨域访问配置
 
 ```
-CAPTCHA_ENABLED=false
+CORS_RESTRICTED=true
 ```
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `CAPTCHA_ENABLED` | `false` | 是否启用登录/注册图形验证码 |
+| `CORS_RESTRICTED` | `true` | `true` 仅允许白名单源携带凭据访问 API；`false` 放开限制（反射任意 Origin），供 `@[url](URL)` 内嵌的外部网页跨源调用 OJ API。放开后凭据仍受 SameSite=strict Cookie + localStorage Token 双重保护 |
 
-#### `config/jwt.txt` — JWT 密钥配置
-
-首次启动自动生成强随机密钥，无需手动配置。如需手动指定可编辑此文件。
-
-| 配置项 | 说明 |
-|--------|------|
-| `JWT_ACCESS_SECRET` | Access Token 签名密钥 |
-| `JWT_REFRESH_SECRET` | Refresh Token 签名密钥 |
+> 以下配置在 `config/` 缺失时自动生成或采用默认值，无需手动配置：
+> - `captcha.txt` — 验证码开关，缺失时默认开启
+> - `jwt.txt` — JWT 密钥，缺失时首次启动自动生成强随机密钥
+> - `judge.txt` — 判题并发，缺失时按 CPU 核数自动确定
 
 ### 核心配置
 
@@ -367,7 +363,7 @@ CAPTCHA_ENABLED=false
 | `rateLimit.submissions` | 10次/分钟 | 提交频率限制 |
 | `rateLimit.ideRun` | 20次/分钟 | IDE 运行频率限制 |
 
-> 验证码开关已迁移至 `config/captcha.txt`，JWT 密钥从 `config/jwt.txt` 读取（首次启动自动生成）。
+> 验证码开关（`config/captcha.txt`）、JWT 密钥（`config/jwt.txt`，首次启动自动生成）均采用默认值即可，无需手动配置。
 
 ## 项目结构
 
@@ -377,11 +373,11 @@ winoj/
 ├── st.bat                  # 一键启动脚本（含cloudflare tunnel启动和混合输出）
 ├── README.md               # 项目说明
 ├── openapi.yaml            # OpenAPI 3.0 规范文档
-├── config/                 # 外部配置文件
+├── config/                 # 外部配置文件（已被 .gitignore 忽略）
 │   ├── ai.txt              # AI 代码安全审查配置
 │   ├── email.txt           # 邮件发送配置
-│   ├── captcha.txt         # 验证码开关
-│   └── jwt.txt             # JWT 密钥（首次启动自动生成）
+│   └── cors.txt            # 跨域访问配置
+├── example-config/         # 配置示例模板（复制到 config/ 后修改）
 ├── backend/
 │   ├── config/             # 核心配置（config.js）
 │   ├── database/           # 数据库 schema 和初始化（含自动迁移）
