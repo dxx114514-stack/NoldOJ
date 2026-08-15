@@ -31,12 +31,19 @@
       <button onclick="showTab('categories')" id="tab-categories" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">分类管理</button>
       <button onclick="showTab('tags')" id="tab-tags" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">标签管理</button>
       <button onclick="showTab('announcements')" id="tab-announcements" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">公告管理</button>
+      <a href="/pages/status.html" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">系统状态</a>
     </div>
 
     <div id="panel-problems">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-semibold">题目管理</h2>
-        <button onclick="showCreateProblem()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 新建题目</button>
+        <div class="flex space-x-2">
+          <label class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600">
+            📥 导入题目
+            <input id="importProblemInput" type="file" accept=".zip,.json" class="hidden" onchange="importProblem(this.files[0])">
+          </label>
+          <button onclick="showCreateProblem()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 新建题目</button>
+        </div>
       </div>
 
       <div id="createProblemForm" class="hidden bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
@@ -659,6 +666,7 @@
               <button onclick="editProblem(${p.id})" class="text-blue-600 dark:text-blue-400 text-sm hover:underline mr-2">编辑</button>
               <button onclick="openTestManager(${p.id}, '${escapeHtml(p.title)}')" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">测试点</button>
               <button onclick="startPlagiarismCheck(${p.id})" class="text-purple-600 dark:text-purple-400 text-sm hover:underline mr-2" title="代码查重">查重</button>
+              <button onclick="exportProblem(${p.id})" class="text-orange-600 dark:text-orange-400 text-sm hover:underline mr-2" title="导出为 ZIP">导出</button>
               <button onclick="deleteProblem(${p.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
             </td>
           </tr>
@@ -1697,6 +1705,57 @@
         window.location.href = `/pages/plagiarism-report.html?problem=${problemId}&task=${res.task_id}`;
       } catch (err) {
         alert(err.message || '发起查重失败');
+      }
+    }
+
+    // 功能14：导出题目为 ZIP 下载
+    async function exportProblem(problemId) {
+      try {
+        const res = await fetch(`/api/v1/problems/${problemId}/export?format=zip`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${getToken()}`, 'Origin': location.origin },
+          credentials: 'include'
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.message || '导出失败');
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `problem_${problemId}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert(err.message || '导出失败');
+      }
+    }
+
+    // 功能15：导入题目（ZIP 或 JSON）
+    async function importProblem(file) {
+      if (!file) return;
+      if (!confirm('导入将创建一道新题目，确定继续？')) { document.getElementById('importProblemInput').value = ''; return; }
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch('/api/v1/problems/import', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${getToken()}`, 'Origin': location.origin },
+          credentials: 'include',
+          body: formData
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) { clearToken(); window.location.href = '/pages/login.html'; return; }
+          throw new Error(data.message || '导入失败');
+        }
+        alert(data.message);
+        loadAdminProblems();
+      } catch (err) {
+        alert(err.message || '导入失败');
+      } finally {
+        document.getElementById('importProblemInput').value = '';
       }
     }
 

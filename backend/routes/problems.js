@@ -868,4 +868,242 @@ router.post('/:id/ai-testdata', requireAuth, requireRole('teacher'), async (req,
   }
 });
 
+// 功能14：导出题目（JSON/ZIP，teacher+）
+// GET /api/v1/problems/:id/export?format=json|zip
+// 返回完整题目数据（含测试点/标签/分组），zip 模式附带 .in/.out 文件供重新导入
+router.get('/:id/export', requireAuth, requireRole('teacher'), (req, res) => {
+  const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
+  if (!problem) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  const format = (req.query.format || 'zip').toLowerCase();
+
+  const testCases = db.prepare('SELECT * FROM test_cases WHERE problem_id = ? ORDER BY sort_order, id').all(problem.id);
+  const testGroups = db.prepare('SELECT * FROM test_groups WHERE problem_id = ? ORDER BY id').all(problem.id);
+  const tags = db.prepare(`
+    SELECT t.name FROM tags t
+    JOIN problem_tags pt ON pt.tag_id = t.id
+    WHERE pt.problem_id = ? ORDER BY t.name
+  `).all(problem.id).map(r => r.name);
+  const categories = db.prepare(`
+    SELECT c.name FROM categories c
+    JOIN problem_categories pc ON pc.category_id = c.id
+    WHERE pc.problem_id = ? ORDER BY c.name
+  `).all(problem.id).map(r => r.name);
+
+  const bundle = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    problem: {
+      title: problem.title,
+      description: problem.description,
+      input_desc: problem.input_desc,
+      output_desc: problem.output_desc,
+      hint: problem.hint,
+      time_limit: problem.time_limit,
+      memory_limit: problem.memory_limit,
+      problem_type: problem.problem_type,
+      compare_mode: problem.compare_mode,
+      real_number_tolerance: problem.real_number_tolerance ? JSON.parse(problem.real_number_tolerance) : { absolute: 0.001, relative: 0.001 },
+      spj_code: problem.spj_code,
+      scoring_script: problem.scoring_script,
+      allowed_languages: problem.allowed_languages ? JSON.parse(problem.allowed_languages) : [],
+      is_public: !!problem.is_public,
+      is_hidden: !!problem.is_hidden,
+      provider: problem.provider,
+      sample_input: problem.sample_input,
+      sample_output: problem.sample_output,
+      subtask_mode: problem.subtask_mode,
+      difficulty: problem.difficulty
+    },
+    tags,
+    categories,
+    test_groups: testGroups,
+    test_cases: testCases.map(tc => ({
+      name: `case_${tc.sort_order || tc.id}`,
+      input_data: tc.input_data,
+      output_data: tc.output_data,
+      input_file: tc.input_file && !path.isAbsolute(tc.input_file) ? tc.input_file : '',
+      output_file: tc.output_file && !path.isAbsolute(tc.output_file) ? tc.output_file : '',
+      score: tc.score,
+      time_limit: tc.time_limit,
+      memory_limit: tc.memory_limit,
+      sort_order: tc.sort_order,
+      group_id: tc.group_id
+    }))
+  };
+
+  if (format === 'json') {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="problem_${problem.id}.json"`);
+    return res.json(bundle);
+  }
+
+  // ZIP 模式：problem.json + 每个测试点写入磁盘文件后打包
+  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  fs.mkdirSync(problemDir, { recursive: true });
+  const zip = new AdmZip();
+  zip.addFile('problem.json', Buffer.from(JSON.stringify(bundle, null, 2), 'utf8'));
+  for (const tc of testCases) {
+    const name = `case_${tc.sort_order || tc.id}`;
+    const input = tc.input_data || (tc.input_file && safeReadFile(problemDir, tc.input_file)) || '';
+    const output = tc.output_data || (tc.output_file && safeReadFile(problemDir, tc.output_file)) || '';
+    zip.addFile(`testdata/${name}.in`, Buffer.from(input, 'utf8'));
+    zip.addFile(`testdata/${name}.out`, Buffer.from(output, 'utf8'));
+  }
+  if (testGroups.length > 0) {
+    zip.addFile('test_groups.json', Buffer.from(JSON.stringify(testGroups, null, 2), 'utf8'));
+  }
+  const buf = zip.toBuffer();
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="problem_${problem.id}.zip"`);
+  res.send(buf);
+});
+
+// 安全读取 problems 目录内的文件（防路径穿越）
+function safeReadFile(baseDir, fileName) {
+  try {
+    const fp = path.resolve(baseDir, fileName);
+    const base = path.resolve(baseDir) + path.sep;
+    if (!fp.startsWith(base)) return '';
+    return fs.readFileSync(fp, 'utf8');
+  } catch { return ''; }
+}
+
+// 功能15：导入题目（JSON 或 ZIP，teacher+）
+// POST /api/v1/problems/import  multipart file=problem.json|problem.zip
+router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No file uploaded.' });
+  }
+  const cleanup = () => { try { if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch {} };
+  try {
+    const fname = req.file.originalname.toLowerCase();
+    let bundle;
+    if (fname.endsWith('.zip')) {
+      const zip = new AdmZip(req.file.path);
+      const entry = zip.getEntries().find(e => !e.isDirectory && e.entryName.replace(/\\/g, '/').split('/').pop() === 'problem.json');
+      if (!entry) {
+        cleanup();
+        return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'ZIP 中缺少 problem.json。' });
+      }
+      bundle = JSON.parse(entry.getData().toString('utf8'));
+      if (bundle && bundle.problem) {
+        // 从 ZIP 中读取 testdata/ 下的 .in/.out 文件覆盖/补充 inline 测试点
+        const tcMap = new Map((bundle.test_cases || []).map(tc => [tc.name, tc]));
+        for (const e of zip.getEntries()) {
+          if (e.isDirectory) continue;
+          const p = e.entryName.replace(/\\/g, '/');
+          const m = p.match(/^testdata\/([^/]+)\.(in|out)$/);
+          if (!m) continue;
+          const name = m[1];
+          const ext = m[2];
+          const existing = tcMap.get(name) || {};
+          if (ext === 'in') existing.input_data = e.getData().toString('utf8');
+          else existing.output_data = e.getData().toString('utf8');
+          tcMap.set(name, existing);
+        }
+        bundle.test_cases = Array.from(tcMap.values());
+      }
+    } else if (fname.endsWith('.json') || fname.endsWith('.json.gz')) {
+      bundle = JSON.parse(fs.readFileSync(req.file.path, 'utf8'));
+      if (bundle.problem) bundle = bundle;
+    } else {
+      cleanup();
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '仅支持 .zip 或 .json 文件。' });
+    }
+
+    if (!bundle || !bundle.problem || !bundle.problem.title) {
+      cleanup();
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '文件内容缺少 problem.title。' });
+    }
+    const p = bundle.problem;
+    const newId = db.findNextId('problems');
+    db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, scoring_script, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      newId,
+      p.title,
+      p.description || '',
+      p.input_desc || '',
+      p.output_desc || '',
+      p.hint || '',
+      p.time_limit || 1000,
+      p.memory_limit || 256,
+      p.problem_type || 'traditional',
+      p.compare_mode || 'text_strict',
+      JSON.stringify(p.real_number_tolerance || { absolute: 0.001, relative: 0.001 }),
+      p.spj_code || '',
+      p.scoring_script || '',
+      JSON.stringify(p.allowed_languages || []),
+      p.is_public !== undefined ? (p.is_public ? 1 : 0) : 1,
+      p.provider || '',
+      req.user.id,
+      p.sample_input || '',
+      p.sample_output || '',
+      p.subtask_mode || 'simple',
+      p.difficulty !== undefined ? parseInt(p.difficulty) || 0 : 0,
+      p.is_hidden !== undefined ? (p.is_hidden ? 1 : 0) : 0
+    );
+
+    // 写入测试点
+    const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, score, sort_order, group_id, time_limit, memory_limit, input_file, output_file) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const tcs = bundle.test_cases || [];
+    tcs.forEach((tc, i) => {
+      insertTC.run(
+        newId,
+        tc.input_data || '',
+        tc.output_data || '',
+        tc.score || 0,
+        tc.sort_order || (i + 1),
+        tc.group_id || null,
+        tc.time_limit || null,
+        tc.memory_limit || null,
+        // 仅在无内联数据且为相对安全文件名时保留 file 引用，避免复制他人磁盘绝对路径
+        (!tc.input_data && tc.input_file && !path.isAbsolute(tc.input_file)) ? tc.input_file : '',
+        (!tc.output_data && tc.output_file && !path.isAbsolute(tc.output_file)) ? tc.output_file : ''
+      );
+    });
+
+    // 写入分组
+    const groups = bundle.test_groups || [];
+    const insertGroup = db.prepare('INSERT INTO test_groups (problem_id, subtask_id, score, aggregator, dependency, scoring_script) VALUES (?, ?, ?, ?, ?, ?)');
+    const groupIdMap = {};
+    for (const g of groups) {
+      const r = insertGroup.run(newId, g.subtask_id || null, g.score || 0, g.aggregator || 'sum', g.dependency || '', g.scoring_script || '');
+      groupIdMap[g.id] = r.lastInsertRowid;
+    }
+    if (Object.keys(groupIdMap).length > 0) {
+      // 修正 test_cases 的 group_id 引用到新表
+      db.prepare('UPDATE test_cases SET group_id = ? WHERE problem_id = ? AND group_id = ?').run(null, newId, 0);
+    }
+
+    // 标签与分类（存在则复用，不存在则创建）
+    for (const name of bundle.tags || []) {
+      if (!name) continue;
+      let tag = db.prepare('SELECT id FROM tags WHERE name = ?').get(name);
+      if (!tag) {
+        tag = { id: db.findNextId('tags') };
+        db.prepare('INSERT INTO tags (id, name) VALUES (?, ?)').run(tag.id, name);
+      }
+      db.prepare('INSERT OR IGNORE INTO problem_tags (problem_id, tag_id) VALUES (?, ?)').run(newId, tag.id);
+    }
+    for (const name of bundle.categories || []) {
+      if (!name) continue;
+      let cat = db.prepare('SELECT id FROM categories WHERE name = ?').get(name);
+      if (!cat) {
+        cat = { id: db.findNextId('categories') };
+        db.prepare('INSERT INTO categories (id, name) VALUES (?, ?)').run(cat.id, name);
+      }
+      db.prepare('INSERT OR IGNORE INTO problem_categories (problem_id, category_id) VALUES (?, ?)').run(newId, cat.id);
+    }
+
+    const created = db.prepare('SELECT * FROM problems WHERE id = ?').get(newId);
+    cleanup();
+    res.status(201).json({ message: `导入成功，新题目 ID: ${newId}`, problem: created });
+  } catch (err) {
+    console.error('Import problem error:', sanitizeLog(String(err.message || err)));
+    cleanup();
+    res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `导入失败: ${err.message}` });
+  }
+});
+
 module.exports = router;

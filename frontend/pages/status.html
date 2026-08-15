@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>系统状态 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">🖥️ 系统运行状态</h1>
+      <button onclick="load()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">刷新</button>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="countCards"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">服务器</h3>
+        <div id="serverInfo" class="space-y-2 text-sm"></div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">内存</h3>
+        <div id="memInfo" class="space-y-2 text-sm"></div>
+      </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">判题队列 <span id="queueBadge" class="text-xs text-gray-400 font-normal"></span></h3>
+      <div id="queueList" class="overflow-x-auto"></div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('admin');
+    if (!getToken()) window.location.href = '/pages/login.html';
+    const me = getUser();
+    if (!me || !['admin','su'].includes(me.role)) window.location.href = '/pages/problems.html';
+
+    function fmtBytes(n) {
+      if (n === undefined || n === null) return '-';
+      const units = ['B','KB','MB','GB','TB'];
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return n.toFixed(1) + ' ' + units[i];
+    }
+    function fmtTime(ms) {
+      const s = Math.floor(ms / 1000);
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+      if (d > 0) return `${d}天 ${h}时 ${m}分`;
+      if (h > 0) return `${h}时 ${m}分`;
+      return `${m}分 ${s % 60}秒`;
+    }
+    const STATUS_TEXT = {
+      pending: '等待', running: '运行中', compiling: '编译中', judging: '评测中',
+      pending_rejudge: '等待重判', pending_review: '待审查',
+      accepted: '通过', wrong_answer: '答案错误', time_limit_exceeded: '超时',
+      memory_limit_exceeded: '超内存', runtime_error: '运行错误', compile_error: '编译错误',
+      system_error: '系统错误'
+    };
+
+    async function load() {
+      try {
+        const d = await apiCall('GET', '/system/status');
+        const c = d.counts;
+        const cards = [
+          ['用户', c.users, 'text-indigo-600'],
+          ['题目', c.problems, 'text-blue-600'],
+          ['提交', c.submissions, 'text-green-600'],
+          ['测试点', c.testCases, 'text-purple-600']
+        ];
+        document.getElementById('countCards').innerHTML = cards.map(([label, val, color]) => `
+          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-5 text-center">
+            <div class="text-3xl font-bold ${color}">${val}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">${label}</div>
+          </div>
+        `).join('');
+
+        document.getElementById('serverInfo').innerHTML = `
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">运行时长</span><span class="font-mono">${fmtTime(d.uptime_ms)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">启动时间</span><span class="font-mono">${new Date(d.started_at).toLocaleString()}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">主机名</span><span class="font-mono">${d.hostname}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">平台</span><span class="font-mono">${d.platform}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">CPU</span><span class="font-mono">${d.cpu_cores} 核 · ${d.cpu_model}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">负载</span><span class="font-mono">${d.loadavg.map(x => x.toFixed(2)).join(' / ')}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Node</span><span class="font-mono">${d.node}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">数据库大小</span><span class="font-mono">${fmtBytes(d.db_size)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">今日提交 / AC / 新用户</span><span class="font-mono">${d.today_stats.submits} / ${d.today_stats.accepted} / ${d.today_stats.new_users}</span></div>
+        `;
+
+        const memUsed = d.memory.rss - d.memory.start_rss;
+        const pct = d.totalmem > 0 ? Math.min(100, (d.memory.rss / d.totalmem) * 100) : 0;
+        document.getElementById('memInfo').innerHTML = `
+          <div class="mb-3">
+            <div class="flex justify-between text-xs mb-1"><span>进程内存</span><span class="font-mono">${fmtBytes(d.memory.rss)}</span></div>
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+              <div class="bg-indigo-600 h-2 rounded-full" style="width:${pct}%"></div>
+            </div>
+          </div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">系统总内存</span><span class="font-mono">${fmtBytes(d.totalmem)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">系统空闲</span><span class="font-mono">${fmtBytes(d.freemem)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">堆使用</span><span class="font-mono">${fmtBytes(d.memory.heap_used)} / ${fmtBytes(d.memory.heap_total)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">启动后增长</span><span class="font-mono">${fmtBytes(Math.max(memUsed, 0))}</span></div>
+        `;
+
+        const q = d.queue;
+        document.getElementById('queueBadge').textContent = `(${q.length})`;
+        document.getElementById('queueList').innerHTML = q.length === 0
+          ? '<p class="text-gray-400 text-sm py-4 text-center">当前无排队中的任务</p>'
+          : `<table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
+                  <th class="py-2 pr-4">提交</th><th class="py-2 pr-4">用户</th><th class="py-2 pr-4">题目</th><th class="py-2 pr-4">语言</th><th class="py-2 pr-4">状态</th><th class="py-2">提交时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${q.map(s => `
+                  <tr class="border-b border-gray-50 dark:border-gray-700/50">
+                    <td class="py-2 pr-4 font-mono">#${s.id}</td>
+                    <td class="py-2 pr-4 font-mono">#${s.user_id}</td>
+                    <td class="py-2 pr-4 font-mono">#${s.problem_id}</td>
+                    <td class="py-2 pr-4 font-mono">${s.language}</td>
+                    <td class="py-2 pr-4"><span class="px-2 py-0.5 rounded-full text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">${STATUS_TEXT[s.status] || s.status}</span></td>
+                    <td class="py-2 font-mono text-xs">${new Date(s.created_at).toLocaleString()}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>`;
+      } catch (err) {
+        document.getElementById('countCards').innerHTML = `<p class="col-span-full text-center text-red-500 py-8">${err.message || '加载失败'}</p>`;
+      }
+    }
+    load();
+  </script>
+</body>
+</html>
