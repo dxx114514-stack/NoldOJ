@@ -56,7 +56,7 @@ router.get('/captcha', (req, res) => {
 
 const emailCodeRateLimit = createRateLimit({ windowMs: 60000, max: 3 });
 
-router.post('/send-code', emailCodeRateLimit, async (req, res) => {
+router.post('/send-code', emailCodeRateLimit, requireCaptcha, async (req, res) => {
   const { email } = req.body;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '请输入有效的邮箱地址。' });

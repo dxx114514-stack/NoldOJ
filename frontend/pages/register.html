@@ -90,10 +90,20 @@
         document.getElementById('emailStatus').className = 'flex items-center text-sm text-red-500';
         return;
       }
+      if (captchaEnabled && !document.getElementById('captchaCode').value) {
+        document.getElementById('emailStatus').textContent = '请先完成图形验证码';
+        document.getElementById('emailStatus').className = 'flex items-center text-sm text-red-500';
+        return;
+      }
       const btn = document.getElementById('sendCodeBtn');
       btn.disabled = true; btn.textContent = '发送中...';
       try {
-        await apiCall('POST', '/auth/send-code', { email });
+        const body = { email };
+        if (captchaEnabled) {
+          body.captcha_id = captchaId;
+          body.captcha_code = document.getElementById('captchaCode').value;
+        }
+        await apiCall('POST', '/auth/send-code', body);
         document.getElementById('emailStatus').textContent = '已发送';
         document.getElementById('emailStatus').className = 'flex items-center text-sm text-green-600';
         let sec = 60;
@@ -111,6 +121,13 @@
         document.getElementById('emailStatus').textContent = err.message || '发送失败';
         document.getElementById('emailStatus').className = 'flex items-center text-sm text-red-500';
         btn.disabled = false; btn.textContent = '发送验证码';
+        if (captchaEnabled) {
+          document.getElementById('captchaCode').value = '';
+          loadCaptcha((s) => {
+            captchaId = s.id;
+            captchaEnabled = s.enabled;
+          });
+        }
       }
     }
 
