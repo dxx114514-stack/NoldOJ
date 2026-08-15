@@ -155,15 +155,23 @@ router.get('/:id', optionalAuth, (req, res) => {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
   }
   if (!problem.is_public) {
-    const inContest = db.prepare('SELECT cp.contest_id FROM contest_problems cp WHERE cp.problem_id = ?').get(problem.id);
-    if (!inContest || !req.user || req.user.role === 'user') {
-      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
+    // D-M7: 非公开题仅限 staff/作者访问；所属比赛内的非公开题允许参赛者查看
+    if (isManager || (req.user && req.user.id === problem.created_by)) {
+      // 放行
+    } else {
+      const inContest = db.prepare('SELECT cp.contest_id FROM contest_problems cp WHERE cp.problem_id = ?').get(problem.id);
+      if (!inContest || !req.user) {
+        return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
+      }
     }
   }
   // 管理角色或创建者返回完整视图（含 spj_code/scoring_script），其余走公开脱敏视图
   const isOwner = !!(req.user && req.user.id === problem.created_by);
   const result = (isManager || isOwner) ? problem : sanitizeProblem(problem);
-  result.test_cases_count = db.prepare('SELECT COUNT(*) as c FROM test_cases WHERE problem_id = ?').get(problem.id).c;
+  // D-I2: 测试点数量仅对管理角色/作者可见，不对普通用户暴露
+  if (isManager || isOwner) {
+    result.test_cases_count = db.prepare('SELECT COUNT(*) as c FROM test_cases WHERE problem_id = ?').get(problem.id).c;
+  }
   const cats = db.prepare(`
     SELECT c.id, c.name, c.description FROM categories c
     JOIN problem_categories pc ON c.id = pc.category_id
@@ -183,6 +191,13 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
   const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode, difficulty, is_hidden } = req.body;
   if (!title) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
+  }
+  // D-M11: 拒绝超范围资源限制配置（与判题端硬上限一致）
+  if (time_limit !== undefined && time_limit !== null && (!Number.isInteger(Number(time_limit)) || Number(time_limit) < 1 || Number(time_limit) > 10000)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'time_limit 必须在 1~10000 ms 之间。' });
+  }
+  if (memory_limit !== undefined && memory_limit !== null && (!Number.isInteger(Number(memory_limit)) || Number(memory_limit) < 1 || Number(memory_limit) > 1048576)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'memory_limit 必须在 1~1048576 KB 之间。' });
   }
   const newId = db.findNextId('problems');
   db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
@@ -228,6 +243,15 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
       return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Invalid field: ${field}` });
     }
+  }
+  // D-M11: 更新时同样拒绝超范围资源限制
+  const bodyTl = req.body.time_limit;
+  const bodyMl = req.body.memory_limit;
+  if (bodyTl !== undefined && bodyTl !== null && (!Number.isInteger(Number(bodyTl)) || Number(bodyTl) < 1 || Number(bodyTl) > 10000)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'time_limit 必须在 1~10000 ms 之间。' });
+  }
+  if (bodyMl !== undefined && bodyMl !== null && (!Number.isInteger(Number(bodyMl)) || Number(bodyMl) < 1 || Number(bodyMl) > 1048576)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'memory_limit 必须在 1~1048576 KB 之间。' });
   }
   const transformValue = (field, value) => {
     if (field === 'real_number_tolerance' || field === 'allowed_languages') return JSON.stringify(value);
@@ -982,7 +1006,20 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
     let bundle;
     if (fname.endsWith('.zip')) {
       const zip = new AdmZip(req.file.path);
-      const entry = zip.getEntries().find(e => !e.isDirectory && e.entryName.replace(/\\/g, '/').split('/').pop() === 'problem.json');
+      // Zip Bomb 防御：限制条目数与解压总大小（与 testdata-zip 一致，D-M6）
+      const entries = zip.getEntries();
+      const MAX_IMPORT_ENTRIES = 2000;
+      const MAX_IMPORT_TOTAL_BYTES = 200 * 1024 * 1024;
+      let totalBytes = 0;
+      for (const e of entries) {
+        if (e.isDirectory) continue;
+        totalBytes += e.header.size;
+        if (entries.length > MAX_IMPORT_ENTRIES || totalBytes > MAX_IMPORT_TOTAL_BYTES) {
+          cleanup();
+          return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'ZIP 文件过大或条目过多。' });
+        }
+      }
+      const entry = entries.find(e => !e.isDirectory && e.entryName.replace(/\\/g, '/').split('/').pop() === 'problem.json');
       if (!entry) {
         cleanup();
         return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'ZIP 中缺少 problem.json。' });
@@ -991,7 +1028,7 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
       if (bundle && bundle.problem) {
         // 从 ZIP 中读取 testdata/ 下的 .in/.out 文件覆盖/补充 inline 测试点
         const tcMap = new Map((bundle.test_cases || []).map(tc => [tc.name, tc]));
-        for (const e of zip.getEntries()) {
+        for (const e of entries) {
           if (e.isDirectory) continue;
           const p = e.entryName.replace(/\\/g, '/');
           const m = p.match(/^testdata\/([^/]+)\.(in|out)$/);
@@ -1007,7 +1044,6 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
       }
     } else if (fname.endsWith('.json') || fname.endsWith('.json.gz')) {
       bundle = JSON.parse(fs.readFileSync(req.file.path, 'utf8'));
-      if (bundle.problem) bundle = bundle;
     } else {
       cleanup();
       return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '仅支持 .zip 或 .json 文件。' });
@@ -1044,26 +1080,7 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
       p.is_hidden !== undefined ? (p.is_hidden ? 1 : 0) : 0
     );
 
-    // 写入测试点
-    const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, score, sort_order, group_id, time_limit, memory_limit, input_file, output_file) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    const tcs = bundle.test_cases || [];
-    tcs.forEach((tc, i) => {
-      insertTC.run(
-        newId,
-        tc.input_data || '',
-        tc.output_data || '',
-        tc.score || 0,
-        tc.sort_order || (i + 1),
-        tc.group_id || null,
-        tc.time_limit || null,
-        tc.memory_limit || null,
-        // 仅在无内联数据且为相对安全文件名时保留 file 引用，避免复制他人磁盘绝对路径
-        (!tc.input_data && tc.input_file && !path.isAbsolute(tc.input_file)) ? tc.input_file : '',
-        (!tc.output_data && tc.output_file && !path.isAbsolute(tc.output_file)) ? tc.output_file : ''
-      );
-    });
-
-    // 写入分组
+    // 写入分组（先建分组，便于 test_cases 的 group_id 重映射到新 id，D-M8）
     const groups = bundle.test_groups || [];
     const insertGroup = db.prepare('INSERT INTO test_groups (problem_id, subtask_id, score, aggregator, dependency, scoring_script) VALUES (?, ?, ?, ?, ?, ?)');
     const groupIdMap = {};
@@ -1071,10 +1088,31 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
       const r = insertGroup.run(newId, g.subtask_id || null, g.score || 0, g.aggregator || 'sum', g.dependency || '', g.scoring_script || '');
       groupIdMap[g.id] = r.lastInsertRowid;
     }
-    if (Object.keys(groupIdMap).length > 0) {
-      // 修正 test_cases 的 group_id 引用到新表
-      db.prepare('UPDATE test_cases SET group_id = ? WHERE problem_id = ? AND group_id = ?').run(null, newId, 0);
-    }
+
+    // 写入测试点
+    const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, score, sort_order, group_id, time_limit, memory_limit, input_file, output_file) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    // 文件引用消毒：仅允许纯文件名（无分隔符/..），避免穿越 problems 目录（D-H2/D-M8）
+    const safeFileName = (f) => {
+      if (!f || typeof f !== 'string') return '';
+      const base = f.replace(/\\/g, '/').split('/').pop();
+      return /^[\w.-]+$/.test(base) ? base : '';
+    };
+    const tcs = bundle.test_cases || [];
+    tcs.forEach((tc, i) => {
+      const mappedGroup = tc.group_id != null ? (groupIdMap[tc.group_id] || null) : null;
+      insertTC.run(
+        newId,
+        tc.input_data || '',
+        tc.output_data || '',
+        tc.score || 0,
+        tc.sort_order || (i + 1),
+        mappedGroup,
+        tc.time_limit || null,
+        tc.memory_limit || null,
+        (!tc.input_data && tc.input_file) ? safeFileName(tc.input_file) : '',
+        (!tc.output_data && tc.output_file) ? safeFileName(tc.output_file) : ''
+      );
+    });
 
     // 标签与分类（存在则复用，不存在则创建）
     for (const name of bundle.tags || []) {

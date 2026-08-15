@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser, ONLINE_TTL_MS } = require('../middleware/auth');
-const { sanitizeLog } = require('../utils/securityHelpers');
+const { sanitizeLog, sanitizeText } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
 const { isValidRole, canManage, isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
@@ -64,9 +64,9 @@ router.get('/me/virtual-contests', requireAuth, (req, res) => {
 router.put('/me', requireAuth, (req, res) => {
   const { nickname, signature, bio, hide_rating, preferred_language } = req.body;
   const u = buildUpdates([
-    { key: 'nickname', value: nickname },
-    { key: 'signature', value: signature, transform: v => String(v ?? '').slice(0, 1000) },
-    { key: 'bio', value: bio },
+    { key: 'nickname', value: nickname, transform: v => sanitizeText(String(v ?? '').slice(0, 50)) },
+    { key: 'signature', value: signature, transform: v => sanitizeText(String(v ?? '').slice(0, 1000)) },
+    { key: 'bio', value: bio, transform: v => sanitizeText(String(v ?? '').slice(0, 100000)) },
     { key: 'hide_rating', value: hide_rating, transform: v => v ? 1 : 0 },
     { key: 'preferred_language', value: preferred_language }
   ], { touchUpdatedAt: true });
@@ -80,8 +80,9 @@ router.put('/me', requireAuth, (req, res) => {
 
 router.put('/:id/rating', requireAuth, requireRole('su'), (req, res) => {
   const { rating } = req.body;
-  if (typeof rating !== 'number') {
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'rating must be a number.' });
+  // D-L8: Number.isFinite 拦截 NaN/Infinity（typeof NaN === 'number'）
+  if (typeof rating !== 'number' || !Number.isFinite(rating)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'rating must be a finite number.' });
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!user) {
@@ -280,6 +281,10 @@ router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {
   const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!target) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
+  }
+  // D-L7: 同级（su）不可互删，仅可管理严格低级别
+  if (!canManage(req.user, target)) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete a user with equal or higher privileges.' });
   }
   if (target.role === 'su') {
     const suCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'su'").get().c;

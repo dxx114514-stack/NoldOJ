@@ -8,6 +8,13 @@ function renderMarkdown(text) {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+  // C-3: 输出统一过 DOMPurify 清洗（白名单），无 DOMPurify 时 fail-closed 转义为纯文本
+  function sanitizeHtml(html) {
+    if (typeof DOMPurify !== 'undefined') {
+      return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+    }
+    return escapeHtml(html);
+  }
   function fixUrl(url) {
     if (!url) return '';
     url = String(url).replace(/&amp;/g, '&');
@@ -35,7 +42,7 @@ function renderMarkdown(text) {
       .replace(/`([^`]+)`/g, (_, m) => `<code class="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono text-red-600 dark:text-red-400 border border-gray-200 dark:border-gray-600">${escapeHtml(m)}</code>`)
       .replace(/\n\n/g, '</p><p class="mt-3">')
       .replace(/\n/g, '<br>');
-    return `<div class="prose prose-sm dark:prose-invert max-w-none text-left text-gray-700 dark:text-gray-200 leading-relaxed"><p>${html}</p></div>`;
+    return `<div class="prose prose-sm dark:prose-invert max-w-none text-left text-gray-700 dark:text-gray-200 leading-relaxed"><p>${sanitizeHtml(html)}</p></div>`;
   } catch (e) {
     return `<pre class="text-sm text-gray-700 dark:text-gray-200">${escapeHtml(text)}</pre>`;
   }

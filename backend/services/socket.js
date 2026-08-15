@@ -53,10 +53,14 @@ function initSocket(server) {
     socket.join(`user:${socket.userId}`);
 
     // 加入提交房间：客户端 emit('join_submission', {submission_id})
+    // D-M9: 校验房间归属，仅本人/管理员可订阅该提交的实时状态，防窥探他人评测结果
     socket.on('join_submission', (data) => {
-      if (data && data.submission_id) {
-        socket.join(`submission:${data.submission_id}`);
-      }
+      if (!(data && data.submission_id)) return;
+      const sub = db.prepare('SELECT user_id FROM submissions WHERE id = ?').get(data.submission_id);
+      if (!sub) return;
+      const isStaff = ['admin', 'su', 'teacher'].includes(socket.user.role);
+      if (sub.user_id !== socket.userId && !isStaff) return;
+      socket.join(`submission:${data.submission_id}`);
     });
 
     // 离开提交房间

@@ -4,6 +4,7 @@ const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth')
 const { parsePageLimit } = require('../utils/pagination');
 const { isStaff, isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
+const { sanitizeText } = require('../utils/securityHelpers');
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
   const result = db.prepare('INSERT INTO articles (title, content, author_id, provider, is_published, is_hidden) VALUES (?, ?, ?, ?, ?, ?)').run(
-    title, content || '', req.user.id, provider || '', is_published ? 1 : 0, is_hidden ? 1 : 0
+    sanitizeText(title), sanitizeText(content || ''), req.user.id, provider || '', is_published ? 1 : 0, is_hidden ? 1 : 0
   );
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(article);
@@ -73,8 +74,8 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   }
   const { title, content, provider, is_published, is_hidden } = req.body;
   const u = buildUpdates([
-    { key: 'title', value: title },
-    { key: 'content', value: content },
+    { key: 'title', value: title !== undefined ? sanitizeText(title) : undefined },
+    { key: 'content', value: content !== undefined ? sanitizeText(content) : undefined },
     { key: 'provider', value: provider },
     { key: 'is_published', value: is_published, transform: v => v ? 1 : 0 },
     { key: 'is_hidden', value: is_hidden, transform: v => v ? 1 : 0 }

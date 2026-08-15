@@ -16,6 +16,27 @@ const MAX_OUTPUT_LOG_CHARS = 4096;
 const SPJ_TIMEOUT_MS = 1000;
 const MAX_GROUP_EVAL_ITERATIONS = 100;
 const MAX_TESTDATA_BYTES = 16 * 1024 * 1024; // 16MB 单测试数据文件上限
+// D-M11: 测试点资源硬上限兜底（教师可配置任意值 → 服务端强制封顶，防判题线程被独占）
+const MAX_TL_MS = 10000;     // 单测试点 ≤10s
+const MAX_ML_KB = 1024 * 1024; // 单测试点 ≤1024MB
+
+// D-M11: 服务端硬上限钳制（TLE≤10s、MLE≤1024MB）
+function clampLimits(tl, ml) {
+  const t = Number(tl) > 0 ? Number(tl) : null;
+  const m = Number(ml) > 0 ? Number(ml) : null;
+  return {
+    tl: t === null ? null : Math.min(t, MAX_TL_MS),
+    ml: m === null ? null : Math.min(m, MAX_ML_KB)
+  };
+}
+
+// D-I5: 编译/判题错误信息可能含服务器内部路径，落库前用占位符替换，避免泄露目录结构
+function stripInternalPaths(text, workDir) {
+  if (!text) return text;
+  let out = String(text);
+  if (workDir) out = out.split(workDir).join('{sandbox}');
+  return out;
+}
 
 function compareTextStrict(expected, actual) {
   return expected.trimEnd() === actual.trimEnd();
@@ -57,15 +78,23 @@ function compareOutput(expected, actual, problem) {
   return compareTextStrict(expected, actual);
 }
 
-// 读取测试数据文件，限制单文件大小防止超大用例整读入内存导致 OOM
+// 读取测试数据文件，限制单文件大小防止超大用例整读入内存导致 OOM。
+// 路径包含校验：测试数据只允许位于 backend/../problems/ 目录内（判题进程以 backend 为 CWD），
+// 拒绝绝对路径与含 .. 的穿越，杜绝教师导入 output_file:"../../config/jwt.txt" 等任意文件读取（D-H2）。
+const PROBLEMS_ROOT = path.resolve(__dirname, '..', '..', 'problems');
 function readTestdata(filePath) {
   if (!filePath) return '';
+  const resolved = path.resolve(filePath);
+  const problemsRoot = path.resolve(PROBLEMS_ROOT);
+  if (path.isAbsolute(filePath) || !resolved.startsWith(problemsRoot + path.sep)) {
+    throw new Error('Invalid test data path (outside problems directory)');
+  }
   try {
-    const stat = fs.statSync(filePath);
+    const stat = fs.statSync(resolved);
     if (stat.size > MAX_TESTDATA_BYTES) {
       throw new Error('Test data file exceeds 16MB limit');
     }
-    return fs.readFileSync(filePath, 'utf8');
+    return fs.readFileSync(resolved, 'utf8');
   } catch (err) {
     throw new Error('Failed to read test data: ' + err.message);
   }
@@ -166,9 +195,10 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
 
     const compileResult = sandbox.compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile);
     if (!compileResult.success) {
+      const safeOutput = stripInternalPaths(compileResult.output, workDir);
       const detail = insertDetail.run(submission.id, null, null, '', 'running');
-      updateDetail.run('compile_error', 0, 0, 0, '', compileResult.output, -1, '', detail.lastInsertRowid);
-      updateSubmission.run('compile_error', 0, 0, 0, compileResult.output, submission.id);
+      updateDetail.run('compile_error', 0, 0, 0, '', safeOutput, -1, '', detail.lastInsertRowid);
+      updateSubmission.run('compile_error', 0, 0, 0, safeOutput, submission.id);
       sandbox.cleanupWorkDir(workDir);
       return;
     }
@@ -227,8 +257,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           try {
             const stdin = tc.input_data || readTestdata(tc.input_file);
             const expected = tc.output_data || readTestdata(tc.output_file);
-            const tcTimeLimit = tc.time_limit || timeLimitMs;
-            const tcMemLimit = tc.memory_limit || problem.memory_limit;
+            const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
             const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
 
             const timeUsed = result.timeUsed;
@@ -244,8 +273,8 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
             tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), stderr: (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), exitCode: result.exitCode, detailId });
           } catch (err) {
             groupAllAccepted = false;
-            updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
-            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: err.message, exitCode: -1, detailId });
+            updateDetail.run('system_error', 0, 0, 0, '', stripInternalPaths(err.message, workDir), -1, '', detailId);
+            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: stripInternalPaths(err.message, workDir), exitCode: -1, detailId });
           }
         }
 
@@ -261,8 +290,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
         try {
           const stdin = tc.input_data || readTestdata(tc.input_file);
           const expected = tc.output_data || readTestdata(tc.output_file);
-          const tcTimeLimit = tc.time_limit || timeLimitMs;
-          const tcMemLimit = tc.memory_limit || problem.memory_limit;
+          const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
           const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
 
           const timeUsed = result.timeUsed;
@@ -276,8 +304,8 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), result.exitCode, '', detailId);
           tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), stderr: (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), exitCode: result.exitCode, detailId });
         } catch (err) {
-          updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
-          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: err.message, exitCode: -1, detailId });
+          updateDetail.run('system_error', 0, 0, 0, '', stripInternalPaths(err.message, workDir), -1, '', detailId);
+          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: stripInternalPaths(err.message, workDir), exitCode: -1, detailId });
         }
       }
     }
@@ -308,7 +336,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
   } catch (err) {
     // 无论编译/判题是否深入，只要建过 workDir 就清理，避免临时文件残留
     if (workDir) sandbox.cleanupWorkDir(workDir);
-    updateSubmission.run('system_error', 0, 0, 0, err.message, submission.id);
+    updateSubmission.run('system_error', 0, 0, 0, stripInternalPaths(err.message, workDir), submission.id);
   }
 }
 
@@ -605,6 +633,7 @@ async function judgeSubmission(submissionId) {
 
 const judgeQueue = [];
 const queuedIds = new Set();
+const runningIds = new Set(); // 正在判题的提交，防 rejudge 对运行中任务重复入队（D-M1）
 const maxThreads = config.judge.maxThreads;
 const runningJobs = new Set();
 
@@ -621,6 +650,7 @@ async function runOne(submissionId) {
     db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(submissionId);
   } finally {
     rejudgePrevStatus.delete(submissionId);
+    runningIds.delete(submissionId);
   }
 }
 
@@ -628,6 +658,7 @@ function pumpQueue() {
   while (runningJobs.size < maxThreads && judgeQueue.length > 0) {
     const submissionId = judgeQueue.shift();
     queuedIds.delete(submissionId);
+    runningIds.add(submissionId);
     const job = runOne(submissionId);
     runningJobs.add(job);
     job.finally(() => {
@@ -638,7 +669,7 @@ function pumpQueue() {
 }
 
 function enqueueSubmission(submissionId, prevStatus) {
-  if (queuedIds.has(submissionId)) return;
+  if (queuedIds.has(submissionId) || runningIds.has(submissionId)) return;
   if (prevStatus) rejudgePrevStatus.set(submissionId, prevStatus);
   queuedIds.add(submissionId);
   judgeQueue.push(submissionId);

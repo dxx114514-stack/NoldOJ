@@ -3,6 +3,7 @@ const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
+const { sanitizeText } = require('../utils/securityHelpers');
 
 const router = express.Router();
 
@@ -79,6 +80,13 @@ router.post('/', requireAuth, (req, res) => {
   if (!problem_id && !contest_id) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problem_id or contest_id is required.' });
   }
+  // D-L10: 校验关联实体存在，避免 FK 500
+  if (problem_id && !db.prepare('SELECT id FROM problems WHERE id = ?').get(problem_id)) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  if (contest_id && !db.prepare('SELECT id FROM contests WHERE id = ?').get(contest_id)) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
   // 比赛进行中：禁止非官方讨论
   if (contest_id) {
     const contest = db.prepare('SELECT end_time FROM contests WHERE id = ?').get(contest_id);
@@ -91,7 +99,7 @@ router.post('/', requireAuth, (req, res) => {
   const isOfficial = ['admin', 'su', 'teacher'].includes(req.user.role) ? (req.body.is_official ? 1 : 0) : 0;
   const result = db.prepare(
     'INSERT INTO discussions (problem_id, contest_id, title, content, author_id, is_official) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(problem_id || null, contest_id || null, title.trim(), content.trim(), req.user.id, isOfficial);
+  ).run(problem_id || null, contest_id || null, sanitizeText(title).trim(), sanitizeText(content).trim(), req.user.id, isOfficial);
   const disc = db.prepare('SELECT * FROM discussions WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(disc);
 });
@@ -113,8 +121,8 @@ router.put('/:id', requireAuth, (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Content must be at most ${MAX_CONTENT_LENGTH} characters.` });
   }
   const u = buildUpdates([
-    { key: 'title', value: title !== undefined ? title.trim() : undefined },
-    { key: 'content', value: content !== undefined ? content.trim() : undefined }
+    { key: 'title', value: title !== undefined ? sanitizeText(title).trim() : undefined },
+    { key: 'content', value: content !== undefined ? sanitizeText(content).trim() : undefined }
   ], { touchUpdatedAt: true });
   if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
@@ -170,7 +178,7 @@ router.post('/:id/replies', requireAuth, (req, res) => {
   }
   const result = db.prepare(
     'INSERT INTO discussion_replies (discussion_id, parent_id, content, author_id) VALUES (?, ?, ?, ?)'
-  ).run(disc.id, parentId, content.trim(), req.user.id);
+  ).run(disc.id, parentId, sanitizeText(content).trim(), req.user.id);
   const reply = db.prepare(`
     SELECT r.*, u.username, u.nickname, u.role
     FROM discussion_replies r LEFT JOIN users u ON r.author_id = u.id

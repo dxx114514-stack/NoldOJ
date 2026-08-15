@@ -9,20 +9,23 @@ const { enqueueIdeRun } = require('../services/ideJudge');
 
 const router = express.Router();
 const rateLimit = createRateLimit(config.rateLimit.ideRun);
+// D-M5: /ide/review 匿名可调用且无上限 → 独立 IP 限流
+const reviewRateLimit = createRateLimit({ windowMs: 60000, max: 20 });
 
 router.get('/languages', (req, res) => {
   const languages = db.prepare('SELECT name, display_name, extension FROM languages WHERE is_enabled = 1').all();
   res.json(languages);
 });
 
-router.post('/review', optionalAuth, async (req, res) => {
+// S-4/D-M5: review 改 requireAuth —— 匿名分支无业务区分，且降低 AI 服务被匿名滥用的面
+router.post('/review', requireAuth, reviewRateLimit, async (req, res) => {
   const { language, source_code } = req.body;
   if (!language || !source_code || source_code.length < 50) {
     return res.json({ safe: true });
   }
   try {
     const result = await reviewCode(source_code, language);
-    if (!result.safe && req.user) {
+    if (!result.safe && result.confirmed && req.user) {
       banUserAndRevoke(req.user.id);
     }
     res.json(result);
@@ -51,13 +54,14 @@ router.post('/run', requireAuth, rateLimit, async (req, res) => {
   if (source_code.length >= 50) {
     const securityReview = await reviewCode(source_code, language);
     if (!securityReview.safe) {
-      if (req.user) {
+      // D-M4: 仅双重确认才封号；其余情况仅拦截执行
+      if (securityReview.confirmed && req.user) {
         banUserAndRevoke(req.user.id);
       }
       return res.status(403).json({
         code: 6,
         reason: 'ERR_FORBIDDEN',
-        message: `代码安全审查未通过: ${securityReview.reason}。威胁等级: ${securityReview.threat_level}。账号已被封禁。`
+        message: `代码安全审查未通过: ${securityReview.reason}。威胁等级: ${securityReview.threat_level}。${securityReview.confirmed ? '账号已被封禁。' : ''}`
       });
     }
   }

@@ -1,4 +1,4 @@
-const { execSync, spawn, exec, spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -86,14 +86,16 @@ function prepareWorkDirMulti(language, files) {
 
   // 写入所有文件
   const sanitizeFile = (name) => {
-    // Windows 保留设备名 (CON/NUL/PRN/AUX/COM1-9/LPT1-9) 及其带扩展名形式不允许
+    // Windows 保留设备名 (CON/NUL/PRN/AUX/COM1-9/LPT1-9/CONIN$/CONOUT$) 及其带扩展名形式不允许
     const base = String(name).replace(/[<>:"/\\|?*]/g, '_').replace(/^\.+/, '');
-    const stem = base.replace(/\.[^.]+$/, '');
-    const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+    const stem = base.replace(/\.[^.]+$/, '').replace(/\$$/, '');
+    const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9]|conin|conout)$/i;
     return RESERVED.test(stem) ? '_' + base : base;
   };
+  const writtenNames = new Map(); // 原始名 → 净化后名
   for (const f of files) {
     const safeName = sanitizeFile(path.basename(f.filename)) || '_';
+    writtenNames.set(path.basename(f.filename), safeName);
     const filePath = path.join(workDir, safeName);
     fs.writeFileSync(filePath, f.content, 'utf8');
   }
@@ -102,7 +104,8 @@ function prepareWorkDirMulti(language, files) {
   const defaultMain = defaultMainFilename(language);
   let mainFile = files.find(f => path.basename(f.filename).toLowerCase() === defaultMain.toLowerCase());
   if (!mainFile) mainFile = files[0];
-  const srcFile = path.join(workDir, path.basename(mainFile.filename));
+  // D-L11: 用净化后的文件名定位主文件，确保与实际落盘路径一致，避免编译/运行定位失败
+  const srcFile = path.join(workDir, writtenNames.get(path.basename(mainFile.filename)) || sanitizeFile(path.basename(mainFile.filename)));
 
   const isWindows = process.platform === 'win32';
   const exeFile = path.join(workDir, 'Main');

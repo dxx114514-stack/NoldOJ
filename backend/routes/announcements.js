@@ -5,6 +5,7 @@ const { emitAnnouncement } = require('../services/socket');
 const { parsePageLimit } = require('../utils/pagination');
 const { isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
+const { sanitizeText } = require('../utils/securityHelpers');
 
 const router = express.Router();
 
@@ -53,9 +54,13 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
   if (type === 'contest' && !contest_id) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'contest_id is required for contest announcements.' });
   }
+  // D-L9: 校验比赛存在，避免悬挂公告
+  if (type === 'contest' && !db.prepare('SELECT id FROM contests WHERE id = ?').get(contest_id)) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
   const result = db.prepare(
     'INSERT INTO announcements (title, content, type, contest_id, pinned, author_id) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(title.trim(), content.trim(), type, type === 'contest' ? contest_id : null, pinned ? 1 : 0, req.user.id);
+  ).run(sanitizeText(title).trim(), sanitizeText(content).trim(), type, type === 'contest' ? contest_id : null, pinned ? 1 : 0, req.user.id);
   const ann = db.prepare('SELECT * FROM announcements WHERE id = ?').get(result.lastInsertRowid);
   // 广播新公告给所有在线用户
   if (ann.type === 'global') {
@@ -75,8 +80,8 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   }
   const { title, content, type, contest_id, pinned } = req.body;
   const u = buildUpdates([
-    { key: 'title', value: title !== undefined ? title.trim() : undefined },
-    { key: 'content', value: content !== undefined ? content.trim() : undefined },
+    { key: 'title', value: title !== undefined ? sanitizeText(title).trim() : undefined },
+    { key: 'content', value: content !== undefined ? sanitizeText(content).trim() : undefined },
     { key: 'pinned', value: pinned, transform: v => v ? 1 : 0 }
   ], { touchUpdatedAt: true });
   // type 联动 contest_id 属于特例，单独追加

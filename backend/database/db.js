@@ -208,6 +208,9 @@ async function initDB() {
     )`);
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_email_codes_email ON email_codes(email)');
   }
+  // D-M3: email_codes 增加失败计数，防验证码暴力枚举
+  const emailCodeCols = tableCols('email_codes');
+  if (!emailCodeCols.includes('attempts')) sqlDb.exec('ALTER TABLE email_codes ADD COLUMN attempts INTEGER DEFAULT 0');
 
   // 功能6：contests 表添加冻结字段
   const contestCols = tableCols('contests');

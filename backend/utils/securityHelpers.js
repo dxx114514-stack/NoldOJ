@@ -30,4 +30,21 @@ function banUserAndRevoke(userId) {
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(userId);
 }
 
-module.exports = { sanitizeLog, hmacDigest, banUserAndRevoke };
+// 存储型 XSS 纵深防御（D-H4）：库中内容不直接可执行。
+// 前端 DOMPurify 为第一道防线；此处再剥除脚本/事件属性/iframe/javascript 等危险结构，
+// 使即使前端渲染链路被绕过，内容也不会执行。
+function sanitizeText(value, maxLen = 100000) {
+  let s = String(value ?? '');
+  if (s.length > maxLen) s = s.slice(0, maxLen);
+  return s
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<style[\s\S]*?<\/style\s*>/gi, '')
+    .replace(/<iframe[\s\S]*?(?:>|<\/iframe\s*>)/gi, '[embed]')
+    .replace(/<object[\s\S]*?<\/object\s*>/gi, '')
+    .replace(/<embed[\s\S]*?>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')      // onerror/onload 等事件属性
+    .replace(/\s(?:href|src)\s*=\s*("?)\s*javascript:[^"'>]*\1/gi, ' href="/"')  // javascript: 协议
+    .replace(/<img[^>]*>/gi, m => m.replace(/\s(?:onerror|onload|onclick)[^>]*/gi, '')); // img 事件残留兜底
+}
+
+module.exports = { sanitizeLog, hmacDigest, banUserAndRevoke, sanitizeText };

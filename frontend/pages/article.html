@@ -9,7 +9,9 @@
   <script>tailwind.config={darkMode:'class'}</script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
   <script src="/js/api.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script src="/js/markdown.js"></script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
@@ -59,7 +61,7 @@
             <div id="articleContent">${renderMarkdown(a.content)}</div>
           </div>
         `;
-        renderMathInElement(document.getElementById('articleContent'));
+        if (window.renderMathInElement) { renderMathInElement(document.getElementById('articleContent')); }
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
       }

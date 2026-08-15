@@ -58,8 +58,8 @@ async function sendPasswordResetEmail(email, code) {
 }
 
 function hashCode(code) {
-  // HMAC-SHA256 + 服务端密钥，防止数据库泄露后彩虹表反查验证码
-  return hmacDigest(code, config.jwt.accessSecret);
+  // HMAC-SHA256 + 独立密钥，防止数据库泄露后彩虹表反查验证码（D-L16: 不复用 JWT access secret）
+  return hmacDigest(code, config.jwt.emailCodeSecret || config.jwt.accessSecret);
 }
 
 function saveCode(email, code) {
@@ -69,6 +69,9 @@ function saveCode(email, code) {
   db.prepare('INSERT INTO email_codes (email, code, expires_at) VALUES (?, ?, ?)').run(email, hashCode(code), expiresAt);
 }
 
+// D-M3: 单码最多 5 次失败，防 6 位验证码被暴力枚举
+const MAX_VERIFY_ATTEMPTS = 5;
+
 function verifyCode(email, code) {
   // datetime(expires_at) 归一化 ISO(…T…Z) 与 SQLite(空格) 两种时间格式，
   // 避免字符串比较使 'T' > ' ' 导致验证码当日恒有效
@@ -77,7 +80,16 @@ function verifyCode(email, code) {
   const expected = Buffer.from(row.code, 'hex');
   const actual = Buffer.from(hashCode(code), 'hex');
   const ok = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
-  if (!ok) return false;
+  if (!ok) {
+    // 失败计数：达到上限即作废该验证码，迫使重新申请
+    const attempts = (row.attempts || 0) + 1;
+    if (attempts >= MAX_VERIFY_ATTEMPTS) {
+      db.prepare('DELETE FROM email_codes WHERE id = ?').run(row.id);
+    } else {
+      db.prepare('UPDATE email_codes SET attempts = ? WHERE id = ?').run(attempts, row.id);
+    }
+    return false;
+  }
   db.prepare('UPDATE email_codes SET used = 1 WHERE id = ?').run(row.id);
   return true;
 }

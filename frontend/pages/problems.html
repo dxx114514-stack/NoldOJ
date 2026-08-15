@@ -104,9 +104,9 @@
       if (allCategories.length === 0) { container.innerHTML = ''; return; }
       container.innerHTML = `
         <span class="text-xs text-gray-500 dark:text-gray-400 self-center mr-1">分类:</span>
-        <button onclick="filterByCategory('')" class="px-3 py-1 text-xs rounded-full transition ${!selectedCategory ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">全部</button>
+        <button data-cat="" class="cat-btn px-3 py-1 text-xs rounded-full transition ${!selectedCategory ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">全部</button>
         ${allCategories.map(c => `
-          <button onclick="filterByCategory('${escapeHtml(c.name)}')" class="px-3 py-1 text-xs rounded-full transition ${selectedCategory === c.name ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">${escapeHtml(c.name)}</button>
+          <button data-cat="${escapeHtml(c.name)}" class="cat-btn px-3 py-1 text-xs rounded-full transition ${selectedCategory === c.name ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">${escapeHtml(c.name)}</button>
         `).join('')}`;
     }
     function filterByCategory(category) { selectedCategory = category; currentPage = 1; renderCategoryFilter(); loadProblems(); }
@@ -122,7 +122,7 @@
         <button onclick="clearTags()" class="px-3 py-1 text-xs rounded-full transition ${selectedTags.size === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}">全部</button>
         ${allTags.map(t => {
           const active = selectedTags.has(t.name);
-          return `<button onclick="toggleTag('${escapeHtml(t.name)}')" class="px-3 py-1 text-xs rounded-full transition ${active ? 'text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}" ${active ? `style="background-color: ${t.color}"` : ''}>${escapeHtml(t.name)}</button>`;
+          return `<button data-tag="${escapeHtml(t.name)}" class="tag-btn px-3 py-1 text-xs rounded-full transition ${active ? 'text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'}" ${active ? `style="background-color: ${escapeHtml(t.color)}"` : ''}>${escapeHtml(t.name)}</button>`;
         }).join('')}`;
     }
     function toggleTag(tag) {
@@ -180,6 +180,16 @@
     loadCategories();
     loadTags();
     loadProblems();
+
+    // D-H6: 分类/标签筛选改用 data-* + 容器级事件委托，杜绝内联 onclick 注入
+    document.getElementById('categoryFilter').addEventListener('click', (e) => {
+      const btn = e.target.closest('.cat-btn');
+      if (btn) filterByCategory(btn.dataset.cat || '');
+    });
+    document.getElementById('tagFilter').addEventListener('click', (e) => {
+      const btn = e.target.closest('.tag-btn');
+      if (btn) toggleTag(btn.dataset.tag);
+    });
   </script>
 </body>
 </html>

@@ -5,6 +5,14 @@ const { prepareWorkDir, compile, runCode, cleanupWorkDir, loadLanguageConfig } =
 const ideQueue = [];
 let isRunning = false;
 
+// D-I5: 错误/编译输出可能含服务器内部路径，落库前替换，避免泄露目录结构
+function stripPaths(text, workDir) {
+  if (!text) return text;
+  let out = String(text);
+  if (workDir) out = out.split(workDir).join('{sandbox}');
+  return out;
+}
+
 async function processIdeQueue() {
   if (isRunning || ideQueue.length === 0) return;
   isRunning = true;
@@ -13,7 +21,7 @@ async function processIdeQueue() {
     await executeIdeRun(runId);
   } catch (err) {
     console.error(`IDE run error for #${runId}:`, err);
-    db.prepare("UPDATE ide_runs SET status = 'system_error', stderr = ? WHERE id = ?").run(String(err.message || err || 'Unknown error'), runId);
+    db.prepare("UPDATE ide_runs SET status = 'system_error', stderr = ? WHERE id = ?").run(stripPaths(String(err.message || err || 'Unknown error')), runId);
   }
   isRunning = false;
   if (ideQueue.length > 0) {
@@ -43,8 +51,9 @@ async function executeIdeRun(runId) {
 
     const compileResult = compile(workDir, srcFile, exeFile, lang, prepared.isWindows);
     if (!compileResult.success) {
+      const safeOut = stripPaths(compileResult.output, workDir);
       cleanupWorkDir(workDir);
-      db.prepare("UPDATE ide_runs SET status = 'compile_error', compile_output = ? WHERE id = ?").run(compileResult.output, runId);
+      db.prepare("UPDATE ide_runs SET status = 'compile_error', compile_output = ? WHERE id = ?").run(safeOut, runId);
       return;
     }
 
@@ -60,7 +69,7 @@ async function executeIdeRun(runId) {
     );
   } catch (err) {
     if (workDir) cleanupWorkDir(workDir);
-    db.prepare("UPDATE ide_runs SET status = 'system_error', stderr = ? WHERE id = ?").run(String(err.message || err || 'Unknown error'), runId);
+    db.prepare("UPDATE ide_runs SET status = 'system_error', stderr = ? WHERE id = ?").run(stripPaths(String(err.message || err || 'Unknown error'), workDir), runId);
   }
 }
 

@@ -84,28 +84,31 @@ function loadJwtConfig() {
   const jwtPath = path.join(__dirname, '..', '..', 'config', 'jwt.txt');
   const read = () => {
     const content = fs.readFileSync(jwtPath, 'utf8');
-    const obj = { accessSecret: '', refreshSecret: '' };
+    const obj = { accessSecret: '', refreshSecret: '', emailCodeSecret: '' };
     for (const line of content.split('\n')) {
       const t = line.trim();
       if (t.startsWith('JWT_ACCESS_SECRET=')) obj.accessSecret = t.split('=').slice(1).join('=').trim();
       if (t.startsWith('JWT_REFRESH_SECRET=')) obj.refreshSecret = t.split('=').slice(1).join('=').trim();
+      if (t.startsWith('EMAIL_CODE_SECRET=')) obj.emailCodeSecret = t.split('=').slice(1).join('=').trim();
     }
     return obj;
   };
   try {
     const obj = read();
-    if (obj.accessSecret && obj.refreshSecret) return obj;
+    if (obj.accessSecret && obj.refreshSecret && obj.emailCodeSecret) return obj;
   } catch {}
   // 首次启动: 生成 64 字节强随机密钥并写入文件
   const generated = {
     accessSecret: crypto.randomBytes(64).toString('hex'),
-    refreshSecret: crypto.randomBytes(64).toString('hex')
+    refreshSecret: crypto.randomBytes(64).toString('hex'),
+    emailCodeSecret: crypto.randomBytes(64).toString('hex')
   };
   const fileContent =
     `# JWT 密钥配置 - 自动生成，请勿提交到公开仓库\n` +
     `# 修改后所有已签发的 token 将失效\n` +
     `JWT_ACCESS_SECRET=${generated.accessSecret}\n` +
-    `JWT_REFRESH_SECRET=${generated.refreshSecret}\n`;
+    `JWT_REFRESH_SECRET=${generated.refreshSecret}\n` +
+    `EMAIL_CODE_SECRET=${generated.emailCodeSecret}\n`;
   try {
     fs.mkdirSync(path.dirname(jwtPath), { recursive: true });
     fs.writeFileSync(jwtPath, fileContent, { mode: 0o600 });

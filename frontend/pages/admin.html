@@ -8,6 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={darkMode:'class'}</script>
   <script src="/js/api.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script src="/js/markdown.js"></script>
   <style>
     .CodeMirror { height: 200px; border-radius: 0.5rem; font-size: 13px; }
@@ -1359,13 +1360,17 @@
               ${canOperate ? (u.banned ? `<button onclick="unbanUser(${u.id})" class="text-green-600 dark:text-green-400 text-xs hover:underline">解封</button>` : `<button onclick="banUser(${u.id})" class="text-red-600 dark:text-red-400 text-xs hover:underline">封禁</button>`) : ''}
               ${canOperate ? `<button onclick="forceLogout(${u.id})" class="text-orange-600 dark:text-orange-400 text-xs hover:underline">登出</button>` : ''}
               ${isSu ? `<button onclick="resetPassword(${u.id})" class="text-blue-600 dark:text-blue-400 text-xs hover:underline">重置密码</button>` : ''}
-              ${isSu && u.id !== currentUser.id ? `<button onclick="sudoLogin(${u.id}, '${escapeHtml(u.username)}')" class="text-purple-600 dark:text-purple-400 text-xs hover:underline">免密</button>` : ''}
+              ${isSu && u.id !== currentUser.id ? `<button data-sudo-id="${u.id}" data-sudo-name="${escapeHtml(u.username)}" class="sudo-login-btn text-purple-600 dark:text-purple-400 text-xs hover:underline">免密</button>` : ''}
               ${isSu && u.id !== currentUser.id ? `<button onclick="deleteUser(${u.id})" class="text-red-600 dark:text-red-400 text-xs hover:underline">删除</button>` : ''}
               ${isSu && u.id !== currentUser.id ? `<button onclick="toggleSubmitExempt(${u.id}, ${u.submit_lock_exempt ? 0 : 1})" class="text-xs hover:underline ${u.submit_lock_exempt ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}">${u.submit_lock_exempt ? '已豁免' : '豁免'}</button>` : ''}
               ${isSu ? `<button onclick="setUploadLimits(${u.id})" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">图床</button>` : ''}
             </td>
           </tr>
         `}).join('');
+        // D-H5: sudo 按钮改用 data-* + 事件委托，杜绝内联 onclick 用户名注入
+        document.querySelectorAll('#adminUsers .sudo-login-btn').forEach(btn => {
+          btn.addEventListener('click', () => sudoLogin(parseInt(btn.dataset.sudoId, 10), btn.dataset.sudoName || `#${btn.dataset.sudoId}`));
+        });
       } catch (err) { console.error(err); }
     }
 

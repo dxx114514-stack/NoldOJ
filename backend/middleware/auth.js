@@ -51,8 +51,11 @@ function optionalAuth(req, res, next) {
   const token = authHeader.slice(7);
   try {
     const payload = jwt.verify(token, config.jwt.accessSecret, { algorithms: ['HS256'] });
-    const user = db.prepare('SELECT id, username, nickname, role, banned FROM users WHERE id = ?').get(payload.userId);
-    if (user && user.banned) {
+    const user = db.prepare('SELECT id, username, nickname, role, banned, force_logout_at FROM users WHERE id = ?').get(payload.userId);
+    // D-L3: optionalAuth 同步校验封禁/强制登出，被强制下线用户在 access token 过期前不得视为有效
+    const forcedOut = user && user.force_logout_at && payload.iat &&
+      payload.iat < Math.floor(new Date(user.force_logout_at + 'Z').getTime() / 1000);
+    if (user && (user.banned || forcedOut)) {
       req.user = null;
     } else {
       req.user = user || null;

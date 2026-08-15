@@ -9,17 +9,13 @@ const { generateCode, sendVerificationEmail, sendPasswordResetEmail, saveCode, v
 const { generateCaptcha, verifyCaptcha } = require('../services/captcha');
 const { generateAccessToken, generateRefreshToken } = require('../utils/tokens');
 const { isStrongPassword } = require('../utils/validation');
+const { sanitizeText } = require('../utils/securityHelpers');
 
 const router = express.Router();
 const registerRateLimit = createRateLimit({ windowMs: 3600000, max: 1 });
 const loginRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
 const refreshRateLimit = createRateLimit({ windowMs: 60000, max: 30 });
 const changePasswordRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
-// 验证码校验接口独立限流，防止 6 位验证码被暴力枚举
-const verifyCodeRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
-// 密码找回: 请求重置邮件独立限流，防止用他人邮箱轰炸
-const forgotPasswordRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
-const resetPasswordRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
 
 // 验证码校验中间件（login/register 共用）
 function requireCaptcha(req, res, next) {
@@ -54,7 +50,12 @@ router.get('/captcha', (req, res) => {
   res.json({ id, svg });
 });
 
-const emailCodeRateLimit = createRateLimit({ windowMs: 60000, max: 3 });
+const emailCodeRateLimit = createRateLimit({ windowMs: 60000, max: 3, key: req => String(req.body?.email || '').toLowerCase() });
+// 验证码校验接口独立限流，防止 6 位验证码被暴力枚举；限流键同时包含邮箱维度（D-M3）
+const verifyCodeRateLimit = createRateLimit({ windowMs: 60000, max: 10, key: req => String(req.body?.email || '').toLowerCase() });
+// 密码找回: 请求重置邮件独立限流，防止用他人邮箱轰炸
+const forgotPasswordRateLimit = createRateLimit({ windowMs: 60000, max: 5, key: req => String(req.body?.email || '').toLowerCase() });
+const resetPasswordRateLimit = createRateLimit({ windowMs: 60000, max: 10, key: req => String(req.body?.email || '').toLowerCase() });
 
 router.post('/send-code', emailCodeRateLimit, requireCaptcha, async (req, res) => {
   const { email } = req.body;
@@ -145,7 +146,12 @@ router.post('/login', loginRateLimit, requireCaptcha, async (req, res) => {
   }
 
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+  // D-L1: 用户不存在时也执行一次 bcrypt 对比，抹平计时侧信道（防用户名枚举）
+  if (!user) {
+    bcrypt.compareSync(password, '$2a$10$7QJN4k1P0bWtHjM6Y0vzOe0Y2kZ3p4q5r6s7t8u9v0w1x2y3z4a');
+    return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'Invalid username or password.' });
+  }
+  if (!bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'Invalid username or password.' });
   }
   if (user.banned) {
@@ -203,7 +209,8 @@ router.post('/register', registerRateLimit, requireCaptcha, async (req, res) => 
   const hash = bcrypt.hashSync(password, 10);
   const newId = db.findNextId('users');
   const emailVerified = config.email.enabled && email ? 1 : 0;
-  db.prepare('INSERT INTO users (id, username, password_hash, nickname, role, email, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, username, hash, nickname || username, 'user', email || '', emailVerified);
+  const safeNickname = sanitizeText(nickname || username, 50) || username;
+  db.prepare('INSERT INTO users (id, username, password_hash, nickname, role, email, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, username, hash, safeNickname, 'user', email || '', emailVerified);
   const accessToken = generateAccessToken(newId);
   const refreshToken = generateRefreshToken(newId);
 
@@ -211,7 +218,7 @@ router.post('/register', registerRateLimit, requireCaptcha, async (req, res) => 
 
   res.status(201).json({
     access_token: accessToken,
-    user: { id: newId, username, nickname: nickname || username, role: 'user', rating: 1500, preferred_language: '' }
+    user: { id: newId, username, nickname: safeNickname, role: 'user', rating: 1500, preferred_language: '' }
   });
 });
 
@@ -298,6 +305,8 @@ router.post('/change-password', requireAuth, changePasswordRateLimit, (req, res)
   }
   const hash = bcrypt.hashSync(new_password, 10);
   db.prepare('UPDATE users SET password_hash = ?, updated_at = datetime(\'now\') WHERE id = ?').run(hash, req.user.id);
+  // D-L2: 修改密码同时吊销旧 access token（否则最长 15 分钟仍有效）
+  db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(req.user.id);
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(req.user.id);
   res.json({ message: 'Password changed successfully.' });
 });

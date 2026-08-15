@@ -796,10 +796,18 @@ int main(int argc, char* argv[]) {
                 sandboxLog("CreateProcessAsUser(restricted) failed (error %lu)", GetLastError());
         }
 
-        // 兜底：仅当受限令牌不可用时才退化到裸进程（Job 资源限制仍然生效）
+        // C-2: 令牌路径全部失败时必须 fail-closed（写 SYSTEM_ERROR 拒绝执行），
+        // 绝不回退裸 CreateProcessA（管理员/服务启动时回退 = 恶意代码提权执行）。
+        // 仅保留 WINOJ_EXEC_MODE=2 显式诊断开关（管理员手动设置）才走裸进程路径。
         if (!ok) {
-            createFn = "CreateProcessA(fallback)";
-            ok = CreateProcessA(NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, NULL, NULL, &si, &pi);
+            DWORD err = GetLastError();
+            sandboxLog("All sandbox token paths failed (error %lu); refusing to run without isolation", err);
+            writeMeta(metaFile, -1, 0, 0, "SYSTEM_ERROR");
+            CloseHandle(hJob);
+            if (hContainer) CloseHandle(hContainer);
+            if (appSid) LocalFree(appSid);
+            if (hRestricted) CloseHandle(hRestricted);
+            return 1;
         }
     }
 

@@ -56,9 +56,15 @@ async function main() {
 
   const app = express();
 
-  // 反向代理（cloudflared 等本地隧道）情况下信任最近一跳，使 req.ip 取到真实客户端 IP
-  // 仅信任 1 跳，避免伪造 X-Forwarded-For 劫持限流
-  app.set('trust proxy', 1);
+  // 反向代理（cloudflared 等本地隧道）情况下才信任最近一跳，使 req.ip 取到真实客户端 IP。
+  // 必须显式设置 TRUST_PROXY=1：默认不信任任何代理头，避免客户端自造 X-Forwarded-For
+  // 劫持限流/审计（D-H1）。trust proxy 仅信任 1 跳，避免伪造链。
+  const trustProxy = process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true';
+  if (trustProxy) {
+    app.set('trust proxy', 1);
+  }
+  const { setTrustProxy } = require('../middleware/ratelimit');
+  setTrustProxy(trustProxy);
 
   app.use((req, res, next) => {
     const start = process.hrtime.bigint();

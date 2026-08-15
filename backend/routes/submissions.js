@@ -197,7 +197,8 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
     reviewCode(mainCode, language).then(result => {
       if (!result.safe) {
         console.log(`[Security] Malicious code detected in submission #${newId} by user #${req.user.id}: ${sanitizeLog(result.reason)}`);
-        banUserAndRevoke(req.user.id);
+        // D-M4: 仅正则命中 + AI 双重确认才永久封号；仅拦截不封号，避免误伤
+        if (result.confirmed) banUserAndRevoke(req.user.id);
         db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(newId);
       } else {
         db.prepare("UPDATE submissions SET status = 'pending' WHERE id = ?").run(newId);
