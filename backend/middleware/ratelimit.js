@@ -45,7 +45,9 @@ function createRateLimit({ windowMs = 60000, max = 10, key } = {}) {
   };
 }
 
-setInterval(() => {
+// unref: 定时清理器不阻止进程退出（测试场景 node --test 可正常结束；
+// 生产为长生命周期进程，unref 不影响定时清理执行）。
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, bucket] of buckets) {
     if (now - bucket.windowStart > 120000) {
@@ -53,5 +55,6 @@ setInterval(() => {
     }
   }
 }, 60000);
+if (cleanupTimer.unref) cleanupTimer.unref();
 
 module.exports = { createRateLimit, setTrustProxy };

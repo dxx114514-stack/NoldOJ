@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
+const os = require('os');
+const { spawn } = require('child_process');
 const db = require('../database/db');
 const sandbox = require('../sandbox/executor');
 const config = require('../config/config');
@@ -100,21 +101,82 @@ function readTestdata(filePath) {
   }
 }
 
-// SPJ 执行: 使用 vm 沙箱隔离，剥离 require/process/fs 等危险全局对象
-// 注意: vm 并非绝对安全的沙箱，但相比 eval 已杜绝直接访问主进程上下文
+// SPJ 执行: 改为子进程模式，彻底消除主进程事件循环阻塞与 vm 逃逸（D-H3/D-M10）。
+// 原实现在判题进程内同步 vm.runInContext: 长 SPJ 会卡死单线程事件循环；
+// 且 vm 逃逸可触及宿主 realm。现改为 spawn 独立 node 子进程（进程级隔离），
+// 子进程内再套一层 vm + JSON 字面量注入保持 realm 隔离，超时/输出超限即 kill。
 function runSPJ(spjCode, expected, actual) {
-  try {
-    // vm 逃逸防护: 若把宿主 realm 的字符串（stdout/answer）作为沙箱对象属性注入，
-    // spjCode 可经 `stdout.constructor.constructor` 拿到宿主 Function 并执行任意代码。
-    // 因此不注入任何宿主对象，只把数据序列化为 JSON 字符串字面量直接拼进脚本源码，
-    // 使沙箱内的一切（包括全局对象、构造函数）都属于 vm 的独立 realm。
-    const sandbox = vm.createContext({});
-    const script = new vm.Script(`(function(stdin, stdout, answer) { ${spjCode} })(JSON.parse(${JSON.stringify(JSON.stringify(''))}), JSON.parse(${JSON.stringify(JSON.stringify(String(actual ?? '')))}), JSON.parse(${JSON.stringify(JSON.stringify(String(expected ?? '')))}))`);
-    const result = script.runInContext(sandbox, { timeout: SPJ_TIMEOUT_MS });
-    return result === true || result === 1 || result === 'AC';
-  } catch {
-    return false;
-  }
+  return new Promise((resolve) => {
+    let tmpDir = null;
+    let settled = false;
+    let timer = null;
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      resolve(val);
+    };
+
+    try {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'winoj-spj-'));
+      const dataFile = path.join(tmpDir, 'data.json');
+      const wrapperFile = path.join(tmpDir, 'spj.js');
+
+      // vm 逃逸防护沿用原方案: 不注入任何宿主对象，数据序列化为 JSON 字符串字面量
+      // 拼进脚本源码，使沙箱内的一切（含构造函数）都属于 vm 的独立 realm。
+      // 构造方式: 先对参数做 JSON 编码（stdinJson 等为 JSON 文本），再用 JSON.stringify
+      // 把该文本包成 JS 字符串字面量传给 JSON.parse，避免嵌套引号双重转义错误。
+      const stdinJson = JSON.stringify('');
+      const stdoutJson = JSON.stringify(String(actual ?? ''));
+      const answerJson = JSON.stringify(String(expected ?? ''));
+      const mkArg = (j) => 'JSON.parse(' + JSON.stringify(j) + ')';
+      const argsSrc = [mkArg(stdinJson), mkArg(stdoutJson), mkArg(answerJson)].join(', ');
+
+      const wrapper = [
+        'const vm = require("vm");',
+        'const fs = require("fs");',
+        `const data = JSON.parse(fs.readFileSync(${JSON.stringify(dataFile)}, "utf8"));`,
+        'const sandbox = vm.createContext({});',
+        `const vmSrc = "(function(stdin, stdout, answer) { " + data.spj + " })(" + ${JSON.stringify(argsSrc)} + ")";`,
+        'const script = new vm.Script(vmSrc);',
+        'try {',
+        `  const result = script.runInContext(sandbox, { timeout: ${SPJ_TIMEOUT_MS} });`,
+        '  process.stdout.write(JSON.stringify({ ok: true, pass: (result === true || result === 1 || result === "AC") }));',
+        '} catch (e) {',
+        '  process.stdout.write(JSON.stringify({ ok: false, error: String((e && e.message) || e) }));',
+        '}'
+      ].join('\n');
+      fs.writeFileSync(wrapperFile, wrapper, 'utf8');
+      fs.writeFileSync(dataFile, JSON.stringify({ spj: String(spjCode ?? '') }), 'utf8');
+
+      const proc = spawn(process.execPath, [wrapperFile], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      });
+      let out = '';
+      proc.stdout.on('data', (d) => {
+        out += d.toString();
+        if (out.length > 65536) { try { proc.kill('SIGKILL'); } catch {} }
+      });
+
+      // 硬超时: 独立 kill 子进程，不阻塞事件循环
+      timer = setTimeout(() => {
+        try { proc.kill('SIGKILL'); } catch {}
+        finish(false);
+      }, SPJ_TIMEOUT_MS + 1000);
+
+      proc.on('error', () => finish(false));
+      proc.on('close', () => {
+        try {
+          const j = JSON.parse(out.trim().split('\n').pop());
+          finish(!!(j && j.ok && j.pass));
+        } catch { finish(false); }
+      });
+    } catch {
+      finish(false);
+    }
+  });
 }
 
 function statusToConstant(status) {
@@ -159,7 +221,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
         continue;
       }
       const answer = submission.answer_data || '';
-      const passed = compareOutput(expected, answer, problem);
+      const passed = await compareOutput(expected, answer, problem);
       const status = passed ? 'accepted' : 'wrong_answer';
       updateDetail.run(status, 0, 0, 0, answer.slice(0, MAX_OUTPUT_LOG_CHARS), '', 0, '', detailId);
       tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed: 0, memoryUsed: 0, stdout: answer.slice(0, MAX_OUTPUT_LOG_CHARS), stderr: '', exitCode: 0, detailId });
@@ -261,7 +323,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
             const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
 
             const timeUsed = result.timeUsed;
-            const passed = compareOutput(expected, result.stdout, problem);
+            const passed = await compareOutput(expected, result.stdout, problem);
             let status = passed ? 'accepted' : 'wrong_answer';
             if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
             else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
@@ -294,7 +356,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
 
           const timeUsed = result.timeUsed;
-          const passed = compareOutput(expected, result.stdout, problem);
+          const passed = await compareOutput(expected, result.stdout, problem);
           let status = passed ? 'accepted' : 'wrong_answer';
           if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
           else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';

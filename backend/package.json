@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/"
+    "test": "node --test test/scorer.test.js test/compare.test.js test/ratelimit.test.js test/plagiarism.test.js"
   },
   "dependencies": {
     "adm-zip": "^0.6.0",

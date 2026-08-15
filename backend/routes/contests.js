@@ -313,7 +313,8 @@ router.post('/:id/unfreeze', requireAuth, requireRole('admin'), (req, res) => {
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
-  db.prepare("UPDATE contests SET unfrozen = 1, unfrozen_at = datetime('now') WHERE id = ?").run(contest.id);
+  // D-L17: 统一为 UTC ISO 8601（带 Z），与 freeze_at/toISOString 一致，避免前端 new Date() 本地时区解析偏差
+  db.prepare("UPDATE contests SET unfrozen = 1, unfrozen_at = ? WHERE id = ?").run(new Date().toISOString(), contest.id);
   const updated = db.prepare('SELECT * FROM contests WHERE id = ?').get(contest.id);
   // 解冻后广播给该比赛房间
   try {

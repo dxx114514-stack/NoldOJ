@@ -642,7 +642,37 @@ static SIZE_T getJobPeakMemKB(HANDLE hJob) {
 }
 
 // ── 写元数据 JSON 到文件 ──────────────────────────────────
+// 递归删除目录树（用于清理被恶意创建的目录型 _meta.json）
+static void deleteTreeW(const wchar_t* root) {
+    std::wstring pat = std::wstring(root) + L"\\*";
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(pat.c_str(), &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+            std::wstring sub = std::wstring(root) + L"\\" + fd.cFileName;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                deleteTreeW(sub.c_str());
+            else
+                DeleteFileW(sub.c_str());
+        } while (FindNextFileW(hFind, &fd));
+        FindClose(hFind);
+    }
+    RemoveDirectoryW(root);
+}
+
+// D-L14: 写入元数据前确保 metaFile 不是目录。
+// 恶意提交可在 workDir 内预创建名为 _meta.json 的目录，导致 fopen("w") 失败、
+// 元数据丢失（executor 读不到 meta → 回退到进程退出码，判题信息失真）。
+static void ensureMetaPath(const char* path) {
+    std::wstring wp = utf8ToWide(path);
+    DWORD attr = GetFileAttributesW(wp.c_str());
+    if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY))
+        deleteTreeW(wp.c_str());
+}
+
 static void writeMeta(const char* path, int exitCode, DWORD timeMs, SIZE_T memKB, const char* signal) {
+    ensureMetaPath(path);
     FILE* f = fopen(path, "w");
     if (!f) return;
     // JSON 字符串转义：防止 signal 含双引号/反斜杠导致元数据被破坏
@@ -725,8 +755,8 @@ int main(int argc, char* argv[]) {
         if (env && env[0] == '1') forceContainer = true;
     }
     // 管理员诊断开关：WINOJ_EXEC_MODE 切换子进程创建路径
-    //   0 = 默认（受限令牌，先尝试容器，基线）
-    //   1 = 受限令牌 + 强制 Low Integrity
+    //   0 = 默认（受限令牌 + Low Integrity，先尝试容器，基线）
+    //   1 = 受限令牌 + 强制 Low Integrity（等价默认，保留兼容）
     //   2 = 裸进程 CreateProcessA（继承提权令牌）
     //   3 = 受限令牌 + 不带 CREATE_NO_WINDOW
     int execMode = 0;
@@ -752,8 +782,17 @@ int main(int argc, char* argv[]) {
     // stdio 句柄已重定向到管道/文件时该标志本就多余，直接去除。
     DWORD flags = CREATE_SUSPENDED;
 
-    // 模式1：把受限令牌降为 Low Integrity（HIGH IL + 受限令牌可能是冻结根源）
-    if (execMode == 1 && hRestricted) {
+    // C-1: 受限令牌路径默认降为 Low Integrity（普通用户部署也能获得
+    // 文件系统/进程低完整性隔离，禁止写入高完整性位置、削弱对其他
+    // 同用户进程的攻击面）。AppContainer 自身强制 Low/Untrusted IL，
+    // 无需额外处理。逃生阀 WINOJ_NO_LOWIL=1 显式关闭；
+    // 诊断模式 2（裸进程）与 AppContainer 优先路径不受影响。
+    bool lowIl = true;
+    {
+        const char* env = getenv("WINOJ_NO_LOWIL");
+        if (env && env[0] == '1') lowIl = false;
+    }
+    if (lowIl && execMode != 2 && hRestricted) {
         TOKEN_MANDATORY_LABEL low = {};
         SID_IDENTIFIER_AUTHORITY ia = SECURITY_MANDATORY_LABEL_AUTHORITY;
         if (AllocateAndInitializeSid(&ia, 1, SECURITY_MANDATORY_LOW_RID, 0, 0, 0, 0, 0, 0, 0, &low.Label.Sid)) {

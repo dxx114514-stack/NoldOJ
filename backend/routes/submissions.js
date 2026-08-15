@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { createRateLimit } = require('../middleware/ratelimit');
@@ -274,7 +275,16 @@ router.get('/:id/diff', requireAuth, (req, res) => {
     if (waDetail) {
       let expected = waDetail.output_data || '';
       if (!expected && waDetail.output_file) {
-        try { expected = fs.readFileSync(waDetail.output_file, 'utf8'); } catch {}
+        try {
+          // D-L5(读取侧)/D-H2: 与判题端 readTestdata 同款包含校验，
+          // 只允许读取 problems 目录内文件，杜绝历史脏数据 output_file 指向任意路径被回读
+          const problemsRoot = path.resolve(__dirname, '..', '..', 'problems');
+          const resolved = path.resolve(waDetail.output_file);
+          if (!path.isAbsolute(waDetail.output_file) && resolved.startsWith(problemsRoot + path.sep)) {
+            const stat = fs.statSync(resolved);
+            if (stat.size <= 16 * 1024 * 1024) expected = fs.readFileSync(resolved, 'utf8');
+          }
+        } catch {}
       }
       result.expected_output = expected;
       result.actual_output = waDetail.stdout || '';

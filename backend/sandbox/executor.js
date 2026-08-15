@@ -194,8 +194,10 @@ function collectExtraSources(workDir, srcFile) {
 function killProc(proc, isWindows) {
   try {
     if (isWindows && proc.pid) {
-      // 不经 shell 拼接，避免 PID/路径注入（spawnSync 参数数组形式）
-      spawnSync('taskkill', ['/F', '/PID', String(proc.pid), '/T'], { windowsHide: true, timeout: 5000 });
+      // D-M12: taskkill 由 spawnSync 改为异步 spawn（fire-and-forget），
+      // 消除超时杀进程时对事件循环的同步阻塞；进程树清理由 taskkill /T 完成。
+      const killer = spawn('taskkill', ['/F', '/PID', String(proc.pid), '/T'], { windowsHide: true, stdio: 'ignore' });
+      killer.unref();
     } else {
       proc.kill('SIGKILL');
     }
@@ -426,4 +428,42 @@ function cleanupWorkDir(workDir) {
   } catch {}
 }
 
-module.exports = { prepareWorkDir, prepareWorkDirMulti, compile, runCode, cleanupWorkDir, loadLanguageConfig };
+// D-M13: 服务重启后回收上次崩溃遗留的孤儿进程与临时目录
+// （上次运行崩溃/强杀时，spawn 的子进程可能残留继续占用 CPU/内存）。
+// 仅回收命令行引用沙箱临时目录的进程，绝不误杀无关进程。
+function cleanupOrphanProcesses() {
+  const tempDir = config.sandbox.tempDir;
+  try {
+    if (!fs.existsSync(tempDir)) return;
+    const orphans = [];
+    if (process.platform === 'win32') {
+      // 用 PowerShell 枚举命令行含 tempDir 的进程（仅查询，不回显）
+      const q = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${tempDir}*' -and $_.ProcessId -ne $PID } | Select-Object -ExpandProperty ProcessId`;
+      const res = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', q], { encoding: 'utf8', windowsHide: true, timeout: 15000 });
+      if (res.status === 0 && res.stdout) {
+        for (const line of res.stdout.split(/\r?\n/)) {
+          const pid = parseInt(line.trim(), 10);
+          if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) orphans.push(pid);
+        }
+      }
+      for (const pid of orphans) {
+        spawn('taskkill', ['/F', '/PID', String(pid), '/T'], { windowsHide: true, stdio: 'ignore' }).unref();
+      }
+    } else {
+      // 非 Windows: 由 Job Object/KILL_ON_JOB_CLOSE 兜底，这里仅清理临时目录
+      spawnSync('pkill', ['-f', tempDir], { stdio: 'ignore', timeout: 5000 });
+    }
+    // 清理遗留临时工作目录
+    for (const entry of fs.readdirSync(tempDir)) {
+      const full = path.join(tempDir, entry);
+      try { fs.rmSync(full, { recursive: true, force: true, maxRetries: 3 }); } catch {}
+    }
+    if (orphans.length > 0) {
+      console.log(`[ORPHAN] Killed ${orphans.length} orphaned sandbox process(es) from previous run`);
+    }
+  } catch (err) {
+    // 清理失败不影响启动，仅记录
+  }
+}
+
+module.exports = { prepareWorkDir, prepareWorkDirMulti, compile, runCode, cleanupWorkDir, loadLanguageConfig, cleanupOrphanProcesses };

@@ -1,7 +1,10 @@
 const crypto = require('crypto');
 
 // 自绘 SVG 验证码：替代已停止维护的 svg-captcha（1.4.0，2019 年后无更新）。
-// 无第三方依赖，字符以 <text> 元素渲染（便于测试解析），内置噪线/噪点/旋转干扰。
+// 无第三方依赖，字符以 <text> 元素渲染，内置噪线/噪点/旋转干扰。
+// D-M2: 所有随机数改用 crypto.randomInt（CSPRNG，消除 Math.random 可预测性）；
+//       叠加 feTurbulence + feDisplacementMap 波形扭曲滤镜，破坏对 SVG DOM/位图
+//       的自动字符提取（字符轮廓被位移，简单 OCR/模板匹配显著失效）。
 
 const sessions = new Map();
 const CAPTCHA_TTL = 5 * 60 * 1000;
@@ -13,7 +16,9 @@ const WIDTH = 120;
 const HEIGHT = 44;
 
 function randInt(a, b) {
-  return a + Math.floor(Math.random() * (b - a + 1));
+  if (!Number.isInteger(a) || !Number.isInteger(b) || b < a) return a;
+  // crypto.randomInt([max]) / crypto.randomInt(min, max) 返回 [min, max) 内均匀整数
+  return crypto.randomInt(a, b + 1);
 }
 
 function randColor() {
@@ -37,12 +42,12 @@ function generateSvg(text) {
   const glyphs = chars.map((ch, i) => {
     const x = 18 + i * 26;
     const y = randInt(26, 34);
-    const rotate = randInt(-18, 18);
+    const rotate = randInt(-20, 20);
     const color = randColor();
     return `<text x="${x}" y="${y}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="bold" fill="${color}" transform="rotate(${rotate} ${x} ${y})">${ch}</text>`;
   }).join('');
 
-  // 噪线
+  // 噪线 + 随机贝塞尔干扰曲线
   const lines = [];
   for (let i = 0; i < 3; i++) {
     const x1 = randInt(0, WIDTH * 0.3);
@@ -51,6 +56,15 @@ function generateSvg(text) {
     const y2 = randInt(0, HEIGHT);
     lines.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${randColor()}" stroke-width="1" opacity="0.6"/>`);
   }
+  for (let i = 0; i < 2; i++) {
+    const mx = randInt(0, WIDTH);
+    const my = randInt(0, HEIGHT);
+    const cx1 = randInt(0, WIDTH);
+    const cy1 = randInt(0, HEIGHT);
+    const cx2 = randInt(0, WIDTH);
+    const cy2 = randInt(0, HEIGHT);
+    lines.push(`<path d="M${mx} ${my} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${randInt(0, WIDTH)} ${randInt(0, HEIGHT)}" stroke="${randColor()}" stroke-width="1.2" fill="none" opacity="0.5"/>`);
+  }
 
   // 噪点
   const dots = [];
@@ -58,7 +72,11 @@ function generateSvg(text) {
     dots.push(`<circle cx="${randInt(0, WIDTH)}" cy="${randInt(0, HEIGHT)}" r="${randInt(1, 2)}" fill="${randColor()}" opacity="0.5"/>`);
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}"><rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>${dots.join('')}${lines.join('')}${glyphs}</svg>`;
+  // D-M2: 波形扭曲滤镜 —— 对整组图形施加随机 displacement，
+  // 字符像素被非线性平移，自动提取/OCR 的字符边界被破坏。
+  const turbSeed = randInt(0, 1000);
+  const scale = randInt(4, 7);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}"><defs><filter id="wob" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.08 0.12" numOctaves="2" seed="${turbSeed}" result="t"/><feDisplacementMap in="SourceGraphic" in2="t" scale="${scale}" xChannelSelector="R" yChannelSelector="G"/></filter></defs><rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>${dots.join('')}${lines.join('')}<g filter="url(#wob)">${glyphs}</g></svg>`;
 }
 
 function generateCaptcha() {
@@ -91,6 +109,8 @@ function cleanup() {
   }
 }
 
-setInterval(cleanup, 60 * 1000);
+// unref: 清理定时器不阻止进程退出（node --test 可正常结束；生产不受影响）
+const cleanupTimer = setInterval(cleanup, 60 * 1000);
+if (cleanupTimer.unref) cleanupTimer.unref();
 
 module.exports = { generateCaptcha, verifyCaptcha };

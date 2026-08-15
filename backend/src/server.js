@@ -307,6 +307,10 @@ async function main() {
   const { initSocket } = require('../services/socket');
   initSocket(server);
 
+  // 重启后回收上次崩溃遗留的孤儿判题进程/临时目录（D-M13）
+  const { cleanupOrphanProcesses } = require('../sandbox/executor');
+  try { cleanupOrphanProcesses(); } catch {}
+
   // 重启后恢复中断的判题任务（内存队列在进程退出时丢失）
   const { recoverInterruptedSubmissions } = require('../services/judge');
   const recovered = recoverInterruptedSubmissions();
