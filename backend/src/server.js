@@ -192,6 +192,9 @@ async function main() {
   const discussionRoutes = require('../routes/discussions');
   const { router: virtualContestRoutes } = require('../routes/virtual-contests');
   const plagiarismRoutes = require('../routes/plagiarism');
+  const favoriteRoutes = require('../routes/favorites');
+  const achievementRoutes = require('../routes/achievements');
+  const statisticRoutes = require('../routes/statistics');
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/problems', problemRoutes);
@@ -209,6 +212,9 @@ async function main() {
   app.use('/api/v1/discussions', discussionRoutes);
   app.use('/api/v1/virtual-contests', virtualContestRoutes);
   app.use('/api/v1/plagiarism', plagiarismRoutes);
+  app.use('/api/v1/favorites', favoriteRoutes);
+  app.use('/api/v1/achievements', achievementRoutes);
+  app.use('/api/v1/statistics', statisticRoutes);
 
   const routeList = [
     ['/api/v1/auth', '认证'],
@@ -227,6 +233,9 @@ async function main() {
     ['/api/v1/discussions', '讨论'],
     ['/api/v1/virtual-contests', '虚拟比赛'],
     ['/api/v1/plagiarism', '查重'],
+    ['/api/v1/favorites', '题目收藏'],
+    ['/api/v1/achievements', '成就'],
+    ['/api/v1/statistics', '个人数据看板'],
   ];
   logInfo('ROUTER', `Registered ${routeList.length} route groups:`);
   for (const [path, name] of routeList) {

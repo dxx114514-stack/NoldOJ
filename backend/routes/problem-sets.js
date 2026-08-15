@@ -2,19 +2,19 @@ const express = require('express');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
-const { isAdminOrSu } = require('../utils/roles');
+const { isStaff, isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
 // 列表（公开题单 + 分页）
-router.get('/', (req, res) => {
+router.get('/', optionalAuth, (req, res) => {
   const { page = 1, size = 20 } = req.query;
   const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 20, 50);
 
   const total = db.prepare('SELECT COUNT(*) as c FROM problem_sets WHERE is_public = 1').get().c;
   const items = db.prepare(`
-    SELECT ps.id, ps.title, ps.description, ps.creator_id, ps.is_public, ps.created_at,
+    SELECT ps.id, ps.title, ps.description, ps.creator_id, ps.is_public, ps.type, ps.created_at,
            u.username as creator_name,
            (SELECT COUNT(*) FROM problem_set_items WHERE set_id = ps.id) as problem_count
     FROM problem_sets ps LEFT JOIN users u ON ps.creator_id = u.id
@@ -38,6 +38,18 @@ router.get('/', (req, res) => {
   }
 
   res.json({ total, page: pageNum, size: sizeNum, problem_sets: result });
+});
+
+// 我的题单（公开 + 个人私有）
+router.get('/mine', requireAuth, (req, res) => {
+  const items = db.prepare(`
+    SELECT ps.id, ps.title, ps.description, ps.creator_id, ps.is_public, ps.type, ps.created_at,
+           (SELECT COUNT(*) FROM problem_set_items WHERE set_id = ps.id) as problem_count
+    FROM problem_sets ps
+    WHERE ps.creator_id = ?
+    ORDER BY ps.id DESC
+  `).all(req.user.id);
+  res.json({ problem_sets: items });
 });
 
 // 详情（含题目列表 + 当前用户进度）
@@ -96,14 +108,32 @@ router.get('/:id/progress', requireAuth, (req, res) => {
   res.json({ total: items.length, solved, items });
 });
 
-// 创建（admin/teacher）
-router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description = '', is_public = 1, problemIds = [] } = req.body;
+// 创建：教师/管理员可建公开题单；普通用户可建个人私有题单（type='personal'，仅自己可见）
+router.post('/', requireAuth, (req, res) => {
+  const { title, description = '', is_public = 1, problemIds = [], type = 'public' } = req.body;
   if (!title || !title.trim()) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
+  const isTeacher = isStaff(req.user.role);
+  if (type === 'personal') {
+    // 个人题单强制私有
+    const result = db.prepare(
+      "INSERT INTO problem_sets (title, description, creator_id, is_public, type) VALUES (?, ?, ?, 0, 'personal')"
+    ).run(title.trim(), description, req.user.id);
+    const setId = result.lastInsertRowid;
+    if (Array.isArray(problemIds) && problemIds.length > 0) {
+      const ins = db.prepare('INSERT OR IGNORE INTO problem_set_items (set_id, problem_id, sort_order) VALUES (?, ?, ?)');
+      problemIds.forEach((pid, idx) => ins.run(setId, pid, idx));
+    }
+    const ps = db.prepare('SELECT * FROM problem_sets WHERE id = ?').get(setId);
+    return res.status(201).json(ps);
+  }
+  // 公开题单需教师+
+  if (!isTeacher) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '公开题单需要教师或管理员权限。' });
+  }
   const result = db.prepare(
-    'INSERT INTO problem_sets (title, description, creator_id, is_public) VALUES (?, ?, ?, ?)'
+    "INSERT INTO problem_sets (title, description, creator_id, is_public, type) VALUES (?, ?, ?, ?, 'public')"
   ).run(title.trim(), description, req.user.id, is_public ? 1 : 0);
   const setId = result.lastInsertRowid;
   if (Array.isArray(problemIds) && problemIds.length > 0) {
@@ -114,8 +144,8 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
   res.status(201).json(ps);
 });
 
-// 更新（作者或 admin）
-router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
+// 更新（作者或 admin；个人题单作者可为普通用户）
+router.put('/:id', requireAuth, (req, res) => {
   const ps = db.prepare('SELECT * FROM problem_sets WHERE id = ?').get(req.params.id);
   if (!ps) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem set not found.' });
@@ -123,11 +153,15 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (req.user.id !== ps.creator_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit others\' problem sets.' });
   }
+  // 非教师不允许把个人题单改为公开，也不允许改他人创建的公开题单
+  if (!isStaff(req.user.role) && ps.type === 'public') {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit public problem sets.' });
+  }
   const { title, description, is_public } = req.body;
   const u = buildUpdates([
     { key: 'title', value: title !== undefined ? title.trim() : undefined },
     { key: 'description', value: description },
-    { key: 'is_public', value: is_public, transform: v => v ? 1 : 0 }
+    { key: 'is_public', value: is_public, transform: v => (isStaff(req.user.role) && ps.type !== 'personal') ? (v ? 1 : 0) : 0 }
   ]);
   if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
@@ -137,14 +171,17 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   res.json(updated);
 });
 
-// 设置题目列表（覆盖式）
-router.put('/:id/problems', requireAuth, requireRole('teacher'), (req, res) => {
+// 设置题目列表（覆盖式；个人题单作者可为普通用户）
+router.put('/:id/problems', requireAuth, (req, res) => {
   const ps = db.prepare('SELECT * FROM problem_sets WHERE id = ?').get(req.params.id);
   if (!ps) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem set not found.' });
   }
   if (req.user.id !== ps.creator_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot modify others\' problem sets.' });
+  }
+  if (!isStaff(req.user.role) && ps.type === 'public') {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot modify public problem sets.' });
   }
   const { problemIds } = req.body;
   if (!Array.isArray(problemIds)) {
@@ -156,14 +193,17 @@ router.put('/:id/problems', requireAuth, requireRole('teacher'), (req, res) => {
   res.json({ message: 'Problem list updated.', count: problemIds.length });
 });
 
-// 删除（作者或 admin）
-router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
+// 删除（作者或 admin；个人题单作者可为普通用户）
+router.delete('/:id', requireAuth, (req, res) => {
   const ps = db.prepare('SELECT * FROM problem_sets WHERE id = ?').get(req.params.id);
   if (!ps) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem set not found.' });
   }
   if (req.user.id !== ps.creator_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete others\' problem sets.' });
+  }
+  if (!isStaff(req.user.role) && ps.type === 'public') {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot delete public problem sets.' });
   }
   db.prepare('DELETE FROM problem_set_progress WHERE set_id = ?').run(ps.id);
   db.prepare('DELETE FROM problem_set_items WHERE set_id = ?').run(ps.id);

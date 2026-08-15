@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成就 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">🏆 我的成就</h1>
+      <div id="progress" class="mt-3 text-sm text-gray-500 dark:text-gray-400"></div>
+    </div>
+    <div id="grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('achievements');
+    if (!getToken()) window.location.href = '/pages/login.html';
+
+    async function load() {
+      try {
+        const data = await apiCall('GET', '/achievements');
+        document.getElementById('progress').innerHTML = `已解锁 <span class="text-indigo-600 dark:text-indigo-400 font-bold">${data.unlocked}</span> / ${data.total} 个成就`;
+        document.getElementById('grid').innerHTML = data.achievements.map(a => `
+          <div class="${a.unlocked ? 'bg-white dark:bg-gray-800 dark:bg-gray-800 border-amber-300 dark:border-amber-600' : 'bg-white dark:bg-gray-800 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-60'} rounded-2xl shadow-sm dark:shadow-gray-900/30 border p-5 text-center transition hover:shadow-md">
+            <div class="text-4xl mb-3 ${a.unlocked ? '' : 'grayscale'}">${a.icon}</div>
+            <div class="font-bold text-gray-900 dark:text-white">${escapeHtml(a.name)}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-2 leading-relaxed">${escapeHtml(a.description)}</div>
+            ${a.unlocked
+              ? `<div class="mt-3 text-[11px] text-amber-600 dark:text-amber-400">✓ ${new Date(a.unlocked_at).toLocaleDateString()} 解锁</div>`
+              : `<div class="mt-3 text-[11px] text-gray-400">未解锁</div>`}
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('grid').innerHTML = `<p class="col-span-full text-center text-red-500 py-12">${err.message || '加载失败'}</p>`;
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

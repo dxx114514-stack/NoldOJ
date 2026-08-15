@@ -55,6 +55,9 @@
                 </div>
               </div>
               <div class="flex items-center space-x-2">
+                <button id="favBtn" onclick="toggleFavorite(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="收藏本题">
+                  ☆ 收藏
+                </button>
                 <button onclick="copyProblemMarkdown(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="复制为 Markdown">
                   📋 复制 Markdown
                 </button>
@@ -128,6 +131,46 @@
       }
     }
     loadProblem();
+    // 收藏按钮：初始化状态 + 切换
+    let favorited = false;
+    async function initFavorite() {
+      if (!getToken()) return;
+      const btn = document.getElementById('favBtn');
+      if (!btn) return;
+      try {
+        const d = await apiCall('GET', `/favorites/status?ids=${pid}`);
+        favorited = !!d.favorites[pid];
+        btn.innerHTML = favorited ? '★ 已收藏' : '☆ 收藏';
+        btn.classList.toggle('bg-yellow-100', favorited);
+        btn.classList.toggle('text-yellow-700', favorited);
+        btn.classList.toggle('dark:bg-yellow-900/30', favorited);
+        btn.classList.toggle('dark:text-yellow-300', favorited);
+      } catch {}
+    }
+    async function toggleFavorite(btn) {
+      if (!getToken()) {
+        window.location.href = '/pages/login.html';
+        return;
+      }
+      try {
+        if (favorited) {
+          await apiCall('DELETE', `/favorites/${pid}`);
+          favorited = false;
+          btn.innerHTML = '☆ 收藏';
+        } else {
+          await apiCall('POST', `/favorites/${pid}`, {});
+          favorited = true;
+          btn.innerHTML = '★ 已收藏';
+        }
+        btn.classList.toggle('bg-yellow-100', favorited);
+        btn.classList.toggle('text-yellow-700', favorited);
+        btn.classList.toggle('dark:bg-yellow-900/30', favorited);
+        btn.classList.toggle('dark:text-yellow-300', favorited);
+      } catch (err) {
+        alert(err.message || '操作失败');
+      }
+    }
+    initFavorite();
     function copySample(btn, preId) {
       const text = document.getElementById(preId).textContent;
       navigator.clipboard.writeText(text).then(() => {

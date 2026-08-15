@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据看板 - WinOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">📊 个人数据看板</h1>
+    <div id="overview" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">提交日历</h3>
+        <div id="calChart" style="height:200px"></div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">语言分布</h3>
+        <div id="langChart" style="height:200px"></div>
+      </div>
+    </div>
+    <div class="mt-6 bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">AC 题目难度分布</h3>
+      <div id="diffChart" style="height:260px"></div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('profile');
+    if (!getToken()) window.location.href = '/pages/login.html';
+
+    const DIFF = ['入门','简单','中等','较难','困难','极难'];
+    const charts = {};
+
+    async function load() {
+      try {
+        const d = await apiCall('GET', '/statistics/me/stats');
+        // 概览卡片
+        const o = d.overview;
+        const cards = [
+          ['提交次数', o.totalSubmits, 'text-indigo-600'],
+          ['AC 次数', o.totalAccepted, 'text-green-600'],
+          ['AC 题目', o.totalProblems, 'text-blue-600'],
+          ['收藏', o.totalFavorites, 'text-yellow-600'],
+          ['成就', o.achievements, 'text-purple-600']
+        ];
+        document.getElementById('overview').innerHTML = cards.map(([label, val, color]) => `
+          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-5 text-center">
+            <div class="text-2xl font-bold ${color}">${val}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">${label}</div>
+          </div>
+        `).join('');
+
+        // 提交日历（近 90 天柱状）
+        const cal = d.calendar.slice(-90);
+        charts.cal = echarts.init(document.getElementById('calChart'));
+        charts.cal.setOption({
+          tooltip: { trigger: 'axis' },
+          grid: { left: 30, right: 10, top: 20, bottom: 25 },
+          xAxis: { type: 'category', data: cal.map(c => c.date.slice(5)), axisLabel: { fontSize: 10 } },
+          yAxis: { type: 'value', minInterval: 1 },
+          series: [
+            { name: '提交', type: 'bar', stack: 's', data: cal.map(c => c.submits), itemStyle: { color: '#6366f1' }, barWidth: '70%' },
+            { name: 'AC', type: 'bar', stack: 's', data: cal.map(c => c.acs), itemStyle: { color: '#10b981' }, barWidth: '70%' }
+          ]
+        });
+
+        // 语言分布饼图
+        const langs = d.languages;
+        charts.lang = echarts.init(document.getElementById('langChart'));
+        charts.lang.setOption({
+          tooltip: { trigger: 'item' },
+          legend: { bottom: 0, textStyle: { fontSize: 11 } },
+          series: [{
+            type: 'pie',
+            radius: ['35%', '65%'],
+            data: langs.map(l => ({ name: l.language, value: l.submits })),
+            label: { fontSize: 11 }
+          }]
+        });
+
+        // 难度分布
+        const diffs = d.difficulty;
+        const diffData = DIFF.map((name, i) => ({ name, value: (diffs.find(x => x.difficulty === i) || {}).count || 0 }));
+        charts.diff = echarts.init(document.getElementById('diffChart'));
+        charts.diff.setOption({
+          tooltip: { trigger: 'item' },
+          legend: { bottom: 0, textStyle: { fontSize: 11 } },
+          series: [{
+            type: 'pie',
+            radius: ['30%', '60%'],
+            data: diffData.filter(x => x.value > 0),
+            label: { fontSize: 11 }
+          }]
+        });
+
+        window.addEventListener('resize', () => {
+          Object.values(charts).forEach(c => { try { c.resize(); } catch {} });
+        });
+      } catch (err) {
+        document.body.insertAdjacentHTML('afterbegin', `<div class="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-center py-4 text-sm">${err.message || '加载失败'}</div>`);
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

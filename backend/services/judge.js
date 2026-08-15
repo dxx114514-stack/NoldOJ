@@ -6,6 +6,7 @@ const sandbox = require('../sandbox/executor');
 const config = require('../config/config');
 const { runScoringScript } = require('../sandbox/scorer');
 const { emitJudgeStatus, emitContestRanking } = require('./socket');
+const { checkAchievements } = require('./achievements');
 const { sanitizeLog } = require('../utils/securityHelpers');
 
 // 魔法数字常量: 评分规则 / 日志截断 / 资源限制
@@ -557,6 +558,11 @@ async function judgeSubmission(submissionId) {
 
     // 推送最终评测状态
     emitJudgeStatus(submissionId, submission.user_id, updated.status);
+
+    // 成就检查（每次评测结束触发，含非 AC，用于连续做题天数的累计）
+    try {
+      checkAchievements(submission.user_id, submission.problem_id, submission.language, updated.created_at || submission.created_at);
+    } catch {}
 
     if (updated.status === 'compile_error' && !wasCompileError) {
       db.prepare('UPDATE users SET rating = rating + ? WHERE id = ?').run(RATING_DELTA_COMPILE_ERROR, submission.user_id);

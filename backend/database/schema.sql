@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS problem_sets (
   description TEXT DEFAULT '',
   creator_id INTEGER NOT NULL,
   is_public INTEGER DEFAULT 1,
+  type TEXT DEFAULT 'public' CHECK(type IN ('public','personal')),
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (creator_id) REFERENCES users(id)
 );
@@ -366,3 +367,33 @@ CREATE INDEX IF NOT EXISTS idx_discussions_problem ON discussions(problem_id);
 CREATE INDEX IF NOT EXISTS idx_discussions_contest ON discussions(contest_id);
 CREATE INDEX IF NOT EXISTS idx_discussions_pinned ON discussions(pinned);
 CREATE INDEX IF NOT EXISTS idx_discussion_replies_discussion ON discussion_replies(discussion_id);
+
+-- 题目收藏（个人收藏夹）
+CREATE TABLE IF NOT EXISTS user_favorites (
+  user_id INTEGER NOT NULL,
+  problem_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, problem_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+
+-- 成就定义（预置种子）
+CREATE TABLE IF NOT EXISTS achievements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  icon TEXT DEFAULT '🏅',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- 用户已解锁成就
+CREATE TABLE IF NOT EXISTS user_achievements (
+  user_id INTEGER NOT NULL,
+  achievement_id INTEGER NOT NULL,
+  unlocked_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, achievement_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
+);

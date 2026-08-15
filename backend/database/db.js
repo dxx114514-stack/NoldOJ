@@ -20,7 +20,8 @@ const ALLOWED_TABLES = new Set([
   'uploaded_files', 'refresh_tokens', 'ide_runs', 'tags', 'problem_tags',
   'categories', 'problem_categories', 'email_codes', 'announcements',
   'submission_files', 'problem_sets', 'problem_set_items', 'problem_set_progress',
-  'discussions', 'discussion_replies', 'virtual_contests', 'plagiarism_tasks', 'plagiarism_pairs'
+  'discussions', 'discussion_replies', 'virtual_contests', 'plagiarism_tasks', 'plagiarism_pairs',
+  'user_favorites', 'achievements', 'user_achievements'
 ]);
 
 // 返回表中的下一个可用 ID。
@@ -222,6 +223,7 @@ async function initDB() {
       description TEXT DEFAULT '',
       creator_id INTEGER NOT NULL,
       is_public INTEGER DEFAULT 1,
+      type TEXT DEFAULT 'public' CHECK(type IN ('public','personal')),
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (creator_id) REFERENCES users(id)
     )`);
@@ -248,6 +250,10 @@ async function initDB() {
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_set_items_set ON problem_set_items(set_id)');
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_set_progress_user ON problem_set_progress(user_id)');
   }
+
+  // 渐进式：problem_sets 增加 type 列（区分公开题单/个人私有题单）
+  const psCols = tableCols('problem_sets');
+  if (!psCols.includes('type')) sqlDb.exec("ALTER TABLE problem_sets ADD COLUMN type TEXT DEFAULT 'public'");
 
   // 功能8：讨论 / 题解区
   if (!tableExists('discussions')) {
@@ -329,6 +335,57 @@ async function initDB() {
       FOREIGN KEY (task_id) REFERENCES plagiarism_tasks(id) ON DELETE CASCADE
     )`);
     sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_plagiarism_pairs_task ON plagiarism_pairs(task_id)');
+  }
+
+  // 功能11：题目收藏
+  if (!tableExists('user_favorites')) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS user_favorites (
+      user_id INTEGER NOT NULL,
+      problem_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, problem_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+    )`);
+  }
+
+  // 功能12：成就系统
+  if (!tableExists('achievements')) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS achievements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      icon TEXT DEFAULT '🏅',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`);
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS user_achievements (
+      user_id INTEGER NOT NULL,
+      achievement_id INTEGER NOT NULL,
+      unlocked_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, achievement_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
+    )`);
+  }
+
+  // 预置成就种子
+  const presetAchievements = [
+    ['first_ac', '初见杀', 'AC 人生中的第一道题', '🎯'],
+    ['ac_10', '小有所成', '累计通过 10 道题', '🌟'],
+    ['ac_50', '刷题达人', '累计通过 50 道题', '🔥'],
+    ['ac_100', '百题斩', '累计通过 100 道题', '⚔️'],
+    ['submit_100', '笔耕不辍', '累计提交 100 次', '📝'],
+    ['all_rounder', '全能选手', '用 C++、Python、Java 三种语言 AC 同一道题', '🌈'],
+    ['night_owl', '夜猫子', '在凌晨 2 点到 5 点之间 AC 一道题', '🦉'],
+    ['streak_3', '三日不辍', '连续 3 天登录并做题', '📅'],
+    ['streak_7', '坚持不懈', '连续 7 天登录并做题', '🏃'],
+    ['streak_30', '月满勤', '连续 30 天登录并做题', '👑']
+  ];
+  const achCount = sqlDb.prepare('SELECT COUNT(*) as c FROM achievements').get()?.c || 0;
+  if (achCount === 0) {
+    const ins = sqlDb.prepare('INSERT INTO achievements (code, name, description, icon) VALUES (?, ?, ?, ?)');
+    for (const [code, name, desc, icon] of presetAchievements) ins.run(code, name, desc, icon);
   }
 
   const langCount = sqlDb.prepare('SELECT COUNT(*) as c FROM languages').get()?.c || 0;

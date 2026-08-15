@@ -28,4 +28,4 @@ function canManage(operator, target) {
   return true;
 }
 
-module.exports = { ROLE_HIERARCHY, roleLevel, isValidRole, isStaff, canManage };
+module.exports = { ROLE_HIERARCHY, roleLevel, isValidRole, isStaff, isAdminOrSu, canManage };
