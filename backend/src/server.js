@@ -195,6 +195,7 @@ async function main() {
   const favoriteRoutes = require('../routes/favorites');
   const achievementRoutes = require('../routes/achievements');
   const statisticRoutes = require('../routes/statistics');
+  const aiHintRoutes = require('../routes/aiHint');
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/problems', problemRoutes);
@@ -215,6 +216,7 @@ async function main() {
   app.use('/api/v1/favorites', favoriteRoutes);
   app.use('/api/v1/achievements', achievementRoutes);
   app.use('/api/v1/statistics', statisticRoutes);
+  app.use('/api/v1/problems', aiHintRoutes);
 
   const routeList = [
     ['/api/v1/auth', '认证'],

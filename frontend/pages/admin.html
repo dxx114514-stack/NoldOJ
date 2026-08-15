@@ -171,6 +171,7 @@
             <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">测试点列表</h4>
             <div class="flex space-x-2">
               <button onclick="showBatchSetModal()" class="text-xs px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-lg hover:bg-amber-200">⚙️ 一键设置</button>
+              <button onclick="aiGenerateTestdata()" class="text-xs px-2 py-1 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded-lg hover:bg-violet-200">🤖 AI 生成</button>
               <button onclick="addTestCase()" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200">+ 添加测试点</button>
               <button onclick="batchAddTestCases()" class="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200">批量添加</button>
               <label class="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/30 cursor-pointer">
@@ -1261,6 +1262,22 @@
           loadTestCases();
         }).catch(e => alert(e.message));
       } catch (e) { alert('JSON 格式错误: ' + e.message); }
+    }
+
+    async function aiGenerateTestdata() {
+      if (!currentProblemId) { alert('请先选择题目'); return; }
+      const samples = prompt('普通样例数量（1-10，默认 3）：', '3');
+      if (samples === null) return;
+      const edgeCases = prompt('边界测试点数量（0-10，默认 3）：', '3');
+      if (edgeCases === null) return;
+      try {
+        const res = await apiCall('POST', `/problems/${currentProblemId}/ai-testdata`, {
+          samples: parseInt(samples) || 3,
+          edge_cases: parseInt(edgeCases) || 3
+        });
+        alert(res.message);
+        loadTestCases();
+      } catch (err) { alert(err.message || 'AI 生成失败'); }
     }
 
     async function uploadZip(file) {

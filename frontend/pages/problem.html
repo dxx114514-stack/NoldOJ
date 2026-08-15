@@ -61,6 +61,9 @@
                 <button onclick="copyProblemMarkdown(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="复制为 Markdown">
                   📋 复制 Markdown
                 </button>
+                <button id="hintBtn" onclick="getAiHint(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition hidden" title="失败 2 次后可获取 AI 思路提示">
+                  💡 AI 思路提示
+                </button>
                 <a href="/pages/submit.html?id=${p.id}" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition whitespace-nowrap">提交</a>
               </div>
             </div>
@@ -171,6 +174,30 @@
       }
     }
     initFavorite();
+    // AI 思路提示按钮：登录用户可见（后端按失败次数门槛控制）
+    if (getToken()) {
+      const hintBtn = document.getElementById('hintBtn');
+      if (hintBtn) hintBtn.classList.remove('hidden');
+    }
+    async function getAiHint(btn) {
+      if (!getToken()) {
+        window.location.href = '/pages/login.html';
+        return;
+      }
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '生成中...';
+      try {
+        const d = await apiCall('POST', `/problems/${pid}/hint`, {});
+        btn.innerHTML = orig;
+        btn.disabled = false;
+        alert(`💡 AI 思路提示：\n\n${d.hint}`);
+      } catch (err) {
+        btn.innerHTML = orig;
+        btn.disabled = false;
+        alert(err.message || '获取提示失败');
+      }
+    }
     function copySample(btn, preId) {
       const text = document.getElementById(preId).textContent;
       navigator.clipboard.writeText(text).then(() => {

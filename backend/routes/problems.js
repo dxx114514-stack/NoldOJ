@@ -805,4 +805,67 @@ router.get('/:id/plagiarism-report', requireAuth, requireRole('teacher'), (req, 
   res.json(task);
 });
 
+// 功能12：AI 智能测试点生成器（teacher+）
+// POST /api/v1/problems/:id/ai-testdata
+// body: { samples: 3, edge_cases: 3 }  生成普通样例 + 边界测试点并写入 test_cases
+router.post('/:id/ai-testdata', requireAuth, requireRole('teacher'), async (req, res) => {
+  const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
+  if (!problem) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  const { aiEnabled, aiChatJSON } = require('../services/aiClient');
+  if (!aiEnabled()) {
+    return res.status(503).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 服务未启用，请先在 config/ai.txt 中启用。' });
+  }
+  const samples = Math.min(Math.max(parseInt(req.body.samples) || 3, 1), 10);
+  const edgeCases = Math.min(Math.max(parseInt(req.body.edge_cases) || 3, 0), 10);
+
+  const prompt = `你是一位出题专家。请根据下面的题目信息，生成用于在线判题（OJ）的测试点。
+题目信息：
+- 标题: ${problem.title}
+- 描述: ${problem.description}
+- 输入格式: ${problem.input_desc}
+- 输出格式: ${problem.output_desc}
+- 数据范围/提示: ${problem.hint}
+
+要求：
+1. 生成 ${samples} 组普通样例（覆盖常规输入）和 ${edgeCases} 组边界测试点（如最小/最大数据、空输入、重复元素、极端情况、可能导致整数溢出的边界等）。
+2. 每个测试点包含 input 与 expected_output 两个字段，使用与题目描述一致的输入输出格式。
+3. 输入与输出都用纯文本，多行用 \\n 分隔。
+4. 只输出一个 JSON 对象，不要包含任何其他文字：
+{"test_cases": [{"name": "case1", "input": "...", "expected_output": "..."}]}`;
+
+  try {
+    const result = await aiChatJSON(prompt, `请为这道题生成测试点。`, { numPredict: 8192, timeoutMs: 90000 });
+    const cases = Array.isArray(result.test_cases) ? result.test_cases : [];
+    if (cases.length === 0) {
+      return res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 未返回有效测试点，请重试。' });
+    }
+    const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+    fs.mkdirSync(problemDir, { recursive: true });
+    const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, sort_order) VALUES (?, ?, ?, ?)');
+    let order = db.prepare('SELECT MAX(sort_order) as m FROM test_cases WHERE problem_id = ?').get(problem.id)?.m || 0;
+    let count = 0;
+    const saved = [];
+    for (const tc of cases) {
+      const name = String(tc.name || `ai_${count + 1}`).replace(/[<>:"/\\|?*]/g, '_').slice(0, 50);
+      const input = String(tc.input ?? '').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').trimEnd() + '\n';
+      const output = String(tc.expected_output ?? '').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').trimEnd() + '\n';
+      order++;
+      insertTC.run(problem.id, input, output, order);
+      // 同时写入磁盘文件（与 ZIP 导入一致，便于人工查看/复用）
+      try {
+        fs.writeFileSync(path.join(problemDir, `${name}.in`), input, 'utf8');
+        fs.writeFileSync(path.join(problemDir, `${name}.out`), output, 'utf8');
+      } catch {}
+      count++;
+      saved.push(name);
+    }
+    res.json({ message: `AI 生成 ${count} 个测试点并已保存。`, count, cases: saved });
+  } catch (err) {
+    console.error(`AI testdata error for problem ${problem.id}:`, sanitizeLog(String(err.message || err)));
+    res.status(502).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 测试点生成失败，请检查 AI 服务是否可用。' });
+  }
+});
+
 module.exports = router;
