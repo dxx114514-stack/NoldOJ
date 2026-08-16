@@ -5,6 +5,15 @@ const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
+// R9-6: 标签颜色必须严格 hex（#RRGGBB），前端直接拼进 style 属性，
+// 否则可注入 CSS/事件属性（XSS）。name 同理做长度上限。
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+function validateColor(color) {
+  if (color === undefined || color === null) return '#6366f1';
+  if (!HEX_COLOR.test(String(color))) throw Object.assign(new Error('Tag color must be a #RRGGBB hex color.'), { code: 400 });
+  return String(color);
+}
+
 router.get('/', (req, res) => {
   const tags = db.prepare('SELECT * FROM tags ORDER BY name').all();
   const countStmt = db.prepare('SELECT COUNT(*) as c FROM problem_tags WHERE tag_id = ?');
@@ -19,11 +28,19 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
   if (!name || !name.trim()) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Tag name is required.' });
   }
+  if (String(name).trim().length > 50) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Tag name too long.' });
+  }
   const existing = db.prepare('SELECT id FROM tags WHERE name = ?').get(name.trim());
   if (existing) {
     return res.status(409).json({ code: 2, reason: 'ERR_CONFLICT', message: 'Tag already exists.' });
   }
-  const result = db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)').run(name.trim(), color || '#6366f1');
+  let safeColor;
+  try { safeColor = validateColor(color); }
+  catch (e) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: e.message });
+  }
+  const result = db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)').run(name.trim(), safeColor);
   const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(tag);
 });
@@ -50,8 +67,14 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
       return res.status(409).json({ code: 2, reason: 'ERR_CONFLICT', message: 'Tag name already exists.' });
     }
   }
+  if (color !== undefined) {
+    try { validateColor(color); }
+    catch (e) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: e.message });
+    }
+  }
   const updatesAndVals = buildUpdates([
-    { key: 'name', value: name !== undefined ? name.trim() : undefined },
+    { key: 'name', value: name !== undefined ? String(name).trim().slice(0, 50) : undefined },
     { key: 'color', value: color }
   ]);
   if (updatesAndVals.count === 0) {

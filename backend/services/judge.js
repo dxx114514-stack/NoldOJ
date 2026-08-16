@@ -743,8 +743,10 @@ function enqueueSubmission(submissionId, prevStatus) {
 }
 
 // 服务重启后恢复中断的判题任务（内存队列随进程死亡而丢失，需重置中断态重新入队）
+// R9-4: 纳入 pending_review——AI 安全审查属建议性（正常路径是放行后重新判题），
+// 若进程在审查窗口内崩溃重启，该行必须重新入队判题，否则提交锁让该用户永久无法再提交。
 function recoverInterruptedSubmissions() {
-  const rows = db.prepare("SELECT id FROM submissions WHERE status IN ('pending','pending_rejudge','running','compiling','judging')").all();
+  const rows = db.prepare("SELECT id FROM submissions WHERE status IN ('pending','pending_review','pending_rejudge','running','compiling','judging')").all();
   for (const r of rows) {
     try { db.prepare('DELETE FROM submission_details WHERE submission_id = ?').run(r.id); } catch {}
     enqueueSubmission(r.id);

@@ -311,6 +311,15 @@ async function main() {
   const { cleanupOrphanProcesses } = require('../sandbox/executor');
   try { cleanupOrphanProcesses(); } catch {}
 
+  // R9-5: 清理崩溃残留的 testdata 临时上传文件（独立非公开目录，非 /uploads）
+  try {
+    const tmpUploadDir = path.join(__dirname, '../../data/tmp-uploads');
+    if (fs.existsSync(tmpUploadDir)) {
+      fs.rmSync(tmpUploadDir, { recursive: true, force: true });
+      fs.mkdirSync(tmpUploadDir, { recursive: true });
+    }
+  } catch {}
+
   // 重启后恢复中断的判题任务（内存队列在进程退出时丢失）
   const { recoverInterruptedSubmissions } = require('../services/judge');
   const recovered = recoverInterruptedSubmissions();

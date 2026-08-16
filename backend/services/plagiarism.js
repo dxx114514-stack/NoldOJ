@@ -17,6 +17,10 @@ const HIGH_THRESHOLD = 0.85;
 const MEDIUM_THRESHOLD = 0.7;
 // 短代码阈值（少于该数量 token 直接跳过）
 const MIN_TOKEN_COUNT = 50;
+// R9-3: 参与查重的用户数上限（防 O(n²) 组合爆炸阻塞事件循环）
+const MAX_USERS = 2000;
+// R9-3: 每处理多少对让出一次事件循环（setImmediate），避免阻塞 HTTP/判题
+const YIELD_EVERY = 200;
 
 // 语言 → 注释风格映射
 function stripComments(code, language) {
@@ -88,16 +92,18 @@ function getLatestSubmissionsPerUser(problemId) {
   return result;
 }
 
-// 异步执行一次查重任务（不阻塞响应）
-function runTask(taskId, problemId) {
+// 异步执行一次查重任务（不阻塞响应，也不长时间阻塞事件循环——R9-3）
+async function runTask(taskId, problemId) {
   // 标记为运行中
   db.prepare("UPDATE plagiarism_tasks SET status = 'running' WHERE id = ?").run(taskId);
 
   try {
     const subs = getLatestSubmissionsPerUser(problemId);
+    // R9-3: 用户数上限——超过则截断（仍能覆盖主要群体，防 2000²=400 万对阻塞）
+    const capped = subs.slice(0, MAX_USERS);
     // 预处理：tokenize 并跳过短代码
     const valid = [];
-    for (const s of subs) {
+    for (const s of capped) {
       const tokens = tokenize(s.source_code, s.language);
       if (tokens.length < MIN_TOKEN_COUNT) continue;
       valid.push({ ...s, tokens });
@@ -126,9 +132,10 @@ function runTask(taskId, problemId) {
           found++;
         }
         checked++;
-        // 每 50 对刷新一次进度
-        if (checked % 50 === 0) {
+        // 每 YIELD_EVERY 对让出一次事件循环（异步函数每次 await 即退出同步执行段）
+        if (checked % YIELD_EVERY === 0) {
           db.prepare('UPDATE plagiarism_tasks SET checked_pairs = ? WHERE id = ?').run(checked, taskId);
+          await new Promise(resolve => setImmediate(resolve));
         }
       }
     }
@@ -141,16 +148,30 @@ function runTask(taskId, problemId) {
   }
 }
 
+// R9-3: 同题目并发去重——已有 pending/running 任务则拒绝新任务
+const activeTasks = new Map(); // problemId -> taskId
+
 // 创建并异步启动查重任务
 function createTask(problemId, createdByUserId) {
+  if (activeTasks.has(problemId)) {
+    const existing = activeTasks.get(problemId);
+    const st = db.prepare("SELECT status FROM plagiarism_tasks WHERE id = ?").get(existing);
+    if (st && (st.status === 'pending' || st.status === 'running')) {
+      return existing; // 返回已存在的任务，不重复创建
+    }
+    activeTasks.delete(problemId);
+  }
   const result = db.prepare(`
     INSERT INTO plagiarism_tasks (problem_id, status, total_pairs, checked_pairs, created_by)
     VALUES (?, 'pending', 0, 0, ?)
   `).run(problemId, createdByUserId);
-  const taskId = result.lastInsertRowid;
+  const taskId = Number(result.lastInsertRowid);
+  activeTasks.set(problemId, taskId);
   // 异步触发（不阻塞请求响应）
-  setImmediate(() => runTask(Number(taskId), problemId));
-  return Number(taskId);
+  setImmediate(() => runTask(taskId, problemId).finally(() => {
+    activeTasks.delete(problemId);
+  }));
+  return taskId;
 }
 
 // 获取任务进度与结果

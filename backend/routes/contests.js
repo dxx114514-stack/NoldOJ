@@ -4,6 +4,10 @@ const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth')
 const { parsePageLimit } = require('../utils/pagination');
 const { isStaff } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
+const { createRateLimit } = require('../middleware/ratelimit');
+
+// R9-3: 一键查重限流（每分钟最多 5 次）
+const plagiarismRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
 
 const router = express.Router();
 
@@ -348,7 +352,7 @@ router.post('/:id/virtual-start', requireAuth, (req, res) => {
 
 // 功能10：比赛一键全部查重（admin/teacher，异步）
 // POST /api/v1/contests/:id/plagiarism-check  对比赛所有题目依次发起查重
-router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), (req, res) => {
+router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), plagiarismRateLimit, (req, res) => {
   const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });

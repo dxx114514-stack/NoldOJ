@@ -163,7 +163,7 @@
             <td class="px-6 py-4 text-center"><span class="text-xs ${difficultyColor(p.difficulty)}">${difficultyStars(p.difficulty)}</span></td>
             <td class="px-6 py-4 text-center">
               <div class="flex flex-wrap justify-center gap-1">
-                ${(p.tags || []).map(t => `<span class="px-2 py-0.5 text-xs rounded-full" style="background-color: ${t.color}20; color: ${t.color}">${escapeHtml(t.name)}</span>`).join('')}
+                ${(p.tags || []).map(t => `<span class="px-2 py-0.5 text-xs rounded-full" style="background-color: ${escapeHtml(t.color)}20; color: ${escapeHtml(t.color)}">${escapeHtml(t.name)}</span>`).join('')}
               </div>
             </td>
             <td class="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400">${p.accept_rate != null ? p.accept_rate + '%' : '-'}</td>

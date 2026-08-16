@@ -9,11 +9,18 @@ const { parsePageLimit } = require('../utils/pagination');
 const { isStaff } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
 const { sanitizeLog } = require('../utils/securityHelpers');
+const { createRateLimit } = require('../middleware/ratelimit');
+
+// R9-3: 查重任务创建限流（每分钟最多 10 次），防并发堆积耗尽 CPU
+const plagiarismRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
 
 const router = express.Router();
-const uploadDir = path.join(__dirname, '../../data/uploads');
-fs.mkdirSync(uploadDir, { recursive: true });
-const upload = multer({ dest: uploadDir, limits: { fileSize: 200 * 1024 * 1024 } });
+// R9-5: testdata 的 multer 临时文件不能落到公开匿名可读的 /uploads 目录
+// （崩溃残留会匿名泄露测试数据/源码 ZIP），改用独立非公开临时目录，
+// 由 server.js 启动时统一清理。
+const tmpUploadDir = path.join(__dirname, '../../data/tmp-uploads');
+fs.mkdirSync(tmpUploadDir, { recursive: true });
+const upload = multer({ dest: tmpUploadDir, limits: { fileSize: 200 * 1024 * 1024 } });
 
 // 纵深防御: 断言文件路径必须位于 baseDir 之内（ZIP 导入写入前调用）
 function assertInsideProblemDir(baseDir, filePath) {
@@ -159,8 +166,25 @@ router.get('/:id', optionalAuth, (req, res) => {
     if (isManager || (req.user && req.user.id === problem.created_by)) {
       // 放行
     } else {
-      const inContest = db.prepare('SELECT cp.contest_id FROM contest_problems cp WHERE cp.problem_id = ?').get(problem.id);
-      if (!inContest || !req.user) {
+      // R9-2: 所属比赛内的非公开题须校验该用户是参赛者且比赛已开始，
+      // 防止任意登录用户枚举 id 在赛前读非公开题全文。
+      const contests = db.prepare(`
+        SELECT c.id, c.start_time, c.end_time FROM contest_problems cp
+        JOIN contests c ON c.id = cp.contest_id
+        WHERE cp.problem_id = ?
+      `).all(problem.id);
+      const now = Date.now();
+      const running = contests.some(c => {
+        const s = new Date(c.start_time).getTime();
+        const e = new Date(c.end_time).getTime();
+        return !isNaN(s) && !isNaN(e) && s <= now && now <= e;
+      });
+      const participant = running && req.user ? db.prepare(`
+        SELECT 1 FROM contest_participants WHERE contest_id IN (
+          SELECT cp2.contest_id FROM contest_problems cp2 WHERE cp2.problem_id = ?
+        ) AND user_id = ?
+      `).get(problem.id, req.user.id) : null;
+      if (!running || !req.user || !participant) {
         return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
       }
     }
@@ -808,7 +832,7 @@ router.get('/:id/discussions', (req, res) => {
 
 // 功能10：发起查重（admin/teacher，异步）
 // POST /api/v1/problems/:id/plagiarism-check  返回 {task_id}
-router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), (req, res) => {
+router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), plagiarismRateLimit, (req, res) => {
   const problem = db.prepare('SELECT id FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });

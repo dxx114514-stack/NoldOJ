@@ -516,6 +516,8 @@
     let currentGroups = [];
     let currentTestCases = [];
     let editingTcId = null;
+    let adminProblemsCache = [];
+    let adminContestsCache = [];
 
     function showTab(tab) {
       ['problems','users','online','articles','files','contests','categories','tags','announcements'].forEach(t => {
@@ -653,6 +655,7 @@
     async function loadAdminProblems() {
       try {
         const data = await apiCall('GET', '/problems?limit=100');
+        adminProblemsCache = data.problems;
         document.getElementById('adminProblems').innerHTML = data.problems.map(p => `
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">
             <td class="px-4 py-3 text-sm">${p.id}</td>
@@ -665,7 +668,7 @@
             <td class="px-4 py-3 text-center">
               <a href="/pages/problem.html?id=${p.id}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline mr-2">查看</a>
               <button onclick="editProblem(${p.id})" class="text-blue-600 dark:text-blue-400 text-sm hover:underline mr-2">编辑</button>
-              <button onclick="openTestManager(${p.id}, '${escapeHtml(p.title)}')" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">测试点</button>
+              <button onclick="openTestManager(${p.id})" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">测试点</button>
               <button onclick="startPlagiarismCheck(${p.id})" class="text-purple-600 dark:text-purple-400 text-sm hover:underline mr-2" title="代码查重">查重</button>
               <button onclick="exportProblem(${p.id})" class="text-orange-600 dark:text-orange-400 text-sm hover:underline mr-2" title="导出为 ZIP">导出</button>
               <button onclick="deleteProblem(${p.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
@@ -845,7 +848,7 @@
         tbody.innerHTML = tags.map(t => `
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
             <td class="px-4 py-3 text-sm">${t.id}</td>
-            <td class="px-4 py-3 text-sm"><span class="px-2 py-0.5 text-xs rounded-full" style="background-color: ${t.color}20; color: ${t.color}">${escapeHtml(t.name)}</span></td>
+            <td class="px-4 py-3 text-sm"><span class="px-2 py-0.5 text-xs rounded-full" style="background-color: ${escapeHtml(t.color)}20; color: ${escapeHtml(t.color)}">${escapeHtml(t.name)}</span></td>
             <td class="px-4 py-3 text-center text-sm">${t.problem_count || 0}</td>
             <td class="px-4 py-3 text-center">
               <button onclick="editTag(${t.id})" class="text-blue-600 dark:text-blue-400 text-sm hover:underline mr-2">编辑</button>
@@ -1030,10 +1033,11 @@
       } catch (err) { alert(err.message); }
     }
 
-    async function openTestManager(pid, title) {
+    async function openTestManager(pid) {
       currentProblemId = pid;
       document.getElementById('testManager').classList.remove('hidden');
-      document.getElementById('testManagerTitle').textContent = `测试点管理 - #${pid} ${title}`;
+      const cached = (adminProblemsCache.find(x => x.id === pid) || { title: '' }).title;
+      document.getElementById('testManagerTitle').textContent = `测试点管理 - #${pid} ${cached}`;
       await loadGroups();
       await loadTestCases();
     }
@@ -1511,6 +1515,7 @@
     async function loadContests() {
       try {
         const data = await apiCall('GET', '/contests?limit=100');
+        adminContestsCache = data.contests;
         const user = getUser();
         const isAdmin = user && ['admin', 'su'].includes(user.role);
         document.getElementById('adminContests').innerHTML = data.contests.map(c => {
@@ -1531,7 +1536,7 @@
             <td class="px-4 py-3 text-center text-sm">${new Date(c.start_time).toLocaleString()}</td>
             <td class="px-4 py-3 text-center text-sm">${new Date(c.end_time).toLocaleString()}</td>
             <td class="px-4 py-3 text-center">
-              <button onclick="showContestProblemManager(${c.id}, '${escapeHtml(c.title)}')" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">管理题目</button>
+              <button onclick="showContestProblemManager(${c.id})" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">管理题目</button>
               <button onclick="startContestPlagiarismCheck(${c.id})" class="text-purple-600 dark:text-purple-400 text-sm hover:underline mr-2" title="一键全部查重">一键查重</button>
               ${isAdmin && c.freeze_minutes > 0 && !c.unfrozen ? `<button onclick="unfreezeContest(${c.id})" class="text-yellow-600 dark:text-yellow-400 text-sm hover:underline mr-2">解冻</button>` : ''}
               <button onclick="deleteContest(${c.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
@@ -1568,10 +1573,11 @@
       } catch (err) { alert(err.message); }
     }
 
-    async function showContestProblemManager(cid, title) {
+    async function showContestProblemManager(cid) {
       currentContestId = cid;
       document.getElementById('contestProblemManager').classList.remove('hidden');
-      document.getElementById('contestProblemTitle').textContent = `管理比赛 - #${cid} ${title}`;
+      const cached = (adminContestsCache.find(x => x.id === cid) || { title: '' }).title;
+      document.getElementById('contestProblemTitle').textContent = `管理比赛 - #${cid} ${cached}`;
       await Promise.all([loadContestProblems(), loadContestParticipants()]);
     }
 
