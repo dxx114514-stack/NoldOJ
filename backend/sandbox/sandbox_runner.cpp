@@ -61,7 +61,7 @@
 // ── 沙箱诊断日志：追加写入 <项目根>/log/sandbox.log ────────
 // 路径由本 exe 位置推导（backend/sandbox/… → 上两级即项目根），
 // 与调用方 cwd 无关，保证无论从哪启动都能写入固定日志文件。
-// 所有 [sandbox] 诊断同时输出到 stderr（保持原有行为）。
+// 仅写文件；设 WINOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr（D-L13）。
 static std::string sandboxLogPath() {
     // 优先使用 WINOJ_ROOT 环境变量（与 cwd 无关）
     const char* root = getenv("WINOJ_ROOT");
@@ -92,9 +92,17 @@ static void sandboxLogRaw(const std::string& line) {
             fclose(f);
         }
     }
-    // 同时输出到 stderr
-    fputs(line.c_str(), stderr);
-    fflush(stderr);
+    // 诊断日志仅追加写文件，不再默认混入 stderr（D-L13：避免污染用户
+    // 程序的 stderr 且被统计进输出额度）。
+    // 管理员排障时设 WINOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr。
+    static bool verbose = []() {
+        const char* v = getenv("WINOJ_SANDBOX_VERBOSE");
+        return v && v[0] == '1';
+    }();
+    if (verbose) {
+        fputs(line.c_str(), stderr);
+        fflush(stderr);
+    }
 }
 
 static void sandboxLog(const char* fmt, ...) {
@@ -151,6 +159,34 @@ static std::vector<char> buildMinEnvBlock() {
     }
     block += '\0'; // 结束空串
     return std::vector<char>(block.begin(), block.end());
+}
+
+// ── Windows CRT 命令行参数转义（MSDN "Parsing C Command-Line Arguments"）──
+// 规则：反斜杠序列在引号内是转义符——偶数个 \ 表示字面反斜杠，奇数个 \ 表示
+// 转义后面的引号。因此进入/退出引号前必须按"需要多少字面反斜杠就翻倍"处理：
+//   1) 对参数中每段连续反斜杠，若其后面紧跟 `"`，反斜杠数量翻倍；
+//   2) 参数尾部的连续反斜杠翻倍（其后是收尾引号）。
+// 否则路径如 C:\foo"bar 会被解析错乱，甚至被注入改变命令结构（D-L13）。
+static std::string quoteCmdArg(const char* arg) {
+    std::string out = "\"";
+    size_t backslashes = 0;
+    for (const char* p = arg; *p; p++) {
+        if (*p == '\\') { backslashes++; continue; }
+        if (*p == '"') {
+            // 引号前的反斜杠全部翻倍（转义这些反斜杠，避免它们转义引号）
+            out.append(backslashes * 2, '\\');
+            out += "\\\""; // 转义引号本身
+            backslashes = 0;
+        } else {
+            out.append(backslashes, '\\');
+            out += *p;
+            backslashes = 0;
+        }
+    }
+    // 参数尾部反斜杠翻倍（其后是收尾引号）
+    out.append(backslashes * 2, '\\');
+    out += '"';
+    return out;
 }
 
 // ── 打开当前进程令牌（完整权限）────────────────────────────
@@ -785,19 +821,11 @@ int main(int argc, char* argv[]) {
     const char* metaFile = argv[4];
     const char* exePath  = argv[5];
 
-    // 构建命令行
+    // 构建命令行（D-L13：标准 CRT 转义，正确处理反斜杠+引号组合）
     std::string cmdLine;
     for (int i = 5; i < argc; i++) {
         if (i > 5) cmdLine += " ";
-        cmdLine += '"';
-        // 内部双引号按 Windows 规则转义（倍增 ""）：防止参数注入改变命令结构
-        const char* s = argv[i];
-        while (*s) {
-            if (*s == '"') cmdLine += "\"\"";
-            else cmdLine += *s;
-            s++;
-        }
-        cmdLine += '"';
+        cmdLine += quoteCmdArg(argv[i]);
     }
     std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
     cmdBuf.push_back('\0');
