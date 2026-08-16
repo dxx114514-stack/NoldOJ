@@ -1,5 +1,6 @@
 const http = require('http');
 const express = require('express');
+const multer = require('multer');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
@@ -72,7 +73,7 @@ async function main() {
     res.on('finish', () => {
       const diff = Number(process.hrtime.bigint() - start) / 1e6;
       const color = res.statusCode < 300 ? 32 : res.statusCode < 400 ? 33 : res.statusCode < 500 ? 31 : 35;
-      const line = `[${reqId}] ${req.method.padEnd(6)} ${req.originalUrl.padEnd(40)} ${String(res.statusCode).padStart(3)} ${diff.toFixed(1)}ms`;
+      const line = `[${reqId}] ${req.method.padEnd(6)} ${String(sanitizeLog(req.originalUrl || '')).padEnd(40)} ${String(res.statusCode).padStart(3)} ${diff.toFixed(1)}ms`;
       log('INFO', 'REQ', `\x1b[${color}m${line}\x1b[0m`);
     });
     res.locals.reqId = reqId;
@@ -161,7 +162,7 @@ async function main() {
   app.get('/favicon.svg', (req, res) => res.sendFile(path.join(frontendRoot, 'favicon.svg')));
 
   // 安全公告文件 (RFC 9116)
-  const securityContact = config.security?.contact || 'https://github.com'; 
+  const securityContact = config.security?.contact || 'https://github.com/dxx114514-stack/winoj.mimo'; 
   const securityTxt = `Contact: ${securityContact}\nPreferred-Languages: zh\nCanonical: /security.txt\n`;
   app.get('/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });
   app.get('/.well-known/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });
@@ -289,6 +290,20 @@ async function main() {
     const reqId = res.locals.reqId || 'unknown';
     const msg = sanitizeLog(String(err.message || err));
     const stack = sanitizeLog(String(err.stack || err));
+    // R9-16: multer 错误有明确语义，不应笼统返回 500
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ code: 4, reason: 'ERR_FILE_TOO_LARGE', message: 'File too large.' });
+      }
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Too many files or unexpected field.' });
+      }
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Upload error: ${sanitizeLog(String(err.code || 'unknown'))}` });
+    }
+    if (err && err.code === 400 && err.message) {
+      // 业务层自定义 400（如文件类型不允许）
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: msg });
+    }
     logError('ERROR', `[${reqId}] ${req.method} ${sanitizeLog(req.originalUrl || '')} => ${msg}`);
     logError('ERROR', stack);
     res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Internal server error.' });

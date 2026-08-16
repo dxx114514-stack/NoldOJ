@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   memory_used INTEGER DEFAULT 0,
   compile_output TEXT DEFAULT '',
   JudgerDetail TEXT DEFAULT '{}',
+  first_accepted INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
@@ -232,6 +233,10 @@ CREATE TABLE IF NOT EXISTS ide_runs (
 CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_problem ON submissions(problem_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status);
+-- R9-18: 热查询索引（提交列表/AC 状态/首 AC 原子占位）
+CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_submissions_user_problem_status ON submissions(user_id, problem_id, status);
+CREATE INDEX IF NOT EXISTS idx_submissions_problem_status ON submissions(problem_id, status);
 CREATE INDEX IF NOT EXISTS idx_test_cases_problem ON test_cases(problem_id);
 CREATE INDEX IF NOT EXISTS idx_submission_details_submission ON submission_details(submission_id);
 

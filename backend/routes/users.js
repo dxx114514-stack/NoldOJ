@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser, ONLINE_TTL_MS } = require('../middleware/auth');
@@ -302,6 +304,16 @@ router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {
   db.prepare('UPDATE problems SET created_by = NULL WHERE created_by = ?').run(target.id);
   db.prepare('UPDATE contests SET created_by = NULL WHERE created_by = ?').run(target.id);
   db.prepare('DELETE FROM submissions WHERE user_id = ?').run(target.id); // submission_details 级联
+  // R9-20: 删用户时清理其上传到磁盘的文件（uploaded_files 是 SET NULL，只删行会留孤儿文件）
+  const uploadDir = path.join(__dirname, '../../data/uploads');
+  const files = db.prepare('SELECT filename FROM uploaded_files WHERE user_id = ?').all(target.id);
+  for (const f of files) {
+    try {
+      const fp = path.resolve(uploadDir, path.basename(String(f.filename)));
+      if (fp.startsWith(uploadDir) && fs.existsSync(fp)) fs.unlinkSync(fp);
+    } catch {}
+  }
+  db.prepare('DELETE FROM uploaded_files WHERE user_id = ?').run(target.id);
   db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
   audit(req.user, 'delete-user', target);
   res.json({ message: 'User deleted.' });

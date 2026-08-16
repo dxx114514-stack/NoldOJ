@@ -3,6 +3,7 @@ const config = require('../config/config');
 const { prepareWorkDir, compile, runCode, cleanupWorkDir, loadLanguageConfig } = require('../sandbox/executor');
 
 const ideQueue = [];
+const IDE_QUEUE_LIMIT = 100;
 let isRunning = false;
 
 // D-I5: 错误/编译输出可能含服务器内部路径，落库前替换，避免泄露目录结构
@@ -74,6 +75,13 @@ async function executeIdeRun(runId) {
 }
 
 function enqueueIdeRun(runId) {
+  // R9-23: 队列有界——超过上限拒绝入队并标记错误，避免内存无限增长
+  if (ideQueue.length >= IDE_QUEUE_LIMIT) {
+    try {
+      db.prepare("UPDATE ide_runs SET status = 'system_error', stderr = 'Server queue is full, please retry later.' WHERE id = ?").run(runId);
+    } catch {}
+    return;
+  }
   ideQueue.push(runId);
   setImmediate(processIdeQueue);
 }

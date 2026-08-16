@@ -24,7 +24,9 @@ router.get('/', requireAuth, (req, res) => {
 
 // 检查是否已收藏（批量，ids=1,2,3）
 router.get('/status', requireAuth, (req, res) => {
-  const ids = String(req.query.ids || '').split(',').map(s => parseInt(s.trim(), 10)).filter(n => Number.isInteger(n));
+  let ids = String(req.query.ids || '').split(',').map(s => parseInt(s.trim(), 10)).filter(n => Number.isInteger(n));
+  // R9-10: IN 占位符数量上限（SQLite MAX_VARIABLE_NUMBER 约 999），截断到 500
+  if (ids.length > 500) ids = ids.slice(0, 500);
   if (ids.length === 0) return res.json({ favorites: {} });
   const placeholders = ids.map(() => '?').join(',');
   const rows = db.prepare(`SELECT problem_id FROM user_favorites WHERE user_id = ? AND problem_id IN (${placeholders})`)

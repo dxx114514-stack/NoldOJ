@@ -21,8 +21,8 @@ function createRateLimit({ windowMs = 60000, max = 10, key } = {}) {
     const bucketKey = `${clientIp}:${req.baseUrl}${req.path}:${keySuffix}`;
     const now = Date.now();
     let bucket = buckets.get(bucketKey);
-    if (!bucket || now - bucket.windowStart > windowMs) {
-      bucket = { windowStart: now, count: 0 };
+    if (!bucket || now - bucket.windowStart > bucket.windowMs) {
+      bucket = { windowStart: now, count: 0, windowMs };
       buckets.set(bucketKey, bucket);
     }
     bucket.count++;
@@ -45,16 +45,16 @@ function createRateLimit({ windowMs = 60000, max = 10, key } = {}) {
   };
 }
 
-// unref: 定时清理器不阻止进程退出（测试场景 node --test 可正常结束；
-// 生产为长生命周期进程，unref 不影响定时清理执行）。
+// R9-7: 清理按各桶自己的 windowMs 判定过期（此前硬编码 120s 无视 windowMs，
+// 短窗口限流形同失效）。窗口过期即删，长窗口限流被多次并发时也能及时释放。
 const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, bucket] of buckets) {
-    if (now - bucket.windowStart > 120000) {
+    if (now - bucket.windowStart > bucket.windowMs) {
       buckets.delete(key);
     }
   }
-}, 60000);
+}, 30000);
 if (cleanupTimer.unref) cleanupTimer.unref();
 
 module.exports = { createRateLimit, setTrustProxy };

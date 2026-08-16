@@ -30,16 +30,17 @@ router.get('/:id', optionalAuth, (req, res) => {
       }
     }
   }
-  // 一级回复
+  // 一级回复（R9-10: 加 LIMIT 防全量物化撑爆内存）
   const replies = db.prepare(`
     SELECT r.id, r.discussion_id, r.parent_id, r.content, r.created_at,
            u.username, u.nickname, u.role, u.id as user_id
     FROM discussion_replies r LEFT JOIN users u ON r.author_id = u.id
     WHERE r.discussion_id = ? AND r.parent_id IS NULL
     ORDER BY r.id ASC
+    LIMIT 1000
   `).all(disc.id);
-  // 二级回复
-  const replyIds = replies.map(r => r.id);
+  // 二级回复（R9-10: IN 占位符数量上限）
+  const replyIds = replies.map(r => r.id).slice(0, 500);
   let children = [];
   if (replyIds.length > 0) {
     const placeholders = replyIds.map(() => '?').join(',');

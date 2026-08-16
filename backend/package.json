@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Windows Online Judge System Backend",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",

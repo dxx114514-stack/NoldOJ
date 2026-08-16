@@ -391,7 +391,7 @@ async function initSocket() {
   const token = getToken();
   if (!token) return;
   try {
-    await loadScript('https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js');
+    await loadScript('/js/socket.io-client.min.js');
     winojSocket = io({
       auth: { token },
       transports: ['websocket', 'polling']

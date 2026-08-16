@@ -147,7 +147,7 @@
           </div>
         `;
       } catch (err) {
-        el.innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
+        el.innerHTML = `<p class="text-red-500 text-center">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
 

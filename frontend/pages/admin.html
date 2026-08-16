@@ -564,7 +564,7 @@
           </div>
         `).join('');
       } catch (err) {
-        document.getElementById('adminAnnouncements').innerHTML = `<p class="text-red-500 text-center py-8">${err.message || '加载失败'}</p>`;
+        document.getElementById('adminAnnouncements').innerHTML = `<p class="text-red-500 text-center py-8">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
     function showCreateAnnouncement() {

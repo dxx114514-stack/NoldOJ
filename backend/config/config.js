@@ -3,6 +3,18 @@ const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
 
+// R9-13/D-L15: Windows 上 fs mode 不生效，config 目录下的密钥文件（jwt/email/ai/cors）
+// 默认继承宽松 DACL（Authenticated Users 可读）。统一用 icacls 收紧——
+// 只保留当前用户 + SYSTEM + Administrators，移除 Everyone/Users 读权限。
+function hardenConfigFileAcl(filePath) {
+  if (process.platform !== 'win32') return;
+  const { execFileSync } = require('child_process');
+  try {
+    const user = `${process.env.USERDOMAIN || 'BUILTIN'}\\${process.env.USERNAME || 'Administrator'}`;
+    execFileSync('icacls', [filePath, '/inheritance:r', '/grant:r', `${user}:(R,W)`, '/grant:r', 'SYSTEM:(F)', '/grant:r', 'Administrators:(F)'], { stdio: 'ignore', timeout: 10000 });
+  } catch {}
+}
+
 function loadEmailConfig() {
   const emailPath = path.join(__dirname, '..', '..', 'config', 'email.txt');
   const result = { enabled: false, apiKey: '', from: 'onboarding@resend.dev' };
@@ -16,6 +28,7 @@ function loadEmailConfig() {
     }
     if (result.apiKey && result.apiKey !== 're_xxxxxxxxx') result.enabled = true;
   } catch {}
+  hardenConfigFileAcl(emailPath); // R9-13
   return result;
 }
 
@@ -35,6 +48,7 @@ function loadAiConfig() {
       if (trimmed.startsWith('CODE_LENGTH_LIMIT=')) result.codeLengthLimit = parseInt(trimmed.split('=')[1], 10) || 131072;
     }
   } catch {}
+  hardenConfigFileAcl(aiPath); // R9-13
   return result;
 }
 
@@ -112,14 +126,8 @@ function loadJwtConfig() {
   try {
     fs.mkdirSync(path.dirname(jwtPath), { recursive: true });
     fs.writeFileSync(jwtPath, fileContent, { mode: 0o600 });
-    // D-L15: Windows 上 fs mode 不生效（仅 Unix），用 icacls 收紧 ACL——
-    // 只保留当前用户(继承) + SYSTEM + Administrators，移除 Everyone/Users 读权限。
-    if (process.platform === 'win32') {
-      const { execFileSync } = require('child_process');
-      try {
-        execFileSync('icacls', [jwtPath, '/inheritance:r', '/grant:r', `${process.env.USERDOMAIN}\\${process.env.USERNAME}:(R,W)`, '/grant:r', 'SYSTEM:(F)', '/grant:r', 'Administrators:(F)'], { stdio: 'ignore', timeout: 10000 });
-      } catch {}
-    }
+    // D-L15/R9-13: Windows 上 fs mode 不生效（仅 Unix），用 icacls 收紧 ACL
+    hardenConfigFileAcl(jwtPath);
     console.log('[CONFIG] Generated config/jwt.txt with random secrets');
   } catch (e) {
     console.error('[CONFIG] Failed to write jwt.txt:', e.message);
@@ -154,10 +162,27 @@ function loadCorsConfig() {
       }
     }
   } catch {}
+  hardenConfigFileAcl(path.join(__dirname, '..', '..', 'config', 'cors.txt')); // R9-13
   return { restricted, origins: Array.from(origins) };
 }
 
 const corsCfg = loadCorsConfig();
+
+// R9-20: security.txt 联系方式：可写 config/security.txt（CONTACT=），缺省回退仓库地址
+function loadSecurityContact() {
+  try {
+    const p = path.join(__dirname, '..', '..', 'config', 'security.txt');
+    const content = fs.readFileSync(p, 'utf8');
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('CONTACT=')) {
+        const v = t.split('=').slice(1).join('=').trim();
+        if (v) return v;
+      }
+    }
+  } catch {}
+  return 'https://github.com/dxx114514-stack/winoj.mimo';
+}
 
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
@@ -205,7 +230,9 @@ module.exports = {
     url: ai.url,
     model: ai.model,
     key: ai.key,
-    codeLengthLimit: ai.codeLengthLimit
+    codeLengthLimit: ai.codeLengthLimit,
+    // R9-20: security.txt contact 可由 config/security.txt 配置，缺省回退仓库地址
+    contact: loadSecurityContact()
   },
   captcha: {
     enabled: captchaCfg.enabled

@@ -64,6 +64,8 @@ function hashCode(code) {
 
 function saveCode(email, code) {
   db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
+  // R9-21: 顺带清理已过期/已用行，防止 email_codes 无限增长
+  db.prepare("DELETE FROM email_codes WHERE used = 1 OR datetime(expires_at) <= datetime('now')").run();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   // 只存哈希，避免数据库泄露时验证码明文外泄（6 位码 + 校验速率限制下足够安全）
   db.prepare('INSERT INTO email_codes (email, code, expires_at) VALUES (?, ?, ?)').run(email, hashCode(code), expiresAt);

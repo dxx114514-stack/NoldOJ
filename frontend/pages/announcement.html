@@ -44,7 +44,7 @@
           try { renderMathInElement(document.getElementById('mdBody'), { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
         }
       } catch (err) {
-        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载失败'}</p>`;
+        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
     loadDetail();

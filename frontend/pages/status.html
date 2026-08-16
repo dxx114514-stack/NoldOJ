@@ -130,7 +130,7 @@
               </tbody>
             </table>`;
       } catch (err) {
-        document.getElementById('countCards').innerHTML = `<p class="col-span-full text-center text-red-500 py-8">${err.message || '加载失败'}</p>`;
+        document.getElementById('countCards').innerHTML = `<p class="col-span-full text-center text-red-500 py-8">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
     load();

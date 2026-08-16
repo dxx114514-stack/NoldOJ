@@ -132,7 +132,7 @@
         // 加载讨论列表
         loadDiscussions(1);
       } catch (err) {
-        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载题目失败'}</p>`;
+        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${escapeHtml(err.message) || '加载题目失败'}</p>`;
       }
     }
     loadProblem();
@@ -264,7 +264,7 @@
         }
         pagerEl.innerHTML = ph;
       } catch (err) {
-        listEl.innerHTML = `<p class="text-red-500 text-center py-4">${err.message || '加载讨论失败'}</p>`;
+        listEl.innerHTML = `<p class="text-red-500 text-center py-4">${escapeHtml(err.message) || '加载讨论失败'}</p>`;
       }
     }
   </script>

@@ -79,6 +79,12 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
   if (!title || !start_time || !end_time) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'title, start_time, and end_time are required.' });
   }
+  // R9-25: end_time 必须在 start_time 之后，且两者必须是合法时间
+  const startMs = new Date(start_time).getTime();
+  const endMs = new Date(end_time).getTime();
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'end_time must be after start_time.' });
+  }
   const fm = Math.max(0, parseInt(freeze_minutes) || 0);
   const result = db.prepare('INSERT INTO contests (title, description, start_time, end_time, is_virtual, freeze_minutes, is_hidden, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(title, description || '', start_time, end_time, is_virtual ? 1 : 0, fm, is_hidden ? 1 : 0, req.user.id);
   const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(result.lastInsertRowid);
@@ -103,6 +109,16 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
 
   if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
+  }
+  // R9-25: 若更新了时间，合并检查 end_time > start_time
+  if (u.set.some(s => s.startsWith('start_time =') || s.startsWith('end_time ='))) {
+    const mergedStart = u.fields.includes('start_time') ? start_time : contest.start_time;
+    const mergedEnd = u.fields.includes('end_time') ? end_time : contest.end_time;
+    const sMs = new Date(mergedStart).getTime();
+    const eMs = new Date(mergedEnd).getTime();
+    if (Number.isNaN(sMs) || Number.isNaN(eMs) || eMs <= sMs) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'end_time must be after start_time.' });
+    }
   }
   db.prepare(`UPDATE contests SET ${u.clause} WHERE id = ?`).run(...u.values, contest.id);
   const updated = db.prepare('SELECT * FROM contests WHERE id = ?').get(contest.id);

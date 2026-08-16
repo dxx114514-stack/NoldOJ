@@ -79,6 +79,18 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit others\' announcements.' });
   }
   const { title, content, type, contest_id, pinned } = req.body;
+  // R9-9: type 必须在 schema CHECK 允许值内，contest 类型需 contest_id 存在
+  if (type !== undefined && !['global', 'contest'].includes(type)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: "type must be 'global' or 'contest'." });
+  }
+  if (type === 'contest') {
+    if (!contest_id) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'contest_id is required for contest announcements.' });
+    }
+    if (!db.prepare('SELECT id FROM contests WHERE id = ?').get(contest_id)) {
+      return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+    }
+  }
   const u = buildUpdates([
     { key: 'title', value: title !== undefined ? sanitizeText(title).trim() : undefined },
     { key: 'content', value: content !== undefined ? sanitizeText(content).trim() : undefined },

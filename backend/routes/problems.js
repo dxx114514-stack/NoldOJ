@@ -330,6 +330,14 @@ router.post('/:id/testdata', requireAuth, requireRole('teacher'), upload.array('
   fs.mkdirSync(problemDir, { recursive: true });
 
   try {
+    // R9-25: 100×200MB 可写 ~20GB/请求，限制总大小
+    const MAX_TESTDATA_TOTAL_BYTES = 200 * 1024 * 1024;
+    let totalBytes = 0;
+    for (const f of req.files) totalBytes += f.size || 0;
+    if (totalBytes > MAX_TESTDATA_TOTAL_BYTES) {
+      throw new Error(`Total testdata size exceeds ${MAX_TESTDATA_TOTAL_BYTES} bytes`);
+    }
+
     const pairs = {};
     for (const file of req.files) {
       const match = file.originalname.match(/^(.+)\.(in|out)$/);

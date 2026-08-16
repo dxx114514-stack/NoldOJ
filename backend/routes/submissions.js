@@ -168,6 +168,19 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `源代码超过 ${CODE_LENGTH_LIMIT} 字符限制。` });
   }
 
+  // R9-15: 多文件提交的每个文件都要限长 + 文件数量上限，防止灌 10MB junk
+  if (normalizedFiles.length > 50) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '文件数量不能超过 50 个。' });
+  }
+  for (const f of normalizedFiles) {
+    if (f.content.length > CODE_LENGTH_LIMIT) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `文件 ${f.filename} 超过 ${CODE_LENGTH_LIMIT} 字符限制。` });
+    }
+    if (String(f.filename).length > 128) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '文件名过长。' });
+    }
+  }
+
   const allowed = JSON.parse(problem.allowed_languages || '[]');
   if (allowed.length > 0 && !allowed.includes(language)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Language '${language}' is not allowed for this problem.` });

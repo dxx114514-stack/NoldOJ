@@ -103,7 +103,7 @@
           Object.values(charts).forEach(c => { try { c.resize(); } catch {} });
         });
       } catch (err) {
-        document.body.insertAdjacentHTML('afterbegin', `<div class="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-center py-4 text-sm">${err.message || '加载失败'}</div>`);
+        document.body.insertAdjacentHTML('afterbegin', `<div class="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-center py-4 text-sm">${escapeHtml(err.message) || '加载失败'}</div>`);
       }
     }
     load();

@@ -8,6 +8,15 @@ const router = express.Router();
 // 冷却：内存 Map，user_id|problem_id -> 最近请求时间戳
 const cooldown = new Map();
 const COOLDOWN_MS = 60 * 1000; // 每分钟最多请求一次
+// R9-8: 惰性 TTL——Map 无界增长是内存泄漏，达到阈值时清理所有已过期条目
+const COOLDOWN_MAX = 10000;
+function pruneCooldown() {
+  if (cooldown.size < COOLDOWN_MAX) return;
+  const now = Date.now();
+  for (const [k, ts] of cooldown) {
+    if (now - ts > COOLDOWN_MS) cooldown.delete(k);
+  }
+}
 
 // 计算用户对该题已提交但未 AC 的次数（用于门槛）
 function failedAttempts(userId, problemId) {
@@ -62,6 +71,7 @@ router.post('/:id/hint', requireAuth, async (req, res) => {
   if (waitSec > 0) {
     return res.status(429).json({ code: 4, reason: 'ERR_RATE_LIMITED', message: `提示获取太频繁，请 ${waitSec} 秒后再试。` });
   }
+  pruneCooldown(); // R9-8: 保持有界
 
   const { aiEnabled, aiChat } = require('../services/aiClient');
   if (!aiEnabled()) {

@@ -37,7 +37,7 @@
           </div>
         `).join('');
       } catch (err) {
-        document.getElementById('grid').innerHTML = `<p class="col-span-full text-center text-red-500 py-12">${err.message || '加载失败'}</p>`;
+        document.getElementById('grid').innerHTML = `<p class="col-span-full text-center text-red-500 py-12">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
     load();

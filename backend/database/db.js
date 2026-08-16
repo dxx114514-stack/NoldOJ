@@ -65,6 +65,8 @@ async function initDB() {
   sqlDb = new DatabaseSync(config.database.path);
   sqlDb.exec('PRAGMA journal_mode = WAL');
   sqlDb.exec('PRAGMA foreign_keys = ON');
+  // R9-18: 外部写者持有锁时等待而非立即 SQLITE_BUSY（如判题线程与其他进程并发）
+  sqlDb.exec('PRAGMA busy_timeout = 5000');
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   sqlDb.exec(schema);
@@ -113,13 +115,26 @@ async function initDB() {
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
     )`);
-    sqlDb.exec("INSERT INTO submissions SELECT * FROM submissions_old");
+    // R9-14: 显式列名映射而非 SELECT *——旧表若被 ALTER 加过列，位置序会错位。
+    // 新表列 = 上述 CREATE 的固定列；按名取交集后逐列复制，缺列给默认值。
+    const oldCols = tableCols('submissions_old');
+    const pick = ['id','user_id','problem_id','language','source_code','answer_data','status','score','time_used','memory_used','compile_output','JudgerDetail','created_at']
+      .filter(c => oldCols.includes(c));
+    sqlDb.exec(`INSERT INTO submissions (${pick.join(',')}) SELECT ${pick.join(',')} FROM submissions_old`);
     sqlDb.exec("DROP TABLE submissions_old");
     sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id)");
     sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_problem ON submissions(problem_id)");
     sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status)");
     console.log('[DB] submissions table CHECK constraint updated with pending_review');
   }
+
+  // R9-12: 首 AC 原子占位列（判题并发去重 Rating 发放）
+  const subCols = tableCols('submissions');
+  if (!subCols.includes('first_accepted')) sqlDb.exec("ALTER TABLE submissions ADD COLUMN first_accepted INTEGER DEFAULT 0");
+  // R9-18: 热查询索引（对已有库补齐）
+  sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions(user_id, id)");
+  sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user_problem_status ON submissions(user_id, problem_id, status)");
+  sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_problem_status ON submissions(problem_id, status)");
 
   const ideCols = tableCols('ide_runs');
   if (!ideCols.includes('status')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN status TEXT DEFAULT 'pending'");

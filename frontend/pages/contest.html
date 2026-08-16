@@ -149,7 +149,7 @@
           </div>
         `;
       } catch (err) {
-        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${err.message || '加载比赛失败'}</p>`;
+        document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${escapeHtml(err.message) || '加载比赛失败'}</p>`;
       }
     }
 
@@ -188,7 +188,7 @@
           try { renderMathInElement(el, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
         }
       } catch (err) {
-        el.innerHTML = `<p class="text-red-500 text-center py-8">${err.message || '加载公告失败'}</p>`;
+        el.innerHTML = `<p class="text-red-500 text-center py-8">${escapeHtml(err.message) || '加载公告失败'}</p>`;
       }
     }
 

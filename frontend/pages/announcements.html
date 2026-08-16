@@ -59,7 +59,7 @@
         `).join('');
         renderPager(data.total, data.page, data.size);
       } catch (err) {
-        list.innerHTML = `<p class="text-red-500 text-center py-12">${err.message || '加载失败'}</p>`;
+        list.innerHTML = `<p class="text-red-500 text-center py-12">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
 

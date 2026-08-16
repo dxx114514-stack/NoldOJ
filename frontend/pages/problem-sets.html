@@ -68,7 +68,7 @@
         }
         pager.innerHTML = html;
       } catch (err) {
-        document.getElementById('list').innerHTML = `<p class="col-span-2 text-center text-red-500 py-12">${err.message || '加载失败'}</p>`;
+        document.getElementById('list').innerHTML = `<p class="col-span-2 text-center text-red-500 py-12">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
 

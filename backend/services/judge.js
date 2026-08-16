@@ -663,11 +663,14 @@ async function judgeSubmission(submissionId) {
     }
 
     if (updated.status === 'accepted') {
-      const prevAccepted = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND problem_id = ? AND status = ? AND id < ?').get(
-        submission.user_id, submission.problem_id, 'accepted', submissionId
-      ).c;
-      // 提交本身此前已 AC（rejudge 场景）或已有更早 AC 记录时不再重复发放 Rating
-      const firstAccepted = !wasAccepted && prevAccepted === 0;
+      // R9-12: 首 AC 加分竞态——同 (user,problem) 两提交并发判题时，双方都查不到
+      // 对方已 AC（都未落库），会双双 +10。改为原子占位：把该用户该题的
+      // 所有提交一次性标 first_accepted=1，只有拿到变更的行数（==1）才发放 Rating。
+      const claimed = db.prepare(`
+        UPDATE submissions SET first_accepted = 1
+        WHERE user_id = ? AND problem_id = ? AND status = 'accepted' AND first_accepted = 0
+      `).run(submission.user_id, submission.problem_id);
+      const firstAccepted = claimed.changes > 0 && !wasAccepted;
       if (firstAccepted) {
         db.prepare('UPDATE users SET rating = rating + ? WHERE id = ?').run(RATING_DELTA_ACCEPTED, submission.user_id);
       }
