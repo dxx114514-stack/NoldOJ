@@ -80,14 +80,18 @@ function compareOutput(expected, actual, problem) {
 }
 
 // 读取测试数据文件，限制单文件大小防止超大用例整读入内存导致 OOM。
-// 路径包含校验：测试数据只允许位于 backend/../problems/ 目录内（判题进程以 backend 为 CWD），
-// 拒绝绝对路径与含 .. 的穿越，杜绝教师导入 output_file:"../../config/jwt.txt" 等任意文件读取（D-H2）。
+// 路径包含校验：测试数据只允许位于 backend/../problems/ 目录内（判题进程以 backend 为 CWD）。
+// 允许绝对路径（上传/zip 路由落库形式，path.join(problemDir,…)），但解析后必须仍在 problemsRoot 内；
+// 相对路径（导入路由落库的 safeFileName 纯文件名）以 problemsRoot 为基准解析。
+// 拒绝越出 problemsRoot 的 .. 穿越，杜绝教师导入 output_file:"../../config/jwt.txt" 等任意文件读取（D-H2）。
 const PROBLEMS_ROOT = path.resolve(__dirname, '..', '..', 'problems');
 function readTestdata(filePath) {
   if (!filePath) return '';
-  const resolved = path.resolve(filePath);
   const problemsRoot = path.resolve(PROBLEMS_ROOT);
-  if (path.isAbsolute(filePath) || !resolved.startsWith(problemsRoot + path.sep)) {
+  const resolved = path.isAbsolute(filePath)
+    ? path.normalize(filePath)
+    : path.resolve(problemsRoot, filePath);
+  if (resolved !== problemsRoot && !resolved.startsWith(problemsRoot + path.sep)) {
     throw new Error('Invalid test data path (outside problems directory)');
   }
   try {

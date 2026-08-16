@@ -601,6 +601,62 @@ static void cleanupAclGrants(const std::vector<std::wstring>& touched, PSID sid)
         removeSidAceFromPathW(it->c_str(), sid);
 }
 
+// 把单个路径的强制完整性标签设为 LOW（仅更新 LABEL，不动 DACL）。
+// 关键点：LABEL_SECURITY_INFORMATION 对应的是 SACL 中的"标签 ACE"
+//（SYSTEM_MANDATORY_LABEL_ACE），因此必须通过 pNewSacl 参数（第7参）传入，
+// 而非 pNewDacl（第6参，用于普通 DACL ACE）。标签 ACE 的 Mask 放强制策略位
+//（NO_WRITE_UP = 禁止向上写）。
+// 文件标为 Low IL 后，Low/Medium/High 进程皆可写（完整性策略只禁止"向上写"）。
+static bool setLowLabelOnPath(const wchar_t* path, DWORD inh) {
+    PSID lowSid = NULL;
+    SID_IDENTIFIER_AUTHORITY ia = SECURITY_MANDATORY_LABEL_AUTHORITY;
+    if (!AllocateAndInitializeSid(&ia, 1, SECURITY_MANDATORY_LOW_RID, 0, 0, 0, 0, 0, 0, 0, &lowSid)) return false;
+    DWORD sidLen = GetLengthSid(lowSid);
+    DWORD aceSize = sizeof(SYSTEM_MANDATORY_LABEL_ACE) + sidLen - sizeof(DWORD);
+    DWORD aclSize = sizeof(ACL) + aceSize;
+
+    PACL pAcl = (PACL)LocalAlloc(LPTR, aclSize);
+    bool ok = false;
+    if (pAcl && InitializeAcl(pAcl, aclSize, ACL_REVISION)) {
+        SYSTEM_MANDATORY_LABEL_ACE* mace = (SYSTEM_MANDATORY_LABEL_ACE*)LocalAlloc(LPTR, aceSize);
+        if (mace) {
+            mace->Header.AceType = SYSTEM_MANDATORY_LABEL_ACE_TYPE;
+            mace->Header.AceFlags = (BYTE)inh;
+            mace->Header.AceSize = (WORD)aceSize;
+            mace->Mask = SYSTEM_MANDATORY_LABEL_NO_WRITE_UP;
+            CopySid(sidLen, &mace->SidStart, lowSid);
+            if (AddAce(pAcl, ACL_REVISION, MAXDWORD, mace, aceSize))
+                ok = SetNamedSecurityInfoW((LPWSTR)path, SE_FILE_OBJECT,
+                                           LABEL_SECURITY_INFORMATION, NULL, NULL, NULL, pAcl) == ERROR_SUCCESS;
+            LocalFree(mace);
+        }
+    }
+    if (pAcl) LocalFree(pAcl);
+    LocalFree(lowSid);
+    return ok;
+}
+
+// 递归把 root 下所有文件/目录的强制完整性标签设为 LOW（目录带继承标志）。
+// 用于受限令牌 + Low-IL 路径：子进程以 Low IL 运行，若 workDir 仍是 Medium
+// 标签，完整性强制策略（no-write-up）会拒绝其写入，导致提交写 cwd 文件变 RE。
+static void setLowLabelRecursive(const wchar_t* root) {
+    setLowLabelOnPath(root, CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE);
+    std::wstring pat = std::wstring(root) + L"\\*";
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(pat.c_str(), &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+            std::wstring sub = std::wstring(root) + L"\\" + fd.cFileName;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                setLowLabelRecursive(sub.c_str());
+            else
+                setLowLabelOnPath(sub.c_str(), 0);
+        } while (FindNextFileW(hFind, &fd));
+        FindClose(hFind);
+    }
+}
+
 // ── 创建 Job Object 并设置安全限制 ─────────────────────────
 static HANDLE createJob(DWORD timeLimitMs, SIZE_T memLimitBytes, DWORD maxProcs) {
     HANDLE hJob = CreateJobObjectA(NULL, NULL);
@@ -859,6 +915,26 @@ int main(int argc, char* argv[]) {
         if (appSid) LocalFree(appSid);
         if (hRestricted) CloseHandle(hRestricted);
         return 1;
+    }
+
+    // 3b. Low-IL 路径把 workDir 完整性标签递归降为 LOW：
+    // 子进程以 Low IL 运行时，若 workDir 仍是 Medium 标签，完整性强制策略
+    // （no-write-up）会拒绝其写 cwd（freopen 输出/临时文件），提交变 RE。
+    // AppContainer 路径由容器 SID 的 DACL 授权（AppContainer 令牌 IL 已为 Low，
+    // 且容器有专属写权限），无需降标签；裸进程诊断（mode2）不受影响。
+    // 该 workDir 为每次判题独有临时目录，运行后即被 executor 清理，无需恢复标签。
+    // 逃生阀 WINOJ_NO_RELABEL=1 跳过内部降标签（用于验证外部已打标或排查）。
+    bool noRelabel = false;
+    {
+        const char* env = getenv("WINOJ_NO_RELABEL");
+        if (env && env[0] == '1') noRelabel = true;
+    }
+    bool workDirRelabeled = false;
+    if (lowIl && execMode != 2 && !useAppContainer && !noRelabel) {
+        std::wstring workDirW = dirNameW(utf8ToWide(metaFile));
+        setLowLabelRecursive(workDirW.c_str());
+        workDirRelabeled = true;
+        sandboxLogW(L"workdir relabeled to LOW integrity: %ls", workDirW.c_str());
     }
 
     // 4. 绑定到 Job Object (进程仍挂起)

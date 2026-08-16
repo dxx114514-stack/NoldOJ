@@ -277,10 +277,16 @@ router.get('/:id/diff', requireAuth, (req, res) => {
       if (!expected && waDetail.output_file) {
         try {
           // D-L5(读取侧)/D-H2: 与判题端 readTestdata 同款包含校验，
-          // 只允许读取 problems 目录内文件，杜绝历史脏数据 output_file 指向任意路径被回读
+          // 只允许读取 problems 目录内文件，杜绝历史脏数据 output_file 指向任意路径被回读。
+          // 允许绝对路径（上传/zip 落库形式）但解析后必须仍在 problemsRoot 内；
+          // 相对路径（导入落库的纯文件名）以 problemsRoot 为基准解析。
           const problemsRoot = path.resolve(__dirname, '..', '..', 'problems');
-          const resolved = path.resolve(waDetail.output_file);
-          if (!path.isAbsolute(waDetail.output_file) && resolved.startsWith(problemsRoot + path.sep)) {
+          const resolved = path.isAbsolute(waDetail.output_file)
+            ? path.normalize(waDetail.output_file)
+            : path.resolve(problemsRoot, waDetail.output_file);
+          if (resolved !== problemsRoot && !resolved.startsWith(problemsRoot + path.sep)) {
+            // 越界路径：不回读
+          } else {
             const stat = fs.statSync(resolved);
             if (stat.size <= 16 * 1024 * 1024) expected = fs.readFileSync(resolved, 'utf8');
           }
