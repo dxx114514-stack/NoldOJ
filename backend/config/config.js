@@ -112,6 +112,14 @@ function loadJwtConfig() {
   try {
     fs.mkdirSync(path.dirname(jwtPath), { recursive: true });
     fs.writeFileSync(jwtPath, fileContent, { mode: 0o600 });
+    // D-L15: Windows 上 fs mode 不生效（仅 Unix），用 icacls 收紧 ACL——
+    // 只保留当前用户(继承) + SYSTEM + Administrators，移除 Everyone/Users 读权限。
+    if (process.platform === 'win32') {
+      const { execFileSync } = require('child_process');
+      try {
+        execFileSync('icacls', [jwtPath, '/inheritance:r', '/grant:r', `${process.env.USERDOMAIN}\\${process.env.USERNAME}:(R,W)`, '/grant:r', 'SYSTEM:(F)', '/grant:r', 'Administrators:(F)'], { stdio: 'ignore', timeout: 10000 });
+      } catch {}
+    }
     console.log('[CONFIG] Generated config/jwt.txt with random secrets');
   } catch (e) {
     console.error('[CONFIG] Failed to write jwt.txt:', e.message);

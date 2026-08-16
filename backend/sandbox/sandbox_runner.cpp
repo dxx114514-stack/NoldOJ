@@ -128,6 +128,31 @@ static void sandboxLogW(const wchar_t* fmt, ...) {
     sandboxLogRaw(std::string(head) + body + "\n");
 }
 
+// ── 构造子进程最小白名单环境块 ─────────────────────────────
+// D-L12: 子进程不应继承父进程完整环境变量（可能含 API 密钥等敏感值）。
+// 只保留运行解释器/编译产物所需的最小集合（PATH / SystemRoot / TEMP /
+// TMP / COMPUTERNAME / USERNAME / OS），避免环境变量探测与密钥泄露。
+// 返回 CreateProcess lpEnvironment 格式的内存块（VAR=value\0 ... \0\0）。
+static std::vector<char> buildMinEnvBlock() {
+    const char* names[] = {
+        "PATH", "SystemRoot", "TEMP", "TMP", "COMPUTERNAME",
+        "USERNAME", "USERPROFILE", "OS", "PATHEXT", "HOMEDRIVE",
+        "HOMEPATH", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE"
+    };
+    std::string block;
+    for (const char* n : names) {
+        const char* v = getenv(n);
+        if (v && v[0]) {
+            block += n;
+            block += '=';
+            block += v;
+            block += '\0';
+        }
+    }
+    block += '\0'; // 结束空串
+    return std::vector<char>(block.begin(), block.end());
+}
+
 // ── 打开当前进程令牌（完整权限）────────────────────────────
 // 关键：必须带 TOKEN_ASSIGN_PRIMARY，否则派生出的受限令牌缺少该访问权，
 // CreateProcessAsUser 会报 ERROR_ACCESS_DENIED。
@@ -838,6 +863,11 @@ int main(int argc, char* argv[]) {
     // stdio 句柄已重定向到管道/文件时该标志本就多余，直接去除。
     DWORD flags = CREATE_SUSPENDED;
 
+    // D-L12: 子进程使用最小白名单环境（不再继承父进程完整环境变量，
+    // 防止 API 密钥等敏感环境变量被评测程序读取）。
+    std::vector<char> envBlock = buildMinEnvBlock();
+    LPCH lpEnv = envBlock.data();
+
     // C-1: 受限令牌路径默认降为 Low Integrity（普通用户部署也能获得
     // 文件系统/进程低完整性隔离，禁止写入高完整性位置、削弱对其他
     // 同用户进程的攻击面）。AppContainer 自身强制 Low/Untrusted IL，
@@ -864,7 +894,7 @@ int main(int argc, char* argv[]) {
     if (execMode == 2) {
         // 模式2：裸进程，跳过令牌路径
         createFn = "CreateProcessA(bare)";
-        ok = CreateProcessA(NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, NULL, NULL, &si, &pi);
+        ok = CreateProcessA(NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, lpEnv, NULL, &si, &pi);
         if (!ok)
             sandboxLog("CreateProcessA(bare) failed (error %lu)", GetLastError());
     } else {
@@ -875,7 +905,7 @@ int main(int argc, char* argv[]) {
             useAppContainer = spawnContainerHelper(&appSid, &hContainer);
             if (useAppContainer) {
                 createFn = "CreateProcessAsUserA(AppContainer)";
-                ok = CreateProcessAsUserA(hContainer, NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, NULL, NULL, &si, &pi);
+                ok = CreateProcessAsUserA(hContainer, NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, lpEnv, NULL, &si, &pi);
                 if (!ok) {
                     sandboxLog("CreateProcessAsUser(AppContainer) failed (error %lu), falling back to restricted token", GetLastError());
                     useAppContainer = false;
@@ -886,7 +916,7 @@ int main(int argc, char* argv[]) {
         // 受限令牌路径：同用户令牌 + TOKEN_ASSIGN_PRIMARY 时普通用户也能启动成功
         if (!ok && hRestricted) {
             createFn = "CreateProcessAsUserA(restricted)";
-            ok = CreateProcessAsUserA(hRestricted, NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, NULL, NULL, &si, &pi);
+            ok = CreateProcessAsUserA(hRestricted, NULL, cmdBuf.data(), &sa, &sa, TRUE, flags, lpEnv, NULL, &si, &pi);
             if (!ok)
                 sandboxLog("CreateProcessAsUser(restricted) failed (error %lu)", GetLastError());
         }

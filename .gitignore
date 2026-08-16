@@ -30,6 +30,7 @@ Desktop.ini
 
 # Config with secrets
 config/
+!backend/config/config.js
 
 # Logs
 *.log

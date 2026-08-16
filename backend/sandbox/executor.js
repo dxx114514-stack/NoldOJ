@@ -431,15 +431,22 @@ function cleanupWorkDir(workDir) {
 // D-M13: 服务重启后回收上次崩溃遗留的孤儿进程与临时目录
 // （上次运行崩溃/强杀时，spawn 的子进程可能残留继续占用 CPU/内存）。
 // 仅回收命令行引用沙箱临时目录的进程，绝不误杀无关进程。
+// D-L14/8.4.1: PowerShell 查询改为参数化——tempDir 经 stdin/环境变量传入，
+// 避免直接把路径拼进脚本字符串，杜绝含单引号/通配符的路径破坏查询或误匹配。
 function cleanupOrphanProcesses() {
   const tempDir = config.sandbox.tempDir;
   try {
     if (!fs.existsSync(tempDir)) return;
     const orphans = [];
     if (process.platform === 'win32') {
-      // 用 PowerShell 枚举命令行含 tempDir 的进程（仅查询，不回显）
-      const q = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${tempDir}*' -and $_.ProcessId -ne $PID } | Select-Object -ExpandProperty ProcessId`;
-      const res = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', q], { encoding: 'utf8', windowsHide: true, timeout: 15000 });
+      // tempDir 通过环境变量注入，脚本内不拼接用户路径；匹配转义后的字面路径
+      const escaped = tempDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const q =
+        'Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.ProcessId -ne $env:WINOJ_PARENT_PID -and $_.CommandLine -match $env:WINOJ_TMP_ESC } | Select-Object -ExpandProperty ProcessId';
+      const res = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', q], {
+        encoding: 'utf8', windowsHide: true, timeout: 15000,
+        env: { ...process.env, WINOJ_PARENT_PID: String(process.pid), WINOJ_TMP_ESC: escaped }
+      });
       if (res.status === 0 && res.stdout) {
         for (const line of res.stdout.split(/\r?\n/)) {
           const pid = parseInt(line.trim(), 10);
@@ -451,7 +458,7 @@ function cleanupOrphanProcesses() {
       }
     } else {
       // 非 Windows: 由 Job Object/KILL_ON_JOB_CLOSE 兜底，这里仅清理临时目录
-      spawnSync('pkill', ['-f', tempDir], { stdio: 'ignore', timeout: 5000 });
+      spawnSync('pkill', ['-f', tempDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')], { stdio: 'ignore', timeout: 5000 });
     }
     // 清理遗留临时工作目录
     for (const entry of fs.readdirSync(tempDir)) {
