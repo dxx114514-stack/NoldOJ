@@ -53,7 +53,7 @@
           if (lb.leaderboard && lb.leaderboard.length > 0) {
             const u = lb.leaderboard[0];
             rankingHtml = `
-              <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden mt-4">
+              <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden mt-4">
                 <table class="w-full">
                   <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
                     <tr>
@@ -92,7 +92,7 @@
         `).join('');
 
         document.getElementById('content').innerHTML = `
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
             <div class="flex items-start justify-between mb-4">
               <div>
                 <h1 class="text-3xl font-bold text-gray-900 dark:text-white">${escapeHtml(vc.contest.title)}</h1>
@@ -105,7 +105,7 @@
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden mb-4">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden mb-4">
             <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">题目列表</h2>
             </div>
@@ -127,7 +127,7 @@
 
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3 mt-6">最近提交</h2>
           ${(vc.submissions || []).length > 0 ? `
-            <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
               <table class="w-full">
                 <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
                   <tr>

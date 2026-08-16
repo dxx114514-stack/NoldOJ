@@ -197,6 +197,10 @@ router.post('/:id/join', requireAuth, (req, res) => {
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
+  // 10.3: 隐藏比赛不允许普通用户报名（仅 staff 可见/可操作）
+  if (contest.is_hidden && !isStaff(req.user.role)) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
   const existing = db.prepare('SELECT id FROM contest_participants WHERE contest_id = ? AND user_id = ?').get(contest.id, req.user.id);
   if (existing) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Already joined this contest.' });
@@ -232,6 +236,10 @@ router.delete('/:id/participants/:uid', requireAuth, requireRole('teacher'), (re
 router.get('/:id/leaderboard', optionalAuth, (req, res) => {
   const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(req.params.id);
   if (!contest) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  // 10.3: 隐藏比赛排行榜仅 staff 可见
+  if (contest.is_hidden && !(req.user && isStaff(req.user.role))) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
 
@@ -346,8 +354,12 @@ router.post('/:id/unfreeze', requireAuth, requireRole('admin'), (req, res) => {
 
 // 比赛内公告
 router.get('/:id/announcements', optionalAuth, (req, res) => {
-  const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
+  const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(req.params.id);
   if (!contest) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  // 10.3: 隐藏比赛公告仅 staff 可见
+  if (contest.is_hidden && !(req.user && isStaff(req.user.role))) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
   const items = db.prepare(`
@@ -387,8 +399,12 @@ router.post('/:id/plagiarism-check', requireAuth, requireRole('teacher'), plagia
 router.get('/:id/discussions', optionalAuth, (req, res) => {
   const { page = 1, size = 20 } = req.query;
   const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 20, 50);
-  const contest = db.prepare('SELECT id FROM contests WHERE id = ?').get(req.params.id);
+  const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(req.params.id);
   if (!contest) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  // 10.3: 隐藏比赛讨论仅 staff 可见
+  if (contest.is_hidden && !(req.user && isStaff(req.user.role))) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
   const total = db.prepare('SELECT COUNT(*) as c FROM discussions WHERE contest_id = ?').get(req.params.id).c;

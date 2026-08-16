@@ -7,8 +7,8 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
   <script src="/js/api.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" integrity="sha384-ZuC+DIACqSIZTsp+7YF57cR5Y+6qXa7YFbEKdA/EHA/R0T+41dtorqucYl71Zp+t" crossorigin="anonymous"></script>
@@ -41,7 +41,7 @@
         currentProfile = u;
 
         document.getElementById('profile').innerHTML = `
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
             <div class="flex items-center space-x-4 mb-6">
               <div class="w-16 h-16 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
                 <span class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">${escapeHtml((u.nickname || u.username || 'U')[0].toUpperCase())}</span>
@@ -63,20 +63,20 @@
             <div class="text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400">注册时间: ${new Date(u.created_at).toLocaleDateString()}</div>
           </div>
           ${isSelf ? `
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mt-4">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mt-4">
             <h3 class="font-semibold text-gray-900 dark:text-white mb-4">编辑资料</h3>
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">昵称</label>
-                <input id="edNickname" value="${escapeHtml(u.nickname || '')}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
+                <input id="edNickname" value="${escapeHtml(u.nickname || '')}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">个性签名 <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">（最多1000字，支持 D("内容") 动态签名）</span></label>
-                <textarea id="edSignature" rows="2" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white">${escapeHtml(u.signature || '')}</textarea>
+                <textarea id="edSignature" rows="2" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white">${escapeHtml(u.signature || '')}</textarea>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">个人简介 <span class="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">（支持 Markdown 和 KaTeX 公式）</span></label>
-                <textarea id="edBio" rows="6" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" placeholder="# 关于我&#10;&#10;支持 **Markdown** 和 $E=mc^2$ 公式">${escapeHtml(u.bio || '')}</textarea>
+                <textarea id="edBio" rows="6" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" placeholder="# 关于我&#10;&#10;支持 **Markdown** 和 $E=mc^2$ 公式">${escapeHtml(u.bio || '')}</textarea>
               </div>
               <div class="flex items-center space-x-2">
                 <input type="checkbox" id="edHideRating" class="rounded text-indigo-600 dark:text-indigo-400" ${u.hide_rating ? 'checked' : ''}>

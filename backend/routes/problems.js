@@ -13,6 +13,8 @@ const { createRateLimit } = require('../middleware/ratelimit');
 
 // R9-3: 查重任务创建限流（每分钟最多 10 次），防并发堆积耗尽 CPU
 const plagiarismRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
+// 10.3: AI 测试点生成是昂贵操作（8192 tokens / 90s），限流防资源耗尽
+const aiTestdataRateLimit = createRateLimit({ windowMs: 60000, max: 5 });
 
 const router = express.Router();
 // R9-5: testdata 的 multer 临时文件不能落到公开匿名可读的 /uploads 目录
@@ -37,6 +39,37 @@ function sanitizeProblem(p) {
   delete result.spj_code;
   delete result.scoring_script;
   return result;
+}
+
+// 题目可见性校验（隐藏题 / 非公开题），返回错误响应对象或 null
+function problemVisibilityError(problem, req) {
+  const isManager = !!(req.user && isStaff(req.user.role));
+  if (problem.is_hidden && !isManager) {
+    return { code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' };
+  }
+  if (!problem.is_public) {
+    if (isManager || (req.user && req.user.id === problem.created_by)) return null;
+    const contests = db.prepare(`
+      SELECT c.id, c.start_time, c.end_time FROM contest_problems cp
+      JOIN contests c ON c.id = cp.contest_id
+      WHERE cp.problem_id = ?
+    `).all(problem.id);
+    const now = Date.now();
+    const running = contests.some(c => {
+      const s = new Date(c.start_time).getTime();
+      const e = new Date(c.end_time).getTime();
+      return !isNaN(s) && !isNaN(e) && s <= now && now <= e;
+    });
+    const participant = running && req.user ? db.prepare(`
+      SELECT 1 FROM contest_participants WHERE contest_id IN (
+        SELECT cp2.contest_id FROM contest_problems cp2 WHERE cp2.problem_id = ?
+      ) AND user_id = ?
+    `).get(problem.id, req.user.id) : null;
+    if (!running || !req.user || !participant) {
+      return { code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' };
+    }
+  }
+  return null;
 }
 
 // 作者/管理视图: 保留 spj_code 与 scoring_script，用于题目编辑回显
@@ -157,37 +190,10 @@ router.get('/:id', optionalAuth, (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
   const isManager = !!(req.user && isStaff(req.user.role));
-  // 隐藏题目: 非管理角色不可见（即使 is_public=1）
-  if (problem.is_hidden && !isManager) {
-    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
-  }
-  if (!problem.is_public) {
-    // D-M7: 非公开题仅限 staff/作者访问；所属比赛内的非公开题允许参赛者查看
-    if (isManager || (req.user && req.user.id === problem.created_by)) {
-      // 放行
-    } else {
-      // R9-2: 所属比赛内的非公开题须校验该用户是参赛者且比赛已开始，
-      // 防止任意登录用户枚举 id 在赛前读非公开题全文。
-      const contests = db.prepare(`
-        SELECT c.id, c.start_time, c.end_time FROM contest_problems cp
-        JOIN contests c ON c.id = cp.contest_id
-        WHERE cp.problem_id = ?
-      `).all(problem.id);
-      const now = Date.now();
-      const running = contests.some(c => {
-        const s = new Date(c.start_time).getTime();
-        const e = new Date(c.end_time).getTime();
-        return !isNaN(s) && !isNaN(e) && s <= now && now <= e;
-      });
-      const participant = running && req.user ? db.prepare(`
-        SELECT 1 FROM contest_participants WHERE contest_id IN (
-          SELECT cp2.contest_id FROM contest_problems cp2 WHERE cp2.problem_id = ?
-        ) AND user_id = ?
-      `).get(problem.id, req.user.id) : null;
-      if (!running || !req.user || !participant) {
-        return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' });
-      }
-    }
+  // R9-2/R10-2: 隐藏题/非公开题可见性统一校验
+  const verr = problemVisibilityError(problem, req);
+  if (verr) {
+    return res.status(403).json(verr);
   }
   // 管理角色或创建者返回完整视图（含 spj_code/scoring_script），其余走公开脱敏视图
   const isOwner = !!(req.user && req.user.id === problem.created_by);
@@ -818,12 +824,17 @@ router.delete('/:id/solutions/:sid', requireAuth, requireRole('teacher'), (req, 
 });
 
 // 功能8：题目讨论列表
-router.get('/:id/discussions', (req, res) => {
+router.get('/:id/discussions', optionalAuth, (req, res) => {
   const { page = 1, size = 20 } = req.query;
   const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 20, 50);
-  const problem = db.prepare('SELECT id FROM problems WHERE id = ?').get(req.params.id);
+  const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  // R10-2: 隐藏题/非公开题不可见性校验，与 GET /:id 保持一致
+  const verr = problemVisibilityError(problem, req);
+  if (verr) {
+    return res.status(403).json(verr);
   }
   const total = db.prepare('SELECT COUNT(*) as c FROM discussions WHERE problem_id = ?').get(req.params.id).c;
   const items = db.prepare(`
@@ -864,7 +875,7 @@ router.get('/:id/plagiarism-report', requireAuth, requireRole('teacher'), (req, 
 // 功能12：AI 智能测试点生成器（teacher+）
 // POST /api/v1/problems/:id/ai-testdata
 // body: { samples: 3, edge_cases: 3 }  生成普通样例 + 边界测试点并写入 test_cases
-router.post('/:id/ai-testdata', requireAuth, requireRole('teacher'), async (req, res) => {
+router.post('/:id/ai-testdata', requireAuth, requireRole('teacher'), aiTestdataRateLimit, async (req, res) => {
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });

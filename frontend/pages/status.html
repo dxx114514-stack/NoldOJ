@@ -20,17 +20,17 @@
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="countCards"></div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">服务器</h3>
         <div id="serverInfo" class="space-y-2 text-sm"></div>
       </div>
-      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">内存</h3>
         <div id="memInfo" class="space-y-2 text-sm"></div>
       </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
       <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">判题队列 <span id="queueBadge" class="text-xs text-gray-400 font-normal"></span></h3>
       <div id="queueList" class="overflow-x-auto"></div>
     </div>
@@ -74,7 +74,7 @@
           ['测试点', c.testCases, 'text-purple-600']
         ];
         document.getElementById('countCards').innerHTML = cards.map(([label, val, color]) => `
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-5 text-center">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-5 text-center">
             <div class="text-3xl font-bold ${color}">${val}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">${label}</div>
           </div>

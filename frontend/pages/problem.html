@@ -7,8 +7,8 @@
   <title>题目 - WinOJ</title>
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
   <script src="/js/api.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" integrity="sha384-ZuC+DIACqSIZTsp+7YF57cR5Y+6qXa7YFbEKdA/EHA/R0T+41dtorqucYl71Zp+t" crossorigin="anonymous"></script>
@@ -43,7 +43,7 @@
         }
 
         document.getElementById('content').innerHTML = `
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
             <div class="flex items-start justify-between mb-6">
               <div>
                 <h1 class="text-3xl font-bold text-gray-900 dark:text-white">${escapeHtml(p.title)}</h1>
@@ -116,7 +116,7 @@
           const sols = await apiCall('GET', `/problems/${pid}/solutions`);
           if (sols.length > 0) {
             const solHtml = sols.map(s => `
-              <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mt-4">
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mt-4">
                 <div class="flex items-center justify-between mb-3">
                   <h3 class="text-lg font-semibold text-gray-900 dark:text-white">📝 题解: ${escapeHtml(s.article_title || '未命名')}</h3>
                   <a href="/pages/article.html?id=${s.article_id}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">查看完整文章</a>
@@ -242,7 +242,7 @@
           return;
         }
         listEl.innerHTML = data.discussions.map(d => `
-          <a href="/pages/discussion.html?id=${d.id}" class="block bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-xl border ${d.is_official ? 'border-yellow-400 dark:border-yellow-600 shadow-sm' : 'border-gray-100 dark:border-gray-700'} p-4 hover:shadow-md transition">
+          <a href="/pages/discussion.html?id=${d.id}" class="block bg-white dark:bg-gray-800 rounded-xl border ${d.is_official ? 'border-yellow-400 dark:border-yellow-600 shadow-sm' : 'border-gray-100 dark:border-gray-700'} p-4 hover:shadow-md transition">
             <div class="flex items-start justify-between">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap mb-1">
@@ -260,7 +260,7 @@
         const totalPages = Math.ceil(data.total / 10) || 1;
         let ph = '';
         for (let i = 1; i <= totalPages; i++) {
-          ph += `<button onclick="loadDiscussions(${i})" class="px-3 py-1 text-sm rounded-lg ${i===page?'bg-indigo-600 text-white':'bg-white dark:bg-gray-800 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'}">${i}</button>`;
+          ph += `<button onclick="loadDiscussions(${i})" class="px-3 py-1 text-sm rounded-lg ${i===page?'bg-indigo-600 text-white':'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'}">${i}</button>`;
         }
         pagerEl.innerHTML = ph;
       } catch (err) {

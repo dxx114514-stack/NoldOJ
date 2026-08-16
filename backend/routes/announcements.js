@@ -30,7 +30,7 @@ router.get('/', (req, res) => {
 });
 
 // 详情
-router.get('/:id', (req, res) => {
+router.get('/:id', optionalAuth, (req, res) => {
   const a = db.prepare(`
     SELECT a.*, u.username, u.nickname
     FROM announcements a LEFT JOIN users u ON a.author_id = u.id
@@ -38,6 +38,13 @@ router.get('/:id', (req, res) => {
   `).get(req.params.id);
   if (!a) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Announcement not found.' });
+  }
+  // 10.3: 隐藏比赛的公告仅 staff 可见
+  if (a.type === 'contest' && a.contest_id) {
+    const contest = db.prepare('SELECT is_hidden FROM contests WHERE id = ?').get(a.contest_id);
+    if (contest && contest.is_hidden && (!req.user || !['admin', 'su', 'teacher'].includes(req.user.role))) {
+      return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Announcement not found.' });
+    }
   }
   res.json(a);
 });

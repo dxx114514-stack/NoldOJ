@@ -279,7 +279,7 @@ router.get('/:id/diff', requireAuth, (req, res) => {
   // WA 时附带首个 WA 测试点的期望输出 vs 实际输出
   if (submission.status === 'wrong_answer') {
     const waDetail = db.prepare(`
-      SELECT sd.stdout, sd.test_case_id, tc.output_data, tc.output_file
+      SELECT sd.stdout, sd.test_case_id, tc.output_data, tc.output_file, tc.problem_id
       FROM submission_details sd
       LEFT JOIN test_cases tc ON sd.test_case_id = tc.id
       WHERE sd.submission_id = ? AND sd.status = 'wrong_answer'
@@ -292,11 +292,13 @@ router.get('/:id/diff', requireAuth, (req, res) => {
           // D-L5(读取侧)/D-H2: 与判题端 readTestdata 同款包含校验，
           // 只允许读取 problems 目录内文件，杜绝历史脏数据 output_file 指向任意路径被回读。
           // 允许绝对路径（上传/zip 落库形式）但解析后必须仍在 problemsRoot 内；
-          // 相对路径（导入落库的纯文件名）以 problemsRoot 为基准解析。
+          // 相对路径（导入落库的纯文件名）以 problemDir（problems/<id>/）为基准解析，
+          // 与判题端/导出侧基准一致（9.4）。
           const problemsRoot = path.resolve(__dirname, '..', '..', 'problems');
+          const problemDir = waDetail.problem_id ? path.join(problemsRoot, String(waDetail.problem_id)) : problemsRoot;
           const resolved = path.isAbsolute(waDetail.output_file)
             ? path.normalize(waDetail.output_file)
-            : path.resolve(problemsRoot, waDetail.output_file);
+            : path.resolve(problemDir, waDetail.output_file);
           if (resolved !== problemsRoot && !resolved.startsWith(problemsRoot + path.sep)) {
             // 越界路径：不回读
           } else {

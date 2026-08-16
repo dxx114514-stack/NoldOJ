@@ -27,7 +27,7 @@
         const data = await apiCall('GET', '/achievements');
         document.getElementById('progress').innerHTML = `已解锁 <span class="text-indigo-600 dark:text-indigo-400 font-bold">${data.unlocked}</span> / ${data.total} 个成就`;
         document.getElementById('grid').innerHTML = data.achievements.map(a => `
-          <div class="${a.unlocked ? 'bg-white dark:bg-gray-800 dark:bg-gray-800 border-amber-300 dark:border-amber-600' : 'bg-white dark:bg-gray-800 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-60'} rounded-2xl shadow-sm dark:shadow-gray-900/30 border p-5 text-center transition hover:shadow-md">
+          <div class="${a.unlocked ? 'bg-white dark:bg-gray-800 border-amber-300 dark:border-amber-600' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-60'} rounded-2xl shadow-sm dark:shadow-gray-900/30 border p-5 text-center transition hover:shadow-md">
             <div class="text-4xl mb-3 ${a.unlocked ? '' : 'grayscale'}">${a.icon}</div>
             <div class="font-bold text-gray-900 dark:text-white">${escapeHtml(a.name)}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-2 leading-relaxed">${escapeHtml(a.description)}</div>

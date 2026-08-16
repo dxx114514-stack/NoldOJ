@@ -16,16 +16,16 @@
     <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">📊 个人数据看板</h1>
     <div id="overview" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8"></div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">提交日历</h3>
         <div id="calChart" style="height:200px"></div>
       </div>
-      <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">语言分布</h3>
         <div id="langChart" style="height:200px"></div>
       </div>
     </div>
-    <div class="mt-6 bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+    <div class="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
       <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">AC 题目难度分布</h3>
       <div id="diffChart" style="height:260px"></div>
     </div>
@@ -50,7 +50,7 @@
           ['成就', o.achievements, 'text-purple-600']
         ];
         document.getElementById('overview').innerHTML = cards.map(([label, val, color]) => `
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-5 text-center">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-5 text-center">
             <div class="text-2xl font-bold ${color}">${val}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">${label}</div>
           </div>

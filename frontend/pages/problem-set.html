@@ -40,7 +40,7 @@
         const isTeacher = user && (user.id === ps.creator_id || ['admin','su'].includes(user.role));
 
         document.getElementById('content').innerHTML = `
-          <div class="bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
             <div class="flex items-start justify-between mb-4">
               <div class="flex-1 min-w-0">
                 <h1 class="text-3xl font-bold text-gray-900 dark:text-white">${escapeHtml(ps.title)}</h1>
@@ -57,7 +57,7 @@
             </div>
           </div>
 
-          <div class="mt-6 bg-white dark:bg-gray-800 dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">题目列表</h2>
             </div>

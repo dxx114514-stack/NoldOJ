@@ -22,6 +22,10 @@ function virtualStart(req, res) {
   if (!contest) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
   }
+  // 10.3: 隐藏比赛不允许普通用户虚拟参加（仅 staff 可见/可操作）
+  if (contest.is_hidden && !['admin', 'su', 'teacher'].includes(req.user.role)) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
   if (!isContestEnded(contest)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '比赛尚未结束，无法虚拟参加。' });
   }

@@ -82,15 +82,17 @@ function compareOutput(expected, actual, problem) {
 // 读取测试数据文件，限制单文件大小防止超大用例整读入内存导致 OOM。
 // 路径包含校验：测试数据只允许位于 backend/../problems/ 目录内（判题进程以 backend 为 CWD）。
 // 允许绝对路径（上传/zip 路由落库形式，path.join(problemDir,…)），但解析后必须仍在 problemsRoot 内；
-// 相对路径（导入路由落库的 safeFileName 纯文件名）以 problemsRoot 为基准解析。
+// 相对路径（导入路由落库的 safeFileName 纯文件名）以 problemDir（problems/<id>/）为基准解析，
+// 与导出侧 resolveFilePath 的基准一致（9.4），保证"仅有 input_file 且指向问题子目录相对路径"的用例可读。
 // 拒绝越出 problemsRoot 的 .. 穿越，杜绝教师导入 output_file:"../../config/jwt.txt" 等任意文件读取（D-H2）。
 const PROBLEMS_ROOT = path.resolve(__dirname, '..', '..', 'problems');
-function readTestdata(filePath) {
+function readTestdata(filePath, problemDir) {
   if (!filePath) return '';
   const problemsRoot = path.resolve(PROBLEMS_ROOT);
+  const base = problemDir ? path.resolve(problemDir) : problemsRoot;
   const resolved = path.isAbsolute(filePath)
     ? path.normalize(filePath)
-    : path.resolve(problemsRoot, filePath);
+    : path.resolve(base, filePath);
   if (resolved !== problemsRoot && !resolved.startsWith(problemsRoot + path.sep)) {
     throw new Error('Invalid test data path (outside problems directory)');
   }
@@ -195,6 +197,9 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(problemId);
   if (!problem) return;
 
+  // 9.4: 相对路径 testdata 以本题目目录为基准（与导出侧 resolveFilePath 一致）
+  const problemDir = path.join(PROBLEMS_ROOT, String(problemId));
+
   const updateDetail = db.prepare(`UPDATE submission_details SET status=?, score=?, time_used=?, memory_used=?, stdout=?, stderr=?, exit_code=?, checker_output=? WHERE id=?`);
   const updateSubmission = db.prepare(`UPDATE submissions SET status=?, score=?, time_used=?, memory_used=?, compile_output=? WHERE id=?`);
   const insertDetail = db.prepare('INSERT INTO submission_details (submission_id, test_case_id, group_id, subtask_id, status) VALUES (?, ?, ?, ?, ?)');
@@ -218,7 +223,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
       const detailId = detail.lastInsertRowid;
       let expected = tc.output_data || '';
       try {
-        expected = tc.output_data || readTestdata(tc.output_file);
+        expected = tc.output_data || readTestdata(tc.output_file, problemDir);
       } catch (err) {
         updateDetail.run('system_error', 0, 0, 0, '', err.message, -1, '', detailId);
         tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: err.message, exitCode: -1, detailId });
@@ -321,8 +326,8 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           const detailId = detail.lastInsertRowid;
 
           try {
-            const stdin = tc.input_data || readTestdata(tc.input_file);
-            const expected = tc.output_data || readTestdata(tc.output_file);
+            const stdin = tc.input_data || readTestdata(tc.input_file, problemDir);
+            const expected = tc.output_data || readTestdata(tc.output_file, problemDir);
             const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
             const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
 
@@ -354,8 +359,8 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
         const detailId = detail.lastInsertRowid;
 
         try {
-          const stdin = tc.input_data || readTestdata(tc.input_file);
-          const expected = tc.output_data || readTestdata(tc.output_file);
+          const stdin = tc.input_data || readTestdata(tc.input_file, problemDir);
+          const expected = tc.output_data || readTestdata(tc.output_file, problemDir);
           const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
           const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
 
@@ -663,13 +668,18 @@ async function judgeSubmission(submissionId) {
     }
 
     if (updated.status === 'accepted') {
-      // R9-12: 首 AC 加分竞态——同 (user,problem) 两提交并发判题时，双方都查不到
-      // 对方已 AC（都未落库），会双双 +10。改为原子占位：把该用户该题的
-      // 所有提交一次性标 first_accepted=1，只有拿到变更的行数（==1）才发放 Rating。
+      // R9-12/R10-1: 首 AC 加分竞态——同 (user,problem) 两提交并发判题时，双方都查不到
+      // 对方已 AC（都未落库），会双双 +10；且新提交 first_accepted 默认 0，若仅按
+      // first_accepted=0 判断则重复 AC 也会再次 +10（可无限刷分）。改为原子占位：
+      // 仅当该 (user,problem) 尚无任何 first_accepted=1 时才标记并发放 Rating。
       const claimed = db.prepare(`
         UPDATE submissions SET first_accepted = 1
         WHERE user_id = ? AND problem_id = ? AND status = 'accepted' AND first_accepted = 0
-      `).run(submission.user_id, submission.problem_id);
+          AND NOT EXISTS (
+            SELECT 1 FROM submissions
+            WHERE user_id = ? AND problem_id = ? AND first_accepted = 1
+          )
+      `).run(submission.user_id, submission.problem_id, submission.user_id, submission.problem_id);
       const firstAccepted = claimed.changes > 0 && !wasAccepted;
       if (firstAccepted) {
         db.prepare('UPDATE users SET rating = rating + ? WHERE id = ?').run(RATING_DELTA_ACCEPTED, submission.user_id);

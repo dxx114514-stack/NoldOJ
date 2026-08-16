@@ -65,12 +65,21 @@ router.get('/me/virtual-contests', requireAuth, (req, res) => {
 
 router.put('/me', requireAuth, (req, res) => {
   const { nickname, signature, bio, hide_rating, preferred_language } = req.body;
+  // 10.3: preferred_language 必须是已启用语言名之一，且限长，防止任意值/超长字符串入库
+  if (preferred_language !== undefined && preferred_language !== null && preferred_language !== '') {
+    const lang = String(preferred_language).slice(0, 32);
+    const exists = db.prepare('SELECT name FROM languages WHERE name = ? AND is_enabled = 1').get(lang);
+    if (!exists) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'preferred_language 必须是已启用的语言。' });
+    }
+    if (preferred_language !== lang) req.body.preferred_language = lang;
+  }
   const u = buildUpdates([
     { key: 'nickname', value: nickname, transform: v => sanitizeText(String(v ?? '').slice(0, 50)) },
     { key: 'signature', value: signature, transform: v => sanitizeText(String(v ?? '').slice(0, 1000)) },
     { key: 'bio', value: bio, transform: v => sanitizeText(String(v ?? '').slice(0, 100000)) },
     { key: 'hide_rating', value: hide_rating, transform: v => v ? 1 : 0 },
-    { key: 'preferred_language', value: preferred_language }
+    { key: 'preferred_language', value: req.body.preferred_language }
   ], { touchUpdatedAt: true });
   if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
@@ -314,6 +323,8 @@ router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {
     } catch {}
   }
   db.prepare('DELETE FROM uploaded_files WHERE user_id = ?').run(target.id);
+  // 10.3: 清理该用户邮箱的验证码记录（防止遗留隐私数据）
+  if (target.email) db.prepare('DELETE FROM email_codes WHERE email = ?').run(target.email);
   db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
   audit(req.user, 'delete-user', target);
   res.json({ message: 'User deleted.' });

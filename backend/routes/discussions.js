@@ -22,11 +22,17 @@ router.get('/:id', optionalAuth, (req, res) => {
   }
   // 比赛讨论锁定的处理
   if (disc.contest_id) {
-    const contest = db.prepare('SELECT end_time FROM contests WHERE id = ?').get(disc.contest_id);
-    if (contest && new Date(contest.end_time).getTime() > Date.now() && !disc.is_official) {
-      // 比赛进行中且非官方公告，普通用户不可见
-      if (!req.user || !['admin', 'su', 'teacher'].includes(req.user.role)) {
-        return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '比赛进行中暂不开放讨论。' });
+    const contest = db.prepare('SELECT is_hidden, end_time FROM contests WHERE id = ?').get(disc.contest_id);
+    if (contest) {
+      // 10.3: 隐藏比赛相关讨论仅 staff 可见
+      if (contest.is_hidden && (!req.user || !['admin', 'su', 'teacher'].includes(req.user.role))) {
+        return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Discussion not found.' });
+      }
+      if (new Date(contest.end_time).getTime() > Date.now() && !disc.is_official) {
+        // 比赛进行中且非官方公告，普通用户不可见
+        if (!req.user || !['admin', 'su', 'teacher'].includes(req.user.role)) {
+          return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '比赛进行中暂不开放讨论。' });
+        }
       }
     }
   }
@@ -87,6 +93,13 @@ router.post('/', requireAuth, (req, res) => {
   }
   if (contest_id && !db.prepare('SELECT id FROM contests WHERE id = ?').get(contest_id)) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+  }
+  // 10.3: 隐藏比赛不允许普通用户创建讨论
+  if (contest_id) {
+    const c = db.prepare('SELECT is_hidden FROM contests WHERE id = ?').get(contest_id);
+    if (c && c.is_hidden && !['admin', 'su', 'teacher'].includes(req.user.role)) {
+      return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+    }
   }
   // 比赛进行中：禁止非官方讨论
   if (contest_id) {
