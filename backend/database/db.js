@@ -58,6 +58,36 @@ function tableExists(name) {
   return !!sqlDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(name);
 }
 
+// R11-?: 修复 submissions 表重建迁移遗留的悬空外键。
+// 旧迁移 ALTER TABLE submissions RENAME TO submissions_old 会把其它表中指向
+// submissions 的外键一并改写为 submissions_old；随后新建 submissions 并 DROP 旧表，
+// 使 submission_details 等子表仍引用已删除的 submissions_old，任何相关语句在
+// prepare() 即抛 "no such table: main.submissions_old"（表现为删除提交 Internal server error）。
+// 本函数无条件（幂等）扫描 sqlite_master，重建仍引用 submissions_old 的子表并改写回 submissions。
+function repairDanglingSubmissionsOldRefs() {
+  const rows = sqlDb.prepare(
+    "SELECT name, sql FROM sqlite_master WHERE type='table' AND sql LIKE '%submissions_old%'"
+  ).all();
+  if (rows.length === 0) return;
+  sqlDb.exec('PRAGMA foreign_keys = OFF');
+  try {
+    for (const r of rows) {
+      const name = String(r.name);
+      const fixedSql = String(r.sql).replace(/REFERENCES\s*"?submissions_old"?/gi, 'REFERENCES submissions');
+      if (fixedSql === String(r.sql)) continue;
+      const backup = `${name}_migrate_old`;
+      sqlDb.exec(`ALTER TABLE ${name} RENAME TO ${backup}`);
+      sqlDb.exec(fixedSql);
+      const cols = tableCols(backup);
+      sqlDb.exec(`INSERT INTO ${name} (${cols.join(',')}) SELECT ${cols.join(',')} FROM ${backup}`);
+      sqlDb.exec(`DROP TABLE ${backup}`);
+      console.log(`[DB] repaired dangling FK in ${name}: submissions_old -> submissions`);
+    }
+  } finally {
+    sqlDb.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
 async function initDB() {
   const dbDir = path.dirname(config.database.path);
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
@@ -131,6 +161,9 @@ async function initDB() {
     sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status)");
     console.log('[DB] submissions table CHECK constraint updated with pending_review');
   }
+
+  // R11-?: 修复上述迁移（或历史上更早版本）遗留的 submissions_old 悬空外键（幂等）。
+  repairDanglingSubmissionsOldRefs();
 
   // R9-12: 首 AC 原子占位列（判题并发去重 Rating 发放）
   const subCols = tableCols('submissions');
