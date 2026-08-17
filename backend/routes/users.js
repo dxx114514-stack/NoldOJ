@@ -44,8 +44,9 @@ router.get('/rating', optionalAuth, (req, res) => {
 });
 
 // 公开用户资料 API（所有人可访问）
+// 返回隐私开关，供前端决定是否展示成就/看板/收藏入口
 router.get('/:id/profile', (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, created_at FROM users WHERE id = ?').get(req.params.id);
+  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, hide_achievements, hide_dashboard, hide_favorites, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!user) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
@@ -53,7 +54,7 @@ router.get('/:id/profile', (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, preferred_language, submit_lock_exempt, created_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, preferred_language, submit_lock_exempt, hide_achievements, hide_dashboard, hide_favorites, created_at FROM users WHERE id = ?').get(req.user.id);
   res.json(user);
 });
 
@@ -64,7 +65,7 @@ router.get('/me/virtual-contests', requireAuth, (req, res) => {
 });
 
 router.put('/me', requireAuth, (req, res) => {
-  const { nickname, signature, bio, hide_rating, preferred_language } = req.body;
+  const { nickname, signature, bio, hide_rating, hide_achievements, hide_dashboard, hide_favorites, preferred_language } = req.body;
   // 10.3: preferred_language 必须是已启用语言名之一，且限长，防止任意值/超长字符串入库
   if (preferred_language !== undefined && preferred_language !== null && preferred_language !== '') {
     const lang = String(preferred_language).slice(0, 32);
@@ -79,13 +80,16 @@ router.put('/me', requireAuth, (req, res) => {
     { key: 'signature', value: signature, transform: v => sanitizeText(String(v ?? '').slice(0, 1000)) },
     { key: 'bio', value: bio, transform: v => sanitizeText(String(v ?? '').slice(0, 100000)) },
     { key: 'hide_rating', value: hide_rating, transform: v => v ? 1 : 0 },
+    { key: 'hide_achievements', value: hide_achievements, transform: v => v ? 1 : 0 },
+    { key: 'hide_dashboard', value: hide_dashboard, transform: v => v ? 1 : 0 },
+    { key: 'hide_favorites', value: hide_favorites, transform: v => v ? 1 : 0 },
     { key: 'preferred_language', value: req.body.preferred_language }
   ], { touchUpdatedAt: true });
   if (u.count === 0) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
   db.prepare(`UPDATE users SET ${u.clause} WHERE id = ?`).run(...u.values, req.user.id);
-  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, hide_rating, preferred_language FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, hide_rating, hide_achievements, hide_dashboard, hide_favorites, preferred_language FROM users WHERE id = ?').get(req.user.id);
   res.json(user);
 });
 

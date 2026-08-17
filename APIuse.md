@@ -452,11 +452,11 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 ### GET /users/:id/profile — 公开用户资料
 
-无需认证。返回公开资料（签名、简介、Rating 等，隐藏 Rating 的用户会隐藏）。
+无需认证。返回公开资料（签名、简介、Rating、三个隐私开关 `hide_achievements`/`hide_dashboard`/`hide_favorites` 等）。隐藏 Rating 的用户会隐藏 Rating。三个隐私开关字段供前端判断是否展示该用户的成就/看板/收藏入口。
 
 ### GET /users/me — 获取当前用户信息
 
-需认证。返回 `preferred_language`、`force_logout_at` 等字段。
+需认证。返回 `preferred_language`、`force_logout_at`、`hide_achievements`、`hide_dashboard`、`hide_favorites` 等字段。
 
 ### GET /users/me/virtual-contests — 我的虚拟比赛列表
 
@@ -464,7 +464,7 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 ### PUT /users/me — 更新个人资料
 
-需认证。可更新 `nickname`、`signature`（1000字限制）、`bio`（Markdown）、`preferred_language`。
+需认证。可更新 `nickname`、`signature`（1000字限制）、`bio`（Markdown）、`hide_rating`、`preferred_language`，以及三个隐私开关 `hide_achievements`、`hide_dashboard`、`hide_favorites`（boolean，开启后对其它普通用户隐藏对应数据，admin/su 始终可见）。
 
 ### PUT /users/:id/role — 修改角色
 
@@ -771,6 +771,116 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 ---
 
+## 10.10 成就模块 `/achievements`
+
+### GET /achievements — 成就列表
+
+需认证。返回全部成就及指定用户的解锁状态。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `user_id` | integer | 可选。指定查看的用户的成就。缺省查看当前登录用户本人。 |
+
+**返回：**
+```json
+{
+  "total": 10,
+  "unlocked": 3,
+  "achievements": [
+    { "id": 1, "code": "first_ac", "name": "初见杀", "description": "...", "icon": "🎯", "unlocked": true, "unlocked_at": "2026-08-17 12:00:00" }
+  ]
+}
+```
+
+**隐私**：查看他人成就时，若目标用户开启了 `hide_achievements`，则非本人且非 admin/su 的访问返回 `403`。
+
+### 错误码
+
+- `401`：未登录
+- `403`：目标用户已隐藏成就，且当前访问者非本人/admin/su
+- `404`：user_id 对应的用户不存在
+- `400`：user_id 格式非法
+
+---
+
+## 10.11 数据看板模块 `/statistics`
+
+### GET /statistics/me/stats — 个人数据看板
+
+需认证。返回提交日历（近 365 天）、语言分布、AC 题目难度分布、概览统计。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `user_id` | integer | 可选。指定查看的用户的看板。缺省查看当前登录用户本人。 |
+
+**返回：**
+```json
+{
+  "overview": { "totalAccepted": 42, "totalSubmits": 100, "totalProblems": 20, "totalFavorites": 5, "achievements": 3 },
+  "calendar": [ { "date": "2025-08-18", "submits": 3, "acs": 2 } ],
+  "languages": [ { "language": "cpp", "submits": 60, "acs": 30 } ],
+  "difficulty": [ { "difficulty": 1, "count": 8 } ]
+}
+```
+
+**隐私**：查看他人看板时，若目标用户开启了 `hide_dashboard`，则非本人且非 admin/su 的访问返回 `403`。
+
+### 错误码
+
+- `401`：未登录
+- `403`：目标用户已隐藏看板，且当前访问者非本人/admin/su
+- `404`：user_id 对应的用户不存在
+- `400`：user_id 格式非法
+
+---
+
+## 10.12 收藏模块 `/favorites`
+
+### GET /favorites — 收藏列表
+
+需认证。返回指定用户的收藏题目列表（分页）。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `user_id` | integer | 可选。指定查看的用户的收藏。缺省查看当前登录用户本人。 |
+| `page` | integer | 页码，默认 1 |
+| `size` | integer | 每页数量，默认 20，上限 50 |
+
+**返回：**
+```json
+{
+  "total": 5,
+  "page": 1,
+  "size": 20,
+  "favorites": [
+    { "problem_id": 1, "title": "A + B Problem", "difficulty": 1, "problem_type": "traditional", "created_at": "2026-08-17 12:00:00", "solved": true }
+  ]
+}
+```
+
+**隐私**：查看他人收藏时，若目标用户开启了 `hide_favorites`，则非本人且非 admin/su 的访问返回 `403`。
+
+### GET /favorites/status — 批量检查收藏状态
+
+需认证。查询当前登录用户是否收藏了指定题目。参数 `ids=1,2,3`（逗号分隔，最多 500 个）。
+
+### POST /favorites/:problemId — 收藏题目
+
+需认证。将指定题目加入当前登录用户的收藏。返回 `{ "favorited": true }`。
+
+### DELETE /favorites/:problemId — 取消收藏
+
+需认证。将指定题目移出当前登录用户的收藏。返回 `{ "favorited": false }`。
+
+### 错误码
+
+- `401`：未登录
+- `403`：目标用户已隐藏收藏，且当前访问者非本人/admin/su
+- `404`：user_id 对应的用户不存在，或收藏/取消收藏的题目不存在
+- `400`：user_id 格式非法
+
+---
+
 ## 11. 讨论模块 `/discussions`
 
 ### GET /discussions/:id — 讨论详情
@@ -934,8 +1044,11 @@ fi
 | 文章 | `/pages/articles.html` | 文章列表 |
 | 文章详情 | `/pages/article.html?id=X` | Markdown 文章 |
 | 文章编辑 | `/pages/article-edit.html` | 发布/编辑文章 |
-| 个人资料 | `/pages/profile.html` | 签名、简介、偏好语言、编辑 |
+| 个人资料 | `/pages/profile.html?id=X` | 签名、简介、偏好语言、隐私开关编辑、成就/看板/收藏入口 |
 | Rating 排行 | `/pages/rating.html` | Rating 排行榜 |
+| 成就 | `/pages/achievements.html?user_id=X` | 我的/TA 的成就（user_id 缺省为本人） |
+| 数据看板 | `/pages/dashboard.html?user_id=X` | 我的/TA 的数据看板（user_id 缺省为本人） |
+| 我的收藏 | `/pages/favorites.html?user_id=X` | 我的/TA 的收藏（user_id 缺省为本人，他人视图无取消收藏） |
 | 图床 | `/pages/upload.html` | 文件上传、URL 复制（仅教师+） |
 | 管理面板 | `/pages/admin.html` | 题目/用户/文章/文件/比赛管理 |
 | 语言管理 | `/pages/languages.html` | 动态语言配置 |

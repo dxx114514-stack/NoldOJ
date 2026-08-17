@@ -28,4 +28,15 @@ function canManage(operator, target) {
   return true;
 }
 
-module.exports = { ROLE_HIERARCHY, roleLevel, isValidRole, isStaff, isAdminOrSu, canManage };
+// 能否查看他人私有数据（成就/看板/收藏）:
+// - 本人始终可看；admin/su 始终可看
+// - 其余用户仅在目标未开启对应 hide_* 开关时可见
+// hideField 为目标用户行中的 hide 开关列名（如 'hide_achievements'）
+function canViewUserData(operator, target, hideField) {
+  if (!operator || !target) return false;
+  if (String(operator.id) === String(target.id)) return true;
+  if (isAdminOrSu(operator.role)) return true;
+  return !target[hideField];
+}
+
+module.exports = { ROLE_HIERARCHY, roleLevel, isValidRole, isStaff, isAdminOrSu, canManage, canViewUserData };

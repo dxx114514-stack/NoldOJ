@@ -77,6 +77,10 @@ async function initDB() {
   if (!cols.includes('provider')) sqlDb.exec("ALTER TABLE users ADD COLUMN provider TEXT DEFAULT ''");
   if (!cols.includes('rating')) sqlDb.exec("ALTER TABLE users ADD COLUMN rating INTEGER DEFAULT 1500");
   if (!cols.includes('hide_rating')) sqlDb.exec("ALTER TABLE users ADD COLUMN hide_rating INTEGER DEFAULT 0");
+  // 隐私开关: 成就/看板/收藏 对其它非 admin 用户保密（admin/su 始终可见）
+  if (!cols.includes('hide_achievements')) sqlDb.exec("ALTER TABLE users ADD COLUMN hide_achievements INTEGER DEFAULT 0");
+  if (!cols.includes('hide_dashboard')) sqlDb.exec("ALTER TABLE users ADD COLUMN hide_dashboard INTEGER DEFAULT 0");
+  if (!cols.includes('hide_favorites')) sqlDb.exec("ALTER TABLE users ADD COLUMN hide_favorites INTEGER DEFAULT 0");
   if (!cols.includes('preferred_language')) sqlDb.exec("ALTER TABLE users ADD COLUMN preferred_language TEXT DEFAULT ''");
   if (!cols.includes('force_logout_at')) sqlDb.exec("ALTER TABLE users ADD COLUMN force_logout_at TEXT DEFAULT ''");
 

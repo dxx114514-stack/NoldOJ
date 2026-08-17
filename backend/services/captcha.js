@@ -1,10 +1,18 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const opentype = require('opentype.js');
 
 // 自绘 SVG 验证码：替代已停止维护的 svg-captcha（1.4.0，2019 年后无更新）。
-// 无第三方依赖，字符以 <text> 元素渲染，内置噪线/噪点/旋转干扰。
+// R10 方案 A: 字符不再用 <text> 元素渲染（明文答案在 DOM 中可复制/被脚本 matchAll 提取），
+//             改为启动时用 opentype.js 将捆绑字体的字形转换为 <path> 轮廓数据，
+//             答案字符串永不进入 SVG，DOM/OCR 提取失效，浏览器也无法选中复制。
 // D-M2: 所有随机数改用 crypto.randomInt（CSPRNG，消除 Math.random 可预测性）；
 //       叠加 feTurbulence + feDisplacementMap 波形扭曲滤镜，破坏对 SVG DOM/位图
 //       的自动字符提取（字符轮廓被位移，简单 OCR/模板匹配显著失效）。
+
+// R10 方案 A 字体: DejaVu Sans Bold (Bitstream Vera / DejaVu license, 可自由嵌入分发)
+const FONT_FILE = path.join(__dirname, '..', 'assets', 'fonts', 'dejavu-sans-latin-700-normal.woff');
 
 const sessions = new Map();
 const CAPTCHA_TTL = 5 * 60 * 1000;
@@ -14,6 +22,27 @@ const MAX_SESSIONS = 10000;
 const CHAR_PRESET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const WIDTH = 120;
 const HEIGHT = 44;
+const FONT_SIZE = 24;
+const GLYPH_STEP = 26;
+const GLYPH_X0 = 18;
+
+// 将字体字形解析为 SVG path data（M/L/C/Z 命令，坐标已缩放到像素、SVG 坐标系：
+// 基线在 y=0，字形主体向上延伸为负 y）。仅在服务启动时执行一次；
+// 失败时抛错，避免静默降级回可提取的 <text>。
+function buildGlyphPaths() {
+  const buf = fs.readFileSync(FONT_FILE);
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const font = opentype.parse(ab);
+  const map = {};
+  for (const ch of CHAR_PRESET) {
+    const pathData = font.getPath(ch, 0, 0, FONT_SIZE).toPathData();
+    if (!pathData) throw new Error(`captcha: 无法为 ${ch} 生成轮廓`);
+    map[ch] = pathData;
+  }
+  return map;
+}
+
+const GLYPH_PATHS = buildGlyphPaths();
 
 function randInt(a, b) {
   if (!Number.isInteger(a) || !Number.isInteger(b) || b < a) return a;
@@ -36,15 +65,15 @@ function pickText() {
   return text;
 }
 
+// 字形路径以基线为 y=0（向上为负）。转为 SVG 坐标时平移到基线位置并旋转。
 function generateSvg(text) {
   const chars = text.split('');
-  const fontSize = 24;
   const glyphs = chars.map((ch, i) => {
-    const x = 18 + i * 26;
+    const x = GLYPH_X0 + i * GLYPH_STEP;
     const y = randInt(26, 34);
     const rotate = randInt(-20, 20);
     const color = randColor();
-    return `<text x="${x}" y="${y}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="bold" fill="${color}" transform="rotate(${rotate} ${x} ${y})">${ch}</text>`;
+    return `<path d="${GLYPH_PATHS[ch]}" transform="translate(${x} ${y}) rotate(${rotate})" fill="${color}"/>`;
   }).join('');
 
   // 噪线 + 随机贝塞尔干扰曲线
@@ -79,6 +108,8 @@ function generateSvg(text) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}"><defs><filter id="wob" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.08 0.12" numOctaves="2" seed="${turbSeed}" result="t"/><feDisplacementMap in="SourceGraphic" in2="t" scale="${scale}" xChannelSelector="R" yChannelSelector="G"/></filter></defs><rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>${dots.join('')}${lines.join('')}<g filter="url(#wob)">${glyphs}</g></svg>`;
 }
 
+// WINOJ_CAPTCHA_DEBUG=1 时响应携带 code —— 仅供黑盒集成测试获取答案。
+// 生产环境不要设置该变量。
 function generateCaptcha() {
   const text = pickText();
   const id = crypto.randomUUID();
@@ -90,7 +121,9 @@ function generateCaptcha() {
     if (oldestKey) sessions.delete(oldestKey);
   }
   cleanup();
-  return { id, svg: generateSvg(text) };
+  const out = { id, svg: generateSvg(text) };
+  if (process.env.WINOJ_CAPTCHA_DEBUG === '1') out.code = text;
+  return out;
 }
 
 function verifyCaptcha(id, text) {

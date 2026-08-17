@@ -2,14 +2,28 @@ const express = require('express');
 const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
+const { canViewUserData } = require('../utils/roles');
 
 const router = express.Router();
 
 // 收藏列表（我的收藏 + 分页）
+// 无 user_id 参数 = 本人；带 user_id 查看他人（受 hide_favorites 隐私开关约束，admin/su 除外）
 router.get('/', requireAuth, (req, res) => {
   const { page = 1, size = 20 } = req.query;
+  const rawUid = req.query.user_id;
+  const targetId = rawUid !== undefined && rawUid !== '' ? parseInt(String(rawUid), 10) : req.user.id;
+  if (!Number.isInteger(targetId)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Invalid user_id.' });
+  }
+  const target = db.prepare('SELECT id, hide_favorites FROM users WHERE id = ?').get(targetId);
+  if (!target) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
+  }
+  if (!canViewUserData(req.user, target, 'hide_favorites')) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '该用户已对其它用户隐藏收藏。' });
+  }
   const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 20, 50);
-  const total = db.prepare('SELECT COUNT(*) as c FROM user_favorites WHERE user_id = ?').get(req.user.id).c;
+  const total = db.prepare('SELECT COUNT(*) as c FROM user_favorites WHERE user_id = ?').get(targetId).c;
   const items = db.prepare(`
     SELECT f.problem_id, p.title, p.difficulty, p.problem_type, f.created_at,
       EXISTS(SELECT 1 FROM submissions s WHERE s.problem_id = p.id AND s.user_id = ? AND s.status = 'accepted') as solved
@@ -18,7 +32,7 @@ router.get('/', requireAuth, (req, res) => {
     WHERE f.user_id = ?
     ORDER BY f.created_at DESC
     LIMIT ? OFFSET ?
-  `).all(req.user.id, req.user.id, sizeNum, offset);
+  `).all(req.user.id, targetId, sizeNum, offset);
   res.json({ total, page: pageNum, size: sizeNum, favorites: items });
 });
 

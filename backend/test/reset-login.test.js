@@ -20,12 +20,20 @@ function getCaptchaText(captchaId) {
 
 async function getCaptcha() {
   const r = await fetch(`${BASE}/api/v1/auth/captcha`);
-  const { id, svg } = await r.json();
-  let code = null;
-  for (let i = 0; i < 20; i++) {
-    code = getCaptchaText(id);
-    if (code) break;
-    await new Promise(r => setTimeout(r, 50));
+  const data = await r.json();
+  const { id, svg } = data;
+  // 优先用 debug 模式响应的 code；否则回退 captcha_answers.json dump；最后解析 <text>（旧版）
+  let code = data.code || null;
+  if (!code) {
+    for (let i = 0; i < 20; i++) {
+      code = getCaptchaText(id);
+      if (code) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+  }
+  if (!code && svg) {
+    const matches = [...svg.matchAll(/<text[^>]*>\s*([^<]+?)\s*<\/text>/g)];
+    code = matches.map(m => m[1].trim()).join('') || null;
   }
   return { id, code, svg };
 }

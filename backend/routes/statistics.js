@@ -1,13 +1,11 @@
 const express = require('express');
 const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
+const { canViewUserData } = require('../utils/roles');
 
 const router = express.Router();
 
-// 个人数据看板：提交日历 / 语言分布 / 难度分布
-router.get('/me/stats', requireAuth, (req, res) => {
-  const uid = req.user.id;
-
+function getStatsData(uid) {
   // 提交日历：最近 365 天，每天提交数 + AC 数
   const calStart = new Date();
   calStart.setUTCDate(calStart.getUTCDate() - 364);
@@ -55,12 +53,30 @@ router.get('/me/stats', requireAuth, (req, res) => {
   const totalFavorites = db.prepare('SELECT COUNT(*) as c FROM user_favorites WHERE user_id = ?').get(uid).c;
   const achievements = db.prepare('SELECT COUNT(*) as c FROM user_achievements WHERE user_id = ?').get(uid).c;
 
-  res.json({
+  return {
     overview: { totalAccepted, totalSubmits, totalProblems, totalFavorites, achievements },
     calendar,
     languages,
     difficulty
-  });
+  };
+}
+
+// 个人数据看板：提交日历 / 语言分布 / 难度分布
+// 无 user_id 参数 = 本人；带 user_id 查看他人（受 hide_dashboard 隐私开关约束，admin/su 除外）
+router.get('/me/stats', requireAuth, (req, res) => {
+  const rawUid = req.query.user_id;
+  const targetId = rawUid !== undefined && rawUid !== '' ? parseInt(String(rawUid), 10) : req.user.id;
+  if (!Number.isInteger(targetId)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Invalid user_id.' });
+  }
+  const target = db.prepare('SELECT id, hide_dashboard FROM users WHERE id = ?').get(targetId);
+  if (!target) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
+  }
+  if (!canViewUserData(req.user, target, 'hide_dashboard')) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '该用户已对其它用户隐藏看板。' });
+  }
+  res.json(getStatsData(targetId));
 });
 
 module.exports = router;

@@ -28,6 +28,16 @@
     const isSelf = !viewUserId || (currentUser && String(currentUser.id) === String(viewUserId));
     let currentProfile = null;
 
+    // 是否 admin/su
+    function isPrivileged(user) {
+      return user && (user.role === 'admin' || user.role === 'su');
+    }
+    // 该用户某项隐私数据当前访问者是否可见
+    function canViewField(hidden) {
+      if (isSelf || isPrivileged(currentUser)) return true;
+      return !hidden;
+    }
+
     document.getElementById('pageTitle').textContent = isSelf ? '个人资料' : '用户资料';
 
     async function loadProfile() {
@@ -61,6 +71,36 @@
             ${(u.bio || '').trim() ? `<div class="mb-6"><div class="flex items-center justify-between mb-2"><h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">个人简介</h3><button onclick="copyBioMarkdown(this)" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">📋 复制 Markdown</button></div><div id="bioContent">${renderMarkdown(u.bio)}</div></div>` : ''}
 
             <div class="text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400">注册时间: ${new Date(u.created_at).toLocaleDateString()}</div>
+
+            <div class="grid grid-cols-3 gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-gray-700">
+              ${canViewField(u.hide_achievements) ? `
+              <a href="/pages/achievements.html?user_id=${encodeURIComponent(u.id)}" class="flex flex-col items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                <span class="text-2xl">🏆</span>
+                <span class="text-sm text-gray-700 dark:text-gray-300">成就</span>
+              </a>` : `
+              <div class="flex flex-col items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 opacity-50 cursor-not-allowed" title="该用户已对其它用户隐藏成就">
+                <span class="text-2xl">🏆</span>
+                <span class="text-sm text-gray-400 dark:text-gray-500">成就</span>
+              </div>`}
+              ${canViewField(u.hide_dashboard) ? `
+              <a href="/pages/dashboard.html?user_id=${encodeURIComponent(u.id)}" class="flex flex-col items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                <span class="text-2xl">📊</span>
+                <span class="text-sm text-gray-700 dark:text-gray-300">看板</span>
+              </a>` : `
+              <div class="flex flex-col items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 opacity-50 cursor-not-allowed" title="该用户已对其它用户隐藏看板">
+                <span class="text-2xl">📊</span>
+                <span class="text-sm text-gray-400 dark:text-gray-500">看板</span>
+              </div>`}
+              ${canViewField(u.hide_favorites) ? `
+              <a href="/pages/favorites.html?user_id=${encodeURIComponent(u.id)}" class="flex flex-col items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                <span class="text-2xl">⭐</span>
+                <span class="text-sm text-gray-700 dark:text-gray-300">收藏</span>
+              </a>` : `
+              <div class="flex flex-col items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 opacity-50 cursor-not-allowed" title="该用户已对其它用户隐藏收藏">
+                <span class="text-2xl">⭐</span>
+                <span class="text-sm text-gray-400 dark:text-gray-500">收藏</span>
+              </div>`}
+            </div>
           </div>
           ${isSelf ? `
           <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mt-4">
@@ -81,6 +121,23 @@
               <div class="flex items-center space-x-2">
                 <input type="checkbox" id="edHideRating" class="rounded text-indigo-600 dark:text-indigo-400" ${u.hide_rating ? 'checked' : ''}>
                 <label for="edHideRating" class="text-sm text-gray-700 dark:text-gray-300">隐藏 Rating 排行榜</label>
+              </div>
+              <div class="border-t border-gray-100 dark:border-gray-700 pt-3 mt-2">
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">隐私设置 <span class="text-xs text-gray-400 dark:text-gray-500 font-normal">对其它用户保密（管理员始终可见）</span></p>
+                <div class="space-y-2">
+                  <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="edHideAchievements" class="rounded text-indigo-600 dark:text-indigo-400" ${u.hide_achievements ? 'checked' : ''}>
+                    <label for="edHideAchievements" class="text-sm text-gray-700 dark:text-gray-300">隐藏我的成就</label>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="edHideDashboard" class="rounded text-indigo-600 dark:text-indigo-400" ${u.hide_dashboard ? 'checked' : ''}>
+                    <label for="edHideDashboard" class="text-sm text-gray-700 dark:text-gray-300">隐藏我的看板</label>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="edHideFavorites" class="rounded text-indigo-600 dark:text-indigo-400" ${u.hide_favorites ? 'checked' : ''}>
+                    <label for="edHideFavorites" class="text-sm text-gray-700 dark:text-gray-300">隐藏我的收藏</label>
+                  </div>
+                </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">偏好语言</label>
@@ -119,6 +176,9 @@
           signature: document.getElementById('edSignature').value,
           bio: document.getElementById('edBio').value,
           hide_rating: document.getElementById('edHideRating').checked,
+          hide_achievements: document.getElementById('edHideAchievements').checked,
+          hide_dashboard: document.getElementById('edHideDashboard').checked,
+          hide_favorites: document.getElementById('edHideFavorites').checked,
           preferred_language: prefLang
         });
         const user = getUser();

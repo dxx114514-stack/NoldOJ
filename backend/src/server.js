@@ -97,7 +97,11 @@ async function main() {
           "https://cdnjs.cloudflare.com",
           "https://cdn.jsdelivr.net"
         ],
-        // 仅允许非内联事件属性，脚本本身一律走 self/CDN + nonce
+        // 覆盖 helmet 默认 script-src-attr 'none'：全站 35 个页面 229 处内联事件属性
+        // （onsubmit/onclick 等）是既有架构，'none' 会使其全部失效（登录表单 onsubmit 被
+        // 阻止 → 点击登录走原生提交并刷新页面）。脚本主体仍受 nonce + 'self' 约束，
+        // 内联事件处理器仅允许调用已定义函数（R9-1 已对事件处理做 XSS 收敛）。
+        scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'",
                     "https://cdnjs.cloudflare.com"],
         imgSrc: ["'self'", 'data:', 'blob:', 'https:'],

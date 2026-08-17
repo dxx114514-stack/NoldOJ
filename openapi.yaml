@@ -68,6 +68,18 @@ components:
         hide_rating:
           type: integer
           enum: [0, 1]
+        hide_achievements:
+          type: integer
+          enum: [0, 1]
+          description: 1=成就对其它普通用户隐藏（admin/su 始终可见）
+        hide_dashboard:
+          type: integer
+          enum: [0, 1]
+          description: 1=数据看板对其它普通用户隐藏（admin/su 始终可见）
+        hide_favorites:
+          type: integer
+          enum: [0, 1]
+          description: 1=收藏对其它普通用户隐藏（admin/su 始终可见）
         preferred_language:
           type: string
         max_file_size:
@@ -1699,6 +1711,17 @@ paths:
                   description: Markdown 格式
                 hide_rating:
                   type: boolean
+                hide_achievements:
+                  type: boolean
+                  description: 1=成就对其它普通用户隐藏（admin/su 始终可见）
+                hide_dashboard:
+                  type: boolean
+                  description: 1=数据看板对其它普通用户隐藏（admin/su 始终可见）
+                hide_favorites:
+                  type: boolean
+                  description: 1=收藏对其它普通用户隐藏（admin/su 始终可见）
+                preferred_language:
+                  type: string
       responses:
         '200':
           description: 更新成功
@@ -1746,6 +1769,15 @@ paths:
                     type: string
                   rating:
                     type: integer
+                  hide_achievements:
+                    type: integer
+                    enum: [0, 1]
+                  hide_dashboard:
+                    type: integer
+                    enum: [0, 1]
+                  hide_favorites:
+                    type: integer
+                    enum: [0, 1]
                   created_at:
                     type: string
         '404':
@@ -2052,6 +2084,295 @@ paths:
                     type: integer
                   max_storage:
                     type: integer
+
+  # ===== ACHIEVEMENTS =====
+  /achievements:
+    get:
+      tags: [成就]
+      summary: 成就列表
+      description: |
+        返回全部成就及指定用户的解锁状态。`user_id` 缺省时返回当前登录用户本人的成就。
+
+        隐私：查看他人成就时，若目标用户开启了 `hide_achievements`，则非本人且非 admin/su 的访问返回 403。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 指定查看的用户 id（缺省为本人）
+      responses:
+        '200':
+          description: 成就列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: 成就总数
+                  unlocked:
+                    type: integer
+                    description: 已解锁数
+                  achievements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        code:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        icon:
+                          type: string
+                        unlocked:
+                          type: boolean
+                        unlocked_at:
+                          type: string
+                          nullable: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===== STATISTICS =====
+  /statistics/me/stats:
+    get:
+      tags: [统计]
+      summary: 个人数据看板
+      description: |
+        返回提交日历（近 365 天）、语言分布、AC 题目难度分布、概览统计。`user_id` 缺省时返回当前登录用户本人的数据。
+
+        隐私：查看他人看板时，若目标用户开启了 `hide_dashboard`，则非本人且非 admin/su 的访问返回 403。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 指定查看的用户 id（缺省为本人）
+      responses:
+        '200':
+          description: 看板数据
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  overview:
+                    type: object
+                    properties:
+                      totalAccepted:
+                        type: integer
+                      totalSubmits:
+                        type: integer
+                      totalProblems:
+                        type: integer
+                      totalFavorites:
+                        type: integer
+                      achievements:
+                        type: integer
+                  calendar:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                        submits:
+                          type: integer
+                        acs:
+                          type: integer
+                  languages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        language:
+                          type: string
+                        submits:
+                          type: integer
+                        acs:
+                          type: integer
+                  difficulty:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        difficulty:
+                          type: integer
+                        count:
+                          type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===== FAVORITES =====
+  /favorites:
+    get:
+      tags: [收藏]
+      summary: 收藏列表
+      description: |
+        返回指定用户的收藏题目列表（分页）。`user_id` 缺省时返回当前登录用户本人的收藏。
+
+        隐私：查看他人收藏时，若目标用户开启了 `hide_favorites`，则非本人且非 admin/su 的访问返回 403。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 指定查看的用户 id（缺省为本人）
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 50
+      responses:
+        '200':
+          description: 收藏列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  size:
+                    type: integer
+                  favorites:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        problem_id:
+                          type: integer
+                        title:
+                          type: string
+                        difficulty:
+                          type: integer
+                        problem_type:
+                          type: string
+                        created_at:
+                          type: string
+                        solved:
+                          type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /favorites/status:
+    get:
+      tags: [收藏]
+      summary: 批量检查收藏状态
+      description: 查询当前登录用户是否收藏了指定题目（ids=1,2,3，最多 500 个）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 收藏状态映射
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  favorites:
+                    type: object
+                    additionalProperties:
+                      type: boolean
+
+  /favorites/{problemId}:
+    post:
+      tags: [收藏]
+      summary: 收藏题目
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: problemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 收藏成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  favorited:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [收藏]
+      summary: 取消收藏
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: problemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 取消收藏成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  favorited:
+                    type: boolean
+                    example: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   # ===== LANGUAGES =====
   /languages:

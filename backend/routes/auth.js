@@ -46,8 +46,9 @@ router.get('/captcha', (req, res) => {
   if (!config.captcha.enabled) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Captcha disabled' });
   }
-  const { id, svg } = generateCaptcha();
-  res.json({ id, svg });
+  const captcha = generateCaptcha();
+  // WINOJ_CAPTCHA_DEBUG=1 时 generateCaptcha 返回 code（仅测试用），其余情况只有 id/svg
+  res.json(captcha);
 });
 
 const emailCodeRateLimit = createRateLimit({ windowMs: 60000, max: 3, key: req => String(req.body?.email || '').toLowerCase() });
