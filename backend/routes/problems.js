@@ -311,6 +311,13 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   db.prepare('DELETE FROM test_cases WHERE problem_id = ?').run(problem.id);
   db.prepare('DELETE FROM test_groups WHERE problem_id = ?').run(problem.id);
   db.prepare('DELETE FROM problems WHERE id = ?').run(problem.id);
+  // R11-?: 同步清理磁盘 testdata 目录，避免删题后残留孤儿目录
+  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  try {
+    if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
+  } catch (e) {
+    console.error(`Failed to remove problem testdata dir for ${problem.id}:`, sanitizeLog(String(e.message || e)));
+  }
   res.json({ message: 'Problem deleted.' });
 });
 
