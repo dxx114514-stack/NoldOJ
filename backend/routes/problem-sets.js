@@ -129,10 +129,10 @@ router.post('/', requireAuth, (req, res) => {
   const isTeacher = isStaff(req.user.role);
   if (type === 'personal') {
     // 个人题单强制私有
-    const result = db.prepare(
-      "INSERT INTO problem_sets (title, description, creator_id, is_public, type) VALUES (?, ?, ?, 0, 'personal')"
-    ).run(title.trim(), description, req.user.id);
-    const setId = result.lastInsertRowid;
+    const setId = db.findNextId('problem_sets');
+    db.prepare(
+      "INSERT INTO problem_sets (id, title, description, creator_id, is_public, type) VALUES (?, ?, ?, ?, 0, 'personal')"
+    ).run(setId, title.trim(), description, req.user.id);
     if (Array.isArray(problemIds) && problemIds.length > 0) {
       const ins = db.prepare('INSERT OR IGNORE INTO problem_set_items (set_id, problem_id, sort_order) VALUES (?, ?, ?)');
       problemIds.forEach((pid, idx) => ins.run(setId, pid, idx));
@@ -144,10 +144,10 @@ router.post('/', requireAuth, (req, res) => {
   if (!isTeacher) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '公开题单需要教师或管理员权限。' });
   }
-  const result = db.prepare(
-    "INSERT INTO problem_sets (title, description, creator_id, is_public, type) VALUES (?, ?, ?, ?, 'public')"
-  ).run(title.trim(), description, req.user.id, is_public ? 1 : 0);
-  const setId = result.lastInsertRowid;
+  const setId = db.findNextId('problem_sets');
+  db.prepare(
+    "INSERT INTO problem_sets (id, title, description, creator_id, is_public, type) VALUES (?, ?, ?, ?, ?, 'public')"
+  ).run(setId, title.trim(), description, req.user.id, is_public ? 1 : 0);
   if (Array.isArray(problemIds) && problemIds.length > 0) {
     const ins = db.prepare('INSERT OR IGNORE INTO problem_set_items (set_id, problem_id, sort_order) VALUES (?, ?, ?)');
     problemIds.forEach((pid, idx) => ins.run(setId, pid, idx));

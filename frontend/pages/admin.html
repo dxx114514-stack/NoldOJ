@@ -656,6 +656,8 @@
       try {
         const data = await apiCall('GET', '/problems?limit=100');
         adminProblemsCache = data.problems;
+        const curUser = getUser();
+        const canReindex = curUser && ['admin', 'su'].includes(curUser.role);
         document.getElementById('adminProblems').innerHTML = data.problems.map(p => `
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">
             <td class="px-4 py-3 text-sm">${p.id}</td>
@@ -671,6 +673,7 @@
               <button onclick="openTestManager(${p.id})" class="text-green-600 dark:text-green-400 text-sm hover:underline mr-2">测试点</button>
               <button onclick="startPlagiarismCheck(${p.id})" class="text-purple-600 dark:text-purple-400 text-sm hover:underline mr-2" title="代码查重">查重</button>
               <button onclick="exportProblem(${p.id})" class="text-orange-600 dark:text-orange-400 text-sm hover:underline mr-2" title="导出为 ZIP">导出</button>
+              ${canReindex ? `<button onclick="reindexProblem(${p.id})" class="text-cyan-600 dark:text-cyan-400 text-sm hover:underline mr-2" title="改编号到指定空位置">改号</button>` : ''}
               <button onclick="deleteProblem(${p.id})" class="text-red-600 dark:text-red-400 text-sm hover:underline">删除</button>
             </td>
           </tr>
@@ -1006,6 +1009,20 @@
     async function deleteProblem(id) {
       if (!confirm('确定删除此题目？')) return;
       try { await apiCall('DELETE', `/problems/${id}`); loadAdminProblems(); } catch (err) { alert(err.message); }
+    }
+
+    async function reindexProblem(id) {
+      const input = prompt(`将题目 #${id} 重编号为（必须是未被占用的正整数）：`);
+      if (input === null) return;
+      const newId = input.trim();
+      if (!/^\d+$/.test(newId) || parseInt(newId, 10) < 1) { alert('请输入有效的正整数编号'); return; }
+      if (parseInt(newId, 10) === id) { alert('目标编号与当前编号相同'); return; }
+      if (!confirm(`确定将题目 #${id} 重编号为 #${newId}？\n将同步更新所有提交、测试点、收藏、讨论等关联数据，且不可撤销。`)) return;
+      try {
+        const res = await apiCall('PUT', `/problems/${id}/reindex`, { new_id: parseInt(newId, 10) });
+        alert(`重编号成功：#${res.old_id} → #${res.id}`);
+        loadAdminProblems();
+      } catch (err) { alert(err.message || '重编号失败'); }
     }
 
     async function deleteUser(uid) {

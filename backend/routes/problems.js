@@ -314,6 +314,86 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   res.json({ message: 'Problem deleted.' });
 });
 
+// 题目重编号（admin/su）：将题目 id 改到指定的空位置。
+// 需要同步所有引用 problem_id 的表 + 磁盘 testdata 目录，全在事务内完成。
+// 使用 defer_foreign_keys 将外键校验推迟到 COMMIT（SQLite 3.23+，node:sqlite 自带新版）。
+router.put('/:id/reindex', requireAuth, requireRole('admin'), (req, res) => {
+  const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
+  if (!problem) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  const newId = Number(req.body.new_id);
+  if (!Number.isInteger(newId) || newId < 1 || String(newId) !== String(req.body.new_id)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'new_id 必须是正整数。' });
+  }
+  if (newId === problem.id) {
+    return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: '目标编号与当前编号相同。' });
+  }
+  // 目标编号必须为空位置（不能被其它题目占用）
+  const clash = db.prepare('SELECT id FROM problems WHERE id = ?').get(newId);
+  if (clash) {
+    return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: `编号 ${newId} 已被占用。` });
+  }
+
+  // 磁盘 testdata 目录迁移
+  const oldDir = path.join(__dirname, '../../problems', String(problem.id));
+  const newDir = path.join(__dirname, '../../problems', String(newId));
+  if (fs.existsSync(newDir)) {
+    return res.status(409).json({ code: 2, reason: 'ERR_INVALID_STATE', message: `目标目录 ${newId} 已存在，无法迁移测试数据。` });
+  }
+
+  try {
+    db.exec('BEGIN');
+    db.exec('PRAGMA defer_foreign_keys = ON');
+
+    // 1) 磁盘目录改名（先于数据库提交，若失败回滚前还原）
+    if (fs.existsSync(oldDir)) {
+      fs.renameSync(oldDir, newDir);
+    }
+
+    // 2) 引用 problem_id 的所有表同步更新
+    const refTables = [
+      'test_groups', 'test_cases', 'submissions', 'problem_set_items',
+      'problem_set_progress', 'contest_problems', 'problem_solutions',
+      'problem_tags', 'problem_categories', 'discussions', 'user_favorites'
+    ];
+    for (const t of refTables) {
+      db.prepare(`UPDATE ${t} SET problem_id = ? WHERE problem_id = ?`).run(newId, problem.id);
+    }
+
+    // 3) test_cases 中存绝对路径的 input_file/output_file 需重写旧目录前缀（相对路径不受影响）
+    const oldPrefix = oldDir + path.sep;
+    const newPrefix = newDir + path.sep;
+    const tcRows = db.prepare('SELECT id, input_file, output_file FROM test_cases WHERE problem_id = ?').all(newId);
+    const rewriteTc = db.prepare('UPDATE test_cases SET input_file = ?, output_file = ? WHERE id = ?');
+    for (const tc of tcRows) {
+      const inF = tc.input_file && path.isAbsolute(tc.input_file) && tc.input_file.startsWith(oldPrefix)
+        ? newPrefix + tc.input_file.slice(oldPrefix.length) : tc.input_file;
+      const outF = tc.output_file && path.isAbsolute(tc.output_file) && tc.output_file.startsWith(oldPrefix)
+        ? newPrefix + tc.output_file.slice(oldPrefix.length) : tc.output_file;
+      if (inF !== tc.input_file || outF !== tc.output_file) {
+        rewriteTc.run(inF, outF, tc.id);
+      }
+    }
+
+    // 4) 更新 problems 主键
+    db.prepare('UPDATE problems SET id = ? WHERE id = ?').run(newId, problem.id);
+
+    db.exec('COMMIT');
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch {}
+    // 回滚后还原磁盘目录
+    if (fs.existsSync(newDir) && !fs.existsSync(oldDir)) {
+      try { fs.renameSync(newDir, oldDir); } catch {}
+    }
+    console.error('[problems] reindex failed:', sanitizeLog(String(err && err.message || err)));
+    return res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: '重编号失败，请重试。' });
+  }
+
+  const updated = db.prepare('SELECT * FROM problems WHERE id = ?').get(newId);
+  res.json({ ...updated, old_id: problem.id });
+});
+
 router.post('/:id/testdata', requireAuth, requireRole('teacher'), upload.array('files', 100), (req, res) => {
   // 清理 multer 临时文件（含异常路径），避免磁盘残留
   const cleanupFiles = () => {
