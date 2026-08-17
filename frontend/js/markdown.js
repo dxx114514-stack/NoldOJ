@@ -9,9 +9,16 @@ function renderMarkdown(text) {
       .replace(/'/g, '&#39;');
   }
   // C-3: 输出统一过 DOMPurify 清洗（白名单），无 DOMPurify 时 fail-closed 转义为纯文本
+  // R11-?: DOMPurify 默认白名单不含 iframe，@[url]/@[bilibili] 生成的 iframe 会被整段剥掉
+  // 导致内嵌网页无法渲染（与 CORS 无关）。显式放行 iframe 及安全属性；src 仍受限
+  // （fixUrl 仅允许 http/https/ 相对路径），javascript:/事件属性/嵌套脚本由 DOMPurify 兜底剥离。
   function sanitizeHtml(html) {
     if (typeof DOMPurify !== 'undefined') {
-      return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+      return DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true },
+        ADD_TAGS: ['iframe'],
+        ADD_ATTR: ['allowfullscreen', 'scrolling', 'frameborder', 'framespacing', 'border', 'width', 'height', 'loading']
+      });
     }
     return escapeHtml(html);
   }
