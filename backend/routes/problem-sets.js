@@ -7,23 +7,35 @@ const { buildUpdates } = require('../utils/db');
 
 const router = express.Router();
 
-// 列表（公开题单 + 分页）
+// 列表（公开题单 + 本人私有题单 + admin/su 全部 + 分页）
 router.get('/', optionalAuth, (req, res) => {
   const { page = 1, size = 20 } = req.query;
   const { page: pageNum, limit: sizeNum, offset } = parsePageLimit(page, size, 20, 50);
 
-  const total = db.prepare('SELECT COUNT(*) as c FROM problem_sets WHERE is_public = 1').get().c;
+  // 匿名仅公开；登录用户额外可见本人私有题单；admin/su 可见全部
+  const userId = req.user ? req.user.id : null;
+  let where;
+  let params = [];
+  if (userId && isAdminOrSu(req.user.role)) {
+    where = '1 = 1';
+  } else if (userId) {
+    where = 'ps.is_public = 1 OR ps.creator_id = ?';
+    params = [userId];
+  } else {
+    where = 'ps.is_public = 1';
+  }
+
+  const total = db.prepare(`SELECT COUNT(*) as c FROM problem_sets ps WHERE ${where}`).get(...params).c;
   const items = db.prepare(`
     SELECT ps.id, ps.title, ps.description, ps.creator_id, ps.is_public, ps.type, ps.created_at,
            u.username as creator_name,
            (SELECT COUNT(*) FROM problem_set_items WHERE set_id = ps.id) as problem_count
     FROM problem_sets ps LEFT JOIN users u ON ps.creator_id = u.id
-    WHERE ps.is_public = 1
+    WHERE ${where}
     ORDER BY ps.id DESC LIMIT ? OFFSET ?
-  `).all(sizeNum, offset);
+  `).all(...params, sizeNum, offset);
 
   // 若用户已登录，附带每题单进度（批量查询，避免 N+1 DoS）
-  const userId = req.user ? req.user.id : null;
   let result = items.map(it => ({ ...it, solved_count: 0 }));
   if (userId && items.length > 0) {
     const ids = items.map(it => it.id);
