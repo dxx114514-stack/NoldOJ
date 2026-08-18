@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WinOJ 支持中心 - 使用手册 · 运维 · 常见问题</title>
+<meta name="description" content="WinOJ 在线评测系统支持中心：入门指南、功能使用手册、配置与运维、Markdown 语法、常见问题与更新日志。">
+<link rel="icon" href="../frontend/favicon.svg" type="image/svg+xml">
+<meta property="og:title" content="WinOJ 支持中心 - 使用手册 · 运维 · 常见问题">
+<meta property="og:description" content="从入门到运维，从功能手册到故障排查。本文档覆盖 WinOJ 的全部使用场景。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://dxx114514-stack.github.io/winoj.mimo/docs/support.html">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="WinOJ 支持中心">
+<meta name="twitter:description" content="从入门到运维，从功能手册到故障排查。本文档覆盖 WinOJ 的全部使用场景。">
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg-soft: #101730;
+    --card: #141c38;
+    --card-border: #22305c;
+    --text: #e8ecf7;
+    --text-dim: #9aa6c8;
+    --text-faint: #6b7799;
+    --accent: #6366f1;
+    --accent-2: #22d3ee;
+    --accent-3: #a78bfa;
+    --green: #34d399;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --radius: 14px;
+    --maxw: 1160px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 70px; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  code {
+    font-family: "Cascadia Code", Consolas, monospace;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.09);
+    padding: 1px 7px; border-radius: 6px; font-size: .85em; color: #a5b4fc;
+  }
+  pre code { background: transparent; border: 0; padding: 0; color: #c7d2fe; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    background: rgba(11,16,32,.85);
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+  .brand .logo {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center; color: #fff; font-size: 15px; font-weight: 800;
+  }
+  .nav-links { display: flex; gap: 22px; font-size: 13.5px; color: var(--text-dim); }
+  .nav-links a { transition: color .2s; }
+  .nav-links a:hover, .nav-links a.on { color: var(--text); }
+  .nav-links a.home { color: var(--accent-2); font-weight: 600; }
+  .nav-toggle { display: none; background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 0; }
+  @media (max-width: 768px) {
+    .nav-toggle { display: block; }
+    .nav-links { display: none; position: absolute; top: 62px; left: 0; right: 0; flex-direction: column; background: rgba(11,16,32,.95); padding: 16px 24px; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .nav-links.open { display: flex; }
+  }
+
+  header { padding: 64px 0 40px; text-align: center; }
+  header .crumb { font-size: 13px; color: var(--text-faint); margin-bottom: 14px; }
+  header .crumb a { color: var(--accent-2); }
+  header h1 { font-size: clamp(30px, 4.5vw, 44px); font-weight: 800; }
+  header h1 .grad { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header p { max-width: 620px; margin: 14px auto 0; color: var(--text-dim); font-size: 15px; }
+
+  .layout { display: grid; grid-template-columns: 240px 1fr; gap: 40px; padding-bottom: 80px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* TOC */
+  .toc { position: sticky; top: 84px; align-self: start; max-height: calc(100vh - 110px); overflow-y: auto; }
+  .toc .toc-title { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-faint); text-transform: uppercase; margin-bottom: 14px; }
+  .toc a { display: block; font-size: 13.5px; color: var(--text-dim); padding: 6px 10px; border-radius: 8px; border-left: 2px solid transparent; transition: all .15s; }
+  .toc a:hover { color: var(--text); background: rgba(255,255,255,.04); }
+  .toc a.on { color: var(--accent-2); border-left-color: var(--accent-2); background: rgba(34,211,238,.06); }
+  .toc a.sub { padding-left: 24px; font-size: 12.5px; }
+
+  /* Content */
+  article { min-width: 0; }
+  .section { margin-bottom: 64px; }
+  .sec-title { display: flex; align-items: center; gap: 12px; font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+  .sec-title .n {
+    flex: none; width: 30px; height: 30px; border-radius: 9px; font-size: 15px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+    display: grid; place-items: center; font-weight: 700;
+  }
+  .sec-desc { color: var(--text-dim); font-size: 14.5px; margin-bottom: 26px; }
+
+  h3.block { font-size: 17px; font-weight: 700; margin: 30px 0 14px; padding-left: 12px; border-left: 3px solid var(--accent); }
+  .card {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: var(--radius); padding: 22px 24px; margin-bottom: 16px;
+  }
+  .card h4 { font-size: 15px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .card h4 .tag {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    background: rgba(99,102,241,.18); color: #a5b4fc; letter-spacing: .5px;
+  }
+  .card p, .card li { font-size: 14px; color: var(--text-dim); }
+  .card ul { list-style: none; }
+  .card ul li { padding-left: 18px; position: relative; margin-top: 5px; }
+  .card ul li::before { content: ""; position: absolute; left: 2px; top: 10px; width: 6px; height: 6px; border-radius: 2px; background: var(--accent); }
+  .card .kbd { display: inline-block; font-size: 12.5px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); padding: 1px 7px; border-radius: 5px; color: var(--text); margin: 0 2px; }
+
+  .notice { border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; font-size: 14px; border: 1px solid; }
+  .notice.warn { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.3); color: #fde68a; }
+  .notice.info { background: rgba(34,211,238,.07); border-color: rgba(34,211,238,.25); color: #a5f3fc; }
+  .notice.danger { background: rgba(248,113,113,.08); border-color: rgba(248,113,113,.3); color: #fecaca; }
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  .notice b { font-weight: 700; }
+  .notice code { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.15); }
+
+  .code-block { background: #0a0e1d; border: 1px solid var(--card-border); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+  .code-block .bar { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--card-border); }
+  .code-block .bar i { width: 11px; height: 11px; border-radius: 50%; }
+  .code-block .bar i:nth-child(1) { background: #f87171; } .code-block .bar i:nth-child(2) { background: #fbbf24; } .code-block .bar i:nth-child(3) { background: #34d399; }
+  .code-block pre { padding: 18px 20px; font-size: 13px; overflow-x: auto; }
+  .code-block .lbl { margin-left: auto; font-size: 11px; color: var(--text-faint); align-self: center; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--card-border); border-radius: var(--radius); margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; min-width: 560px; }
+  th, td { text-align: left; padding: 12px 16px; font-size: 13.5px; border-bottom: 1px solid var(--card-border); }
+  th { background: rgba(99,102,241,.08); color: var(--text); font-weight: 700; white-space: nowrap; }
+  td { color: var(--text-dim); }
+  tr:last-child td { border-bottom: 0; }
+
+  details { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px 20px; margin-bottom: 10px; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 14.5px; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  details summary::after { content: "+"; font-size: 19px; color: var(--accent); font-weight: 500; transition: transform .2s; }
+  details[open] summary::after { transform: rotate(45deg); }
+  details p { margin-top: 10px; color: var(--text-dim); font-size: 14px; }
+
+  .changelog .ver { font-size: 14px; color: var(--text-dim); margin-top: 6px; }
+  .changelog .ver b { color: var(--text); }
+  .changelog .ver ul { margin: 6px 0 6px 4px; }
+  .changelog .ver li { margin: 3px 0; }
+  .changelog .ver li::marker { color: var(--accent); }
+
+  footer { border-top: 1px solid rgba(255,255,255,.06); padding: 36px 0; text-align: center; color: var(--text-faint); font-size: 13px; }
+  footer a { color: var(--accent-2); }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .5s ease, transform .5s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="logo">OJ</span> WinOJ 支持中心</a>
+    <button class="nav-toggle" aria-label="菜单">☰</button>
+    <div class="nav-links">
+      <a class="home" href="index.html">返回官网</a>
+      <a href="#guide">入门指南</a>
+      <a href="#manual">使用手册</a>
+      <a href="#markdown">语法</a>
+      <a href="#ops">运维</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap">
+    <div class="crumb"><a href="index.html">WinOJ 官网</a> / 支持中心</div>
+    <h1>支持中心 <span class="grad">Help Center</span></h1>
+    <p>从入门到运维，从功能手册到故障排查。本文档覆盖 WinOJ 的全部使用场景，遇到问题可先在常见问题中检索。</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <aside class="toc">
+    <div class="toc-title">目录</div>
+    <a href="#guide" data-anchor="guide">入门指南</a>
+    <a class="sub" href="#quickstart" data-anchor="quickstart">快速开始</a>
+    <a class="sub" href="#requirements" data-anchor="requirements">环境要求</a>
+    <a class="sub" href="#update-uninstall" data-anchor="update-uninstall">更新与卸载</a>
+    <a href="#manual" data-anchor="manual">功能使用手册</a>
+    <a class="sub" href="#m-user" data-anchor="m-user">普通用户</a>
+    <a class="sub" href="#m-teacher" data-anchor="m-teacher">教师</a>
+    <a class="sub" href="#m-admin" data-anchor="m-admin">管理员 / 超管</a>
+    <a href="#markdown" data-anchor="markdown">Markdown 与计分脚本</a>
+    <a class="sub" href="#md-embed" data-anchor="md-embed">嵌入语法</a>
+    <a class="sub" href="#md-math" data-anchor="md-math">数学公式</a>
+    <a class="sub" href="#score" data-anchor="score">计分脚本</a>
+    <a href="#ops" data-anchor="ops">配置与运维</a>
+    <a class="sub" href="#config" data-anchor="config">配置文件</a>
+    <a class="sub" href="#sandbox" data-anchor="sandbox">沙箱编译与开关</a>
+    <a class="sub" href="#migrate" data-anchor="migrate">数据库迁移</a>
+    <a class="sub" href="#deploy" data-anchor="deploy">安全部署建议</a>
+    <a href="#faq" data-anchor="faq">常见问题</a>
+    <a href="#changelog" data-anchor="changelog">更新日志</a>
+  </aside>
+
+  <article>
+
+    <!-- ═══ 1. 入门指南 ═══ -->
+    <div class="section" id="guide">
+      <h2 class="sec-title"><span class="n">1</span>入门指南</h2>
+      <p class="sec-desc">五分钟跑起来你的第一个 OJ。</p>
+
+      <h3 class="block" id="quickstart">快速开始</h3>
+      <div class="notice info" style="margin-bottom: 20px;">
+        <b>推荐方式：</b>下载一键安装包（408MB），自动配置 Node.js、MinGW、Python、Java、Git 和 WinOJ 本体，无需手动安装依赖。<br>
+        <a href="https://github.com/dxx114514-stack/winoj.mimo/releases/download/1.0/OJDependenciesSetup.exe" target="_blank" rel="noopener" style="color: var(--accent-2); font-weight: 600;">下载一键安装包 →</a>
+      </div>
+      <div class="card">
+        <h4><span class="tag">Step 1</span>安装依赖（手动安装时）</h4>
+        <p>请先安装以下软件并加入系统 PATH：</p>
+        <ul>
+          <li><b>Node.js</b> ≥ 24.x（需内置 <code>node:sqlite</code>，运行后端服务）</li>
+          <li><b>MinGW-w64</b>（C/C++ 编译，任意版本）</li>
+          <li><b>Git</b></li>
+          <li><b>Python 3</b> / <b>JDK</b>（可选，如需评测对应语言）</li>
+          <li><b>Ollama</b>（可选，AI 代码安全审查，需加载 <code>qwen3:1.7b</code> 模型）</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4><span class="tag">Step 2</span>克隆并启动</h4>
+        <div class="code-block">
+          <div class="bar"><i></i><i></i><i></i><span class="lbl">cmd</span></div>
+          <pre><code>git clone https://github.com/dxx114514-stack/winoj.mimo.git
+cd winoj
+start.bat</code></pre>
+        </div>
+        <p>启动后浏览器访问 <code>http://localhost:3000</code>。首次启动会自动初始化数据库、编译沙箱运行器并生成默认配置。</p>
+      </div>
+      <div class="notice danger">
+        <b>默认管理员账号：</b><code>admin</code> / <code>admin123</code><br>
+        首次登录后请<b>立即修改管理员密码</b>。
+      </div>
+      <div class="notice warn">
+        <b>安全提示：</b>本项目基于 Windows 原生 Job Objects 实现沙箱隔离，Windows 桌面系统并非为绝对隔离设计。请勿在存有核心机密或敏感数据的个人主力机上以公网暴露形式运行。建议部署在虚拟机或专用测试机中。
+      </div>
+
+      <h3 class="block" id="requirements">环境要求</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>依赖</th><th>版本要求</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td>Node.js</td><td>≥ 24.x</td><td>运行后端服务，内置 SQLite 引擎（<code>node:sqlite</code>）</td></tr>
+            <tr><td>MinGW-w64</td><td>任意版本</td><td>C / C++ 编译</td></tr>
+            <tr><td>Python 3</td><td>任意版本</td><td>Python 代码执行（可选）</td></tr>
+            <tr><td>JDK</td><td>任意版本</td><td>Java 编译和执行（可选）</td></tr>
+            <tr><td>操作系统</td><td>Windows 10 及以上</td><td>主要支持平台（沙箱最低 Win8+，整体以 Node 要求为准）</td></tr>
+            <tr><td>Ollama</td><td>任意版本</td><td>AI 代码安全审查（可选）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block" id="update-uninstall">更新与卸载</h3>
+      <div class="grid">
+        <div class="card">
+          <h4>更新</h4>
+          <div class="code-block">
+            <div class="bar"><i></i><i></i><i></i><span class="lbl">cmd</span></div>
+            <pre><code>git pull
+cd backend
+npm install</code></pre>
+          </div>
+        </div>
+        <div class="card">
+          <h4>卸载</h4>
+          <p>将 <code>winoj</code> 目录整体删除，然后进入「设置 → 应用管理」删除所安装的依赖项（Node.js / MinGW-w64 等）。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 2. 使用手册 ═══ -->
+    <div class="section" id="manual">
+      <h2 class="sec-title"><span class="n">2</span>功能使用手册</h2>
+      <p class="sec-desc">按角色介绍 WinOJ 的全部功能。角色层级：用户 < 教师 < 管理员 < 超级管理员。</p>
+
+      <h3 class="block" id="m-user">普通用户</h3>
+      <div class="card">
+        <h4>注册与登录</h4>
+        <ul>
+          <li>登录与注册需通过 SVG 图形验证码（4 位字符，点击图片可刷新，5 分钟有效，一次性使用）</li>
+          <li>单 IP 每小时仅可注册 1 个账号</li>
+          <li>登录后 Access Token 15 分钟有效，Refresh Token 7 天自动续期（HttpOnly Cookie）</li>
+          <li>支持「忘记密码」（需在 <code>config/email.txt</code> 开启邮箱服务）</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>做题与提交</h4>
+        <ul>
+          <li>题目列表支持按标签、难度、分类组合筛选，支持模糊搜索（忽略空格）</li>
+          <li>题目详情支持 Markdown + KaTeX 公式、输入输出样例一键复制、提示说明</li>
+          <li>提交代码前可选用在线 IDE 调试（审查 → 编译 → 运行三阶段实时状态）</li>
+          <li>有未完成提交时禁止再次提交（同一时间只能有一个进行中的提交）</li>
+          <li>每个测试点显示：耗时、峰值内存、退出码、详细错误说明</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>资料、Rating 与成就</h4>
+        <ul>
+          <li><b>Rating</b>：编译错误 -2，新 AC +10；导航栏 Rating 每 30 秒自动刷新</li>
+          <li><b>等级称号</b>：从「新手」到「大师」；排行榜前三名金银铜牌标识</li>
+          <li><b>资料页</b>：个性签名、个人简介（Markdown + KaTeX）、成就墙、提交日历（365 天）、语言分布、AC 难度分布</li>
+          <li><b>隐私开关</b>：<code>hide_achievements</code> / <code>hide_dashboard</code> / <code>hide_favorites</code> 三个独立开关，开启后对其它普通用户隐藏</li>
+          <li><b>题目收藏</b>：题目详情页一键收藏，个人收藏页管理</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>比赛、题单与讨论</h4>
+        <ul>
+          <li><b>比赛</b>：可被教师邀请参赛或手动加入；排行榜按总分降序、耗时升序；前三名金银铜标识</li>
+          <li><b>虚拟比赛</b>：对已结束比赛发起虚拟参赛，独立计时与排行，不影响原比赛数据；同一比赛只能虚拟参加一次；关闭浏览器计时不停（以服务端时间为准）</li>
+          <li><b>题单训练计划</b>：查看公开题单，自动记录完成进度</li>
+          <li><b>讨论 / 题解区</b>：题目详情页讨论 Tab，支持发帖、楼中楼回复（两层嵌套）、编辑删除自己的帖子；内容经 DOMPurify 防 XSS</li>
+        </ul>
+      </div>
+
+      <h3 class="block" id="m-teacher">教师</h3>
+      <div class="card">
+        <h4>题目管理</h4>
+        <ul>
+          <li>创建 / 编辑 / 删除题目；删除题目后编号可被新题目复用，磁盘 testdata 目录同步清理</li>
+          <li>Markdown 描述、输入输出格式、提示（建议填写数据范围）</li>
+          <li>测试点：内联添加、批量添加、文件上传（.in / .out）、编辑、删除</li>
+          <li>测试分组（Subtask）：设置满分、聚合方式、依赖关系、计分脚本</li>
+          <li>标签（预置 10 个算法标签，支持自定义）与 6 级难度（☆入门 ~ ★★★★★困难）</li>
+          <li>一键重测任意提交</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>比赛管理</h4>
+        <ul>
+          <li>创建 / 编辑 / 删除比赛，添加题目（含非公开题目），自定义别名与排序</li>
+          <li>邀请用户参赛（邀请制），比赛状态自动判定（未开始 / 进行中 / 已结束）</li>
+          <li>比赛排行榜冻结（封榜）与手动解冻；结束后自动发布题解</li>
+          <li>比赛结束后一键对全部题目发起代码查重</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>内容与社区</h4>
+        <ul>
+          <li>发布文章（可链接题目作为题解）、全局 / 比赛公告（可置顶）</li>
+          <li>文件上传 / 图床：支持图片、文档，单用户默认 2GB 配额，上传后可用 URL 在 Markdown 中引用</li>
+          <li>讨论管理：置顶、加精、标记官方题解（金色边框）、锁定讨论（比赛中只读）</li>
+          <li>发起代码查重：对指定题目 Token + Jaccard 相似度分析，异步执行、进度可查</li>
+        </ul>
+      </div>
+
+      <h3 class="block" id="m-admin">管理员 / 超级管理员</h3>
+      <div class="card">
+        <h4>管理员</h4>
+        <ul>
+          <li>管理权限低于自己或自己的用户：封禁 / 解封 / 强制登出（封禁时 Access &amp; Refresh Token 立即失效）</li>
+          <li>查看 15 分钟内活跃的在线用户</li>
+          <li>删除任意提交记录（编号自动回收）、删除任意讨论</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>超级管理员</h4>
+        <ul>
+          <li>全部管理员权限 + 修改角色、重置密码、免密登录（一键切换任意用户身份）</li>
+          <li>语言管理：动态添加 / 编辑 / 禁用 / 删除编程语言，配置编译 / 运行命令（支持 <code>{src}</code>、<code>{exe}</code>、<code>{workdir}</code> 占位符）</li>
+          <li>设置用户 Rating、调整单用户图床限额、删除用户（ID 自动回收复用）</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ 3. 语法 ═══ -->
+    <div class="section" id="markdown">
+      <h2 class="sec-title"><span class="n">3</span>Markdown 与计分脚本</h2>
+      <p class="sec-desc">题目、文章、公告、个人简介等富文本均支持 Markdown + KaTeX 公式。</p>
+
+      <h3 class="block" id="md-math">数学公式（KaTeX）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类型</th><th>语法</th><th>效果</th></tr></thead>
+          <tbody>
+            <tr><td>行内公式</td><td><code>$E=mc^2$</code></td><td>$E=mc^2$</td></tr>
+            <tr><td>块级公式</td><td><code>$$\sum_{i=1}^{n} i$$</code></td><td>居中显示大公式</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block" id="md-embed">嵌入语法</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>能力</th><th>语法</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>嵌入 Bilibili 视频</td><td><code>@[bilibili](BV1uLTv6vEaQ)</code></td><td>自动生成 B 站播放器</td></tr>
+            <tr><td>嵌入网站</td><td><code>@[url](https://example.com)</code></td><td>iframe 内嵌任意 https 网站</td></tr>
+            <tr><td>嵌入音频</td><td><code>@[audio](URL)</code></td><td>音频播放器</td></tr>
+            <tr><td>嵌入视频</td><td><code>@[video](URL)</code></td><td>视频播放器</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="notice info">
+        <b>提示：</b>内嵌网站在页面加载时经过 DOMPurify 白名单清洗，仅放行安全属性；嵌入目标需为 <b>https</b> 地址（CSP 的 frame-src 允许 <code>self</code> 与 <code>https:</code>）。若外部页面需要跨源调用 OJ API，需将 <code>config/cors.txt</code> 的 <code>CORS_RESTRICTED</code> 设为 <code>false</code>。
+      </div>
+
+      <h3 class="block" id="score">计分脚本</h3>
+      <div class="card">
+        <p>支持自定义测试点 / 子任务 / 整题的评分逻辑，语法示例：</p>
+        <div class="code-block">
+          <div class="bar"><i></i><i></i><i></i><span class="lbl">评分脚本</span></div>
+          <pre><code>@score = 0
+@score += 10 if result1 == 1
+@score += 20 if result2 == 1
+if @score > 30 then
+  @score = 30
+fi
+min(@score, 100)
+max(@score, 0)
+abs(@score - 50)</code></pre>
+        </div>
+        <ul>
+          <li><code>@变量</code> 赋值与算术 / 位运算 / 逻辑运算</li>
+          <li><code>if / fi</code> 条件分支，支持括号嵌套</li>
+          <li><code>min()</code> / <code>max()</code> / <code>abs()</code> 函数</li>
+          <li>子任务聚合策略：求和 / 取最大 / 取最小等</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ 4. 运维 ═══ -->
+    <div class="section" id="ops">
+      <h2 class="sec-title"><span class="n">4</span>配置与运维</h2>
+      <p class="sec-desc">所有配置均通过 config/ 目录下的配置文件管理，不使用环境变量。</p>
+
+      <h3 class="block" id="config">配置文件</h3>
+      <div class="notice info">
+        <b>配置示例：</b><code>example-config/</code> 目录提供全部配置文件的完整示例（含字段说明与默认值）。可直接 <code>copy example-config\* config\</code> 后按需修改。<code>config/</code> 已在 <code>.gitignore</code> 中忽略，不会提交密钥到仓库。<code>jwt.txt</code> 缺失时服务启动会自动生成强随机密钥。
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>配置文件</th><th>用途</th><th>关键字段</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>config/ai.txt</code></td>
+              <td>AI 代码安全审查</td>
+              <td><code>AI_ENABLED</code>（默认 false）、<code>URL</code>（默认 http://localhost:11434/api/chat）、<code>MODEL</code>（默认 qwen3:1.7b）、<code>KEY</code>、<code>CODE_LENGTH_LIMIT</code></td>
+            </tr>
+            <tr>
+              <td><code>config/email.txt</code></td>
+              <td>邮件发送（注册验证 / 密码找回）</td>
+              <td><code>EMAIL_ENABLED</code>（默认 false）、<code>RESEND_API_KEY</code>、<code>EMAIL_FROM</code></td>
+            </tr>
+            <tr>
+              <td><code>config/cors.txt</code></td>
+              <td>跨域访问</td>
+              <td><code>CORS_RESTRICTED</code>（默认 true：仅白名单源；false：反射任意 Origin，供 <code>@[url]</code> 内嵌外部网页跨源调用 API）</td>
+            </tr>
+            <tr>
+              <td><code>config/captcha.txt</code></td>
+              <td>验证码开关</td>
+              <td><code>CAPTCHA_ENABLED</code>（缺失时默认开启）</td>
+            </tr>
+            <tr>
+              <td><code>config/jwt.txt</code></td>
+              <td>JWT 密钥</td>
+              <td>缺失时首次启动自动生成强随机密钥</td>
+            </tr>
+            <tr>
+              <td><code>config/judge.txt</code></td>
+              <td>判题并发</td>
+              <td>缺失时按 CPU 核数自动确定</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h4>核心配置 <span class="kbd">backend/config/config.js</span></h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>配置项</th><th>默认值</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>port</code></td><td>3000</td><td>服务器端口</td></tr>
+              <tr><td><code>jwt.accessExpiry</code></td><td>15m</td><td>Access Token 过期时间</td></tr>
+              <tr><td><code>jwt.refreshExpiry</code></td><td>7d</td><td>Refresh Token 过期时间</td></tr>
+              <tr><td><code>database.path</code></td><td>../data/winoj.db</td><td>SQLite 数据库路径</td></tr>
+              <tr><td><code>sandbox.tempDir</code></td><td>系统临时目录</td><td>沙箱工作目录</td></tr>
+              <tr><td><code>sandbox.maxOutputSize</code></td><td>64KB</td><td>最大输出大小</td></tr>
+              <tr><td><code>rateLimit.submissions</code></td><td>10 次/分钟</td><td>提交频率限制</td></tr>
+              <tr><td><code>rateLimit.ideRun</code></td><td>20 次/分钟</td><td>IDE 运行频率限制</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <h3 class="block" id="sandbox">沙箱编译与开关</h3>
+      <div class="card">
+        <h4>编译沙箱运行器</h4>
+        <div class="code-block">
+          <div class="bar"><i></i><i></i><i></i><span class="lbl">cmd · 需 MinGW</span></div>
+          <pre><code>cd backend\sandbox
+build.bat</code></pre>
+        </div>
+        <p>未编译时 start.bat 会自动编译；编译失败回退到传统模式（spawn），安全性较低。可用以下环境变量控制沙箱行为：</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>环境变量</th><th>默认</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>WINOJ_REQUIRE_RUNNER</code></td><td>0</td><td>=1 时沙箱运行器缺失即 fail-closed 拒绝判题</td></tr>
+            <tr><td><code>WINOJ_NO_APPCONTAINER</code></td><td>0</td><td>=1 完全跳过 AppContainer 容器路径</td></tr>
+            <tr><td><code>WINOJ_FORCE_CONTAINER</code></td><td>0</td><td>=1 无特权也尝试容器路径（仅管理员排查用）</td></tr>
+            <tr><td><code>WINOJ_EXEC_MODE</code></td><td>0</td><td>0/1 受限令牌+Low IL；2 裸进程（诊断）；3 受限令牌不带 CREATE_NO_WINDOW</td></tr>
+            <tr><td><code>WINOJ_NO_LOWIL</code></td><td>0</td><td>=1 关闭 Low Integrity 降级</td></tr>
+            <tr><td><code>WINOJ_NO_RELABEL</code></td><td>0</td><td>=1 跳过 workDir 完整性标签降级（排查用）</td></tr>
+            <tr><td><code>WINOJ_ROOT</code></td><td>exe 位置推导</td><td>指定项目根目录（沙箱日志路径）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="notice info">
+        <b>权限说明：</b>以管理员 / 服务身份运行时额外启用 AppContainer（文件系统 + 网络隔离）；普通用户运行时自动回退到受限令牌 + Low Integrity + Job Object（仍具备进程隔离与高危特权剥离），不会裸奔执行。
+      </div>
+
+      <h3 class="block" id="migrate">数据库迁移（sql.js → node:sqlite）</h3>
+      <div class="card">
+        <p>v1.8.0 起数据库引擎由 <code>sql.js</code>（WASM 内存库）更换为 Node 内置 <code>node:sqlite</code>（原生同步直写，零依赖）。sql.js 导出的数据库文件本身就是标准 SQLite 格式，<b>旧数据无需转换</b>。</p>
+      </div>
+      <div class="card">
+        <h4>迁移步骤</h4>
+        <ol style="color:var(--text-dim);font-size:14px;padding-left:20px;">
+          <li>停止服务（关闭 start.bat 窗口，避免文件占用）</li>
+          <li><code>git pull</code> 更新代码</li>
+          <li><code>cd backend &amp;&amp; npm install</code>（无需安装数据库驱动，node:sqlite 为内置模块，要求 Node ≥ 24）</li>
+          <li>（可选但推荐）运行 <code>node scripts\migrate-sqlite.js</code>：自动备份 + 完整性校验 + 数据统计</li>
+          <li><code>start.bat</code> 启动，<code>initDB()</code> 自动执行全部 schema 迁移</li>
+        </ol>
+      </div>
+      <div class="notice warn">
+        <b>说明：</b>数据库仍位于 <code>backend/data/winoj.db</code>。迁移后目录会出现 <code>winoj.db-wal</code> / <code>winoj.db-shm</code>（WAL 模式，崩溃安全、读写更快），属正常现象，请勿手动删除。如需回滚，用备份覆盖 <code>winoj.db</code> 即可。
+      </div>
+
+      <h3 class="block" id="deploy">安全部署建议</h3>
+      <div class="card">
+        <ul>
+          <li>建议部署在<b>虚拟机或专用测试机</b>，避免在存有敏感数据的个人主力机公网暴露</li>
+          <li>首次登录后立即修改默认管理员密码；建议为教师 / 管理员使用独立强密码</li>
+          <li>对外提供服务时建议前置反向代理（如 Cloudflare Tunnel，见 <code>st.bat</code>）并保持 <code>CORS_RESTRICTED=true</code></li>
+          <li>定期 <code>git pull</code> 保持版本更新，跟踪安全修复</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ 5. FAQ ═══ -->
+    <div class="section" id="faq">
+      <h2 class="sec-title"><span class="n">5</span>常见问题</h2>
+      <p class="sec-desc">按场景分类的故障排查与使用问答。</p>
+
+      <h3 class="block">启动与安装</h3>
+      <details open>
+        <summary>代码提交后一直显示「评测中」？</summary>
+        <p>检查服务器控制台是否有报错。可能是编译器未安装或路径未配置（MinGW / Python / JDK 需在 PATH 中）。</p>
+      </details>
+      <details>
+        <summary>内存显示 0KB？</summary>
+        <p>沙箱模式下内存由 Job Object 测量；若显示 0KB，说明 <code>sandbox_runner.exe</code> 构建失败并回退到传统模式（该模式不测量内存）。确认 <code>backend/sandbox/sandbox_runner.exe</code> 存在（缺失时 start.bat 会自动构建），或手动运行 <code>cd backend\sandbox &amp;&amp; build.bat</code>。</p>
+      </details>
+      <details>
+        <summary>提示「安全沙箱运行器缺失」？</summary>
+        <p>设置了 <code>WINOJ_REQUIRE_RUNNER=1</code> 且 <code>sandbox_runner.exe</code> 不存在时会 fail-closed 拒绝判题。编译运行器或取消该环境变量即可。</p>
+      </details>
+      <details>
+        <summary>非管理员运行 node 进程，判题会失败吗？</summary>
+        <p>不会。普通用户运行时自动跳过 AppContainer，回退到受限令牌 + Low Integrity + Job Object，隔离与限制照常生效（唯一差异是评测代码可访问网络）。仅当受限令牌路径也失败时才 fail-closed 拒绝执行，绝不裸奔回退。</p>
+      </details>
+
+      <h3 class="block">功能使用</h3>
+      <details>
+        <summary>如何在题目描述中使用公式？</summary>
+        <p>行内公式 <code>$E=mc^2$</code>，块级公式 <code>$$\sum_{i=1}^{n} i$$</code>。</p>
+      </details>
+      <details>
+        <summary>如何嵌入视频 / 网站？</summary>
+        <p>Bilibili 用 <code>@[bilibili](BV号)</code>；任意网站用 <code>@[url](URL)</code>（需 https）；音频 <code>@[audio](URL)</code>；视频 <code>@[video](URL)</code>。</p>
+      </details>
+      <details>
+        <summary>@[url] 内嵌的网页显示空白？</summary>
+        <p>确认目标地址为 https（CSP frame-src 仅放行 https）；确认浏览器无拦截；若为 X 平台类反嵌入站点，目标站可能通过 X-Frame-Options 禁止被 iframe 内嵌，无法绕过。</p>
+      </details>
+      <details>
+        <summary>AI 代码安全审查如何配置？</summary>
+        <p>编辑 <code>config/ai.txt</code>：<code>AI_ENABLED</code> 设为 true，<code>URL</code> 设置服务地址（默认 http://localhost:11434/api/chat），<code>MODEL</code> 设置模型（默认 qwen3:1.7b），可选设置 <code>KEY</code>。</p>
+      </details>
+      <details>
+        <summary>自定义计分脚本怎么写？</summary>
+        <p>使用 <code>@变量</code> 赋值、<code>if/fi</code> 条件判断（支持括号）、<code>min()</code> / <code>max()</code> / <code>abs()</code> 函数。详见本页「计分脚本」一节。</p>
+      </details>
+      <details>
+        <summary>验证码是如何工作的？</summary>
+        <p>svg-captcha 动态生成 4 位字符（排除易混淆 O/0/I/1），带干扰线和彩色噪点。一次性使用、5 分钟有效、点击刷新、大小写不敏感（自动转大写匹配）。开关：<code>config/captcha.txt</code> 的 <code>CAPTCHA_ENABLED</code>。</p>
+      </details>
+
+      <h3 class="block">数据与安全</h3>
+      <details>
+        <summary>数据库在哪里？</summary>
+        <p>默认 <code>backend/data/winoj.db</code>，SQLite 格式，由 Node 内置 node:sqlite 驱动（v1.8.0 起），重启后数据保留。</p>
+      </details>
+      <details>
+        <summary>如何修改某用户的图床限额？</summary>
+        <p>以超级管理员登录，进入用户管理页面，编辑目标用户即可修改单文件大小限制与总存储空间。只能管理权限等级低于自己或自己的账号。</p>
+      </details>
+      <details>
+        <summary>如何搜索题目 / 比赛 / 文章？</summary>
+        <p>在列表页顶部搜索框输入关键词，支持模糊匹配并忽略空格，例如搜索 <code>a+b</code> 可匹配 <code>A + B Problem</code>。</p>
+      </details>
+      <details>
+        <summary>如何添加新语言？</summary>
+        <p>以超级管理员登录，进入「语言」管理页面，填写编译 / 运行命令即可。命令支持 <code>{src}</code>、<code>{exe}</code>、<code>{workdir}</code> 占位符。</p>
+      </details>
+      <details>
+        <summary>虚拟比赛是什么？</summary>
+        <p>对已结束的比赛发起「虚拟参加」获得私有实例，计时从点击「开始」起算，时长等于原比赛时长，不可暂停，关闭浏览器计时不停（以服务端时间为准）。提交计入虚拟排行但不影响原比赛数据，同一比赛只能参加一次。</p>
+      </details>
+      <details>
+        <summary>代码查重如何使用？</summary>
+        <p>教师及以上在题目管理点击「查重」即可发起；查重后台异步执行，报告页实时显示进度。结果按相似度排序：≥85% 高度相似（红）、≥70% 疑似相似（橙）。详情页并排对比两份代码，相同 token 高亮。</p>
+      </details>
+    </div>
+
+    <!-- ═══ 6. 更新日志 ═══ -->
+    <div class="section" id="changelog">
+      <h2 class="sec-title"><span class="n">6</span>更新日志</h2>
+      <p class="sec-desc">版本演进记录。</p>
+      <div class="card changelog">
+        <div class="ver"><b>v1.9.0</b>
+          <ul>
+            <li>新增隐私开关：成就 / 数据看板 / 收藏三个独立开关，开启后对其它普通用户隐藏（admin/su 始终可见），个人资料页可编辑</li>
+            <li>成就、数据看板、收藏页面支持 <code>user_id</code> 参数查看他人数据（遵循隐私开关）</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.8.0</b>
+          <ul>
+            <li>数据库引擎从 sql.js 更换为 Node 内置 node:sqlite（原生同步直写，零依赖，性能与可靠性大幅提升）</li>
+            <li>新增数据库迁移脚本 <code>scripts/migrate-sqlite.js</code>（备份 + 完整性校验 + 数据统计）</li>
+            <li>修复内嵌 URL（@[url]）无法显示问题（CSP frame-src 白名单过窄）</li>
+            <li>修复 sandbox 在非管理员用户下 CreateProcessAsUser 报错 (error 5) 的问题</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.7.0</b>
+          <ul>
+            <li>新增公告系统、题目标签与难度（预置 10 个算法标签，6 级难度，多维筛选）</li>
+            <li>新增代码 Diff 对比、多文件提交、WebSocket 实时推送、排行榜冻结</li>
+            <li>新增题单训练计划、讨论 / 题解区（marked.js + DOMPurify XSS 防护）、虚拟比赛</li>
+            <li>新增代码查重（Token + Jaccard 算法，并排对比，比赛一键查重）</li>
+            <li>验证码开关迁移至 config/captcha.txt；JWT 密钥改为 config/jwt.txt（首次启动自动生成）</li>
+            <li>API 路由扩展至 16 个模块、100+ 端点；前端页面扩展至 30+；测试 70+ 用例</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.6.0</b>
+          <ul>
+            <li>新增 SVG 图形验证码替代 Cloudflare Turnstile（4 位字符 + 干扰线）</li>
+            <li>新增模糊搜索、用户资料预览、图床限额管理</li>
+            <li>配置体系化：AI / 邮件配置改为 config/ 目录读取；修复 Token 刷新并发冲突、暗色模式、比赛排行用户名点击、权限逻辑、Zip 上传等</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.5.0</b>
+          <ul>
+            <li>新增黑夜模式一键切换、用户偏好语言、Markdown 嵌入语法（@[bilibili] / @[url] / @[audio] / @[video]）</li>
+            <li>新增 IDE 三阶段状态、队列模式、内存检测；AI 安全审查提示词注入防护（15 种模式）</li>
+            <li>新增 force_logout_at 强制登出、注册限流、用户 ID 复用、OpenAPI 3.0 文档、55+ 单元测试</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.4.0</b>
+          <ul>
+            <li>新增 setup.bat 端口预留与系统 PATH 配置；Rating 排行榜；LM Studio Gemma 代码安全审查（恶意代码自动封禁）</li>
+            <li>新增代码长度限制（128KB）、封禁全拦截、题目 / 文章编号回收复用、提交删除</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.3.0</b>
+          <ul>
+            <li>新增 Markdown + KaTeX 公式渲染；用户个性签名、个人简介（Markdown）</li>
+            <li>新增 Rating 等级分（CE -2，新 AC +10）、文章系统、文件上传 / 图床（单用户 2GB 限额）</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.2.0</b>
+          <ul>
+            <li>新增比赛邀请制、排行榜、非公开题目可见；首页统计、提交重测、提交删除、提交详情错误说明</li>
+          </ul>
+        </div>
+        <div class="ver"><b>v1.1.0</b>
+          <ul>
+            <li>新增自定义计分脚本、测试分组、管理面板 GUI；su 免密登录、角色调整；封禁 / 解封 / 强制登出优化</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="index.html" style="justify-content: center; margin-bottom: 10px;"><span class="logo">OJ</span> WinOJ</a>
+    <p style="margin-top: 8px;">Windows 在线评测系统 · 开源 · MIT License</p>
+    <p style="margin-top: 8px; display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;">
+      <a href="https://github.com/dxx114514-stack/winoj.mimo" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/dxx114514-stack/winoj.mimo/releases" target="_blank" rel="noopener">下载</a>
+      <a href="mailto:dxx114514@hotmail.com">联系: dxx114514@hotmail.com</a>
+    </p>
+    <p style="margin-top: 12px; font-size: 12px;">© 2024 WinOJ. All rights reserved.</p>
+  </div>
+</footer>
+
+<!-- 返回顶部按钮 -->
+<button id="backToTop" aria-label="返回顶部" style="position:fixed;bottom:28px;right:28px;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,.4);opacity:0;transform:translateY(10px);transition:opacity .3s,transform .3s;pointer-events:none;z-index:40;">↑</button>
+
+<script>
+(function () {
+  var links = document.querySelectorAll('.toc a');
+  var on = function (el) {
+    links.forEach(function (a) { a.classList.remove('on'); });
+    el.classList.add('on');
+  };
+  if (!('IntersectionObserver' in window)) return;
+  var map = {};
+  links.forEach(function (a) {
+    var id = a.getAttribute('data-anchor');
+    var el = document.getElementById(id);
+    if (el) map[id] = a;
+  });
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting && map[e.target.id]) on(map[e.target.id]);
+    });
+  }, { rootMargin: '-15% 0px -75% 0px' });
+  Object.keys(map).forEach(function (id) { io.observe(document.getElementById(id)); });
+
+  var reveals = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    var ro = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); } });
+    }, { threshold: 0.08 });
+    reveals.forEach(function (el) { ro.observe(el); });
+  } else {
+    reveals.forEach(function (el) { el.classList.add('in'); });
+  }
+})();
+
+// 汉堡菜单交互
+(function () {
+  var toggle = document.querySelector('.nav-toggle');
+  var links = document.querySelector('.nav-links');
+  if (!toggle || !links) return;
+  toggle.addEventListener('click', function () {
+    links.classList.toggle('open');
+    toggle.textContent = links.classList.contains('open') ? '✕' : '☰';
+  });
+  links.querySelectorAll('a').forEach(function (a) {
+    a.addEventListener('click', function () {
+      links.classList.remove('open');
+      toggle.textContent = '☰';
+    });
+  });
+})();
+
+// 返回顶部按钮交互
+(function () {
+  var btn = document.getElementById('backToTop');
+  if (!btn) return;
+  window.addEventListener('scroll', function () {
+    if (window.scrollY > 300) {
+      btn.style.opacity = '1';
+      btn.style.transform = 'none';
+      btn.style.pointerEvents = 'auto';
+    } else {
+      btn.style.opacity = '0';
+      btn.style.transform = 'translateY(10px)';
+      btn.style.pointerEvents = 'none';
+    }
+  });
+  btn.addEventListener('click', function () {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+})();
+</script>
+</body>
+</html>
