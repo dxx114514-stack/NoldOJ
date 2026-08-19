@@ -244,8 +244,8 @@ start.bat</code></pre>
         <p>启动后浏览器访问 <code>http://localhost:3000</code>。首次启动会自动初始化数据库、编译沙箱运行器并生成默认配置。</p>
       </div>
       <div class="notice danger">
-        <b>默认管理员账号：</b><code>admin</code> / <code>admin123</code><br>
-        首次登录后请<b>立即修改管理员密码</b>。
+        <b>管理员账号：</b><code>admin</code>，初始密码<b>随机生成</b>，首次启动时在控制台日志中显示一次（仅此一次）<br>
+        登录后请<b>立即修改管理员密码</b>。
       </div>
       <div class="notice warn">
         <b>安全提示：</b>本项目基于 Windows 原生 Job Objects 实现沙箱隔离，Windows 桌面系统并非为绝对隔离设计。请勿在存有核心机密或敏感数据的个人主力机上以公网暴露形式运行。建议部署在虚拟机或专用测试机中。
@@ -552,7 +552,7 @@ build.bat</code></pre>
       <div class="card">
         <ul>
           <li>建议部署在<b>虚拟机或专用测试机</b>，避免在存有敏感数据的个人主力机公网暴露</li>
-          <li>首次登录后立即修改默认管理员密码；建议为教师 / 管理员使用独立强密码</li>
+          <li>首次登录后立即修改管理员密码；建议为教师 / 管理员使用独立强密码</li>
           <li>对外提供服务时建议前置反向代理（如 Cloudflare Tunnel，见 <code>st.bat</code>）并保持 <code>CORS_RESTRICTED=true</code></li>
           <li>定期 <code>git pull</code> 保持版本更新，跟踪安全修复</li>
         </ul>

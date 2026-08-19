@@ -92,7 +92,7 @@ user（用户） < teacher（教师） < admin（管理员） < su（超级管�
 ```json
 {
   "username": "admin",
-  "password": "admin123"
+  "password": "<初始密码，见控制台日志>"
 }
 ```
 
