@@ -811,6 +811,7 @@ build.bat</code></pre>
 
   function renderList(el, entries) {
     if (!el) return;
+    entries = entries.filter(function (e) { return validMirror(e.url); });
     el.textContent = '';
     entries.forEach(function (e, i) {
       var a = document.createElement('a');
@@ -825,6 +826,10 @@ build.bat</code></pre>
   }
 
   function nameOf(prefix) { return prefix.replace(/^https:\/\//, ''); }
+
+  // 最终形态校验: 只接受 https://host/https://原始地址 的规范镜像 URL, 其余一律丢弃
+  var MIRROR_RE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{2,5})?\/https:\/\/[^\s'"<>\\]+$/;
+  function validMirror(u) { return typeof u === 'string' && MIRROR_RE.test(u); }
 
   function probe(prefix) {
     return new Promise(function (resolve) {

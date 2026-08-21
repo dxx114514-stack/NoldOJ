@@ -665,6 +665,7 @@ npm install</code></pre>
 
   function renderList(el, entries) {
     if (!el) return;
+    entries = entries.filter(function (e) { return validMirror(e.url); });
     el.textContent = '';
     entries.forEach(function (e, i) {
       var a = document.createElement('a');
@@ -679,6 +680,8 @@ npm install</code></pre>
   }
 
   function done(list) {
+    list = list.filter(function (e) { return validMirror(e.url); });
+    if (!list.length) return;
     list.sort(function (a, b) { return (a.latency || 99999) - (b.latency || 99999); });
     var best = list[0];
     var btn = document.getElementById('heroMirrorBtn');
@@ -693,6 +696,10 @@ npm install</code></pre>
   }
 
   function nameOf(prefix) { return prefix.replace(/^https:\/\//, ''); }
+
+  // 最终形态校验: 只接受 https://host/https://原始地址 的规范镜像 URL, 其余一律丢弃
+  var MIRROR_RE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{2,5})?\/https:\/\/[^\s'"<>\\]+$/;
+  function validMirror(u) { return typeof u === 'string' && MIRROR_RE.test(u); }
 
   // 本地探针: no-cors HEAD 计时, resolve=可达(记录ms), reject/超时=不可用
   function probe(prefix) {
