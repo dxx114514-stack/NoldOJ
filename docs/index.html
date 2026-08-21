@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WinOJ - 专为 Windows 设计的在线评测系统</title>
 <meta name="description" content="WinOJ 是一套专为 Windows 平台设计的轻量级在线评测系统（OJ）。支持多语言判题、安全沙箱、比赛、Rating、AI 代码安全审查等功能。">
-<link rel="icon" href="../frontend/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:title" content="WinOJ - 专为 Windows 设计的在线评测系统">
 <meta property="og:description" content="多语言判题、Job Object 安全沙箱、比赛与 Rating、AI 代码安全审查……开箱即用，一条命令启动。">
 <meta property="og:type" content="website">
@@ -727,28 +727,10 @@ npm install</code></pre>
     });
   }
 
-  try {
-    Promise.all([
-      fetch(API_BASE + '/api/github/convert?url=' + encodeURIComponent(GH_URL)).then(function (r) { return r.json(); }),
-      fetch(API_BASE + '/api/github/list').then(function (r) { return r.json(); })
-    ]).then(function (results) {
-      var converted = (results[0].data || []).map(safeUrl).filter(Boolean);
-      var sources = results[1].data || [];
-      var scored = [];
-      converted.forEach(function (u) {
-        var prefix = u.slice(0, u.length - GH_URL.length).replace(/\/$/, '');
-        for (var i = 0; i < sources.length; i++) {
-          var s = sources[i];
-          if ((s.url || '').replace(/\/$/, '') === prefix) {
-            if (s.status === 'success') scored.push({ name: s.name || nameOf(prefix), url: u, latency: s.latency });
-            break;
-          }
-        }
-      });
-      if (scored.length) done(scored);
-      else localProbe();
-    }).catch(localProbe); // CORS 拦截/API 不可达 → 本地探针
-  } catch (e) { localProbe(); }
+  // 说明: 曾尝试 git.mxg.pub API 择优, 但其无 Access-Control-Allow-Origin 头, 浏览器端必然
+  // 被 CORS 拦截(控制台报错且永远失败), 故移除该路径; 若未来 API 开启 CORS 可恢复。
+  // 当前直接使用 Image 探针本地测速。
+  try { localProbe(); } catch (e) { /* 保持 ghproxy.net 默认 */ }
 })();
 </script>
 </body>

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WinOJ 支持中心 - 使用手册 · 运维 · 常见问题</title>
 <meta name="description" content="WinOJ 在线评测系统支持中心：入门指南、功能使用手册、配置与运维、Markdown 语法、常见问题与更新日志。">
-<link rel="icon" href="../frontend/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:title" content="WinOJ 支持中心 - 使用手册 · 运维 · 常见问题">
 <meta property="og:description" content="从入门到运维，从功能手册到故障排查。本文档覆盖 WinOJ 的全部使用场景。">
 <meta property="og:type" content="article">
@@ -859,30 +859,10 @@ build.bat</code></pre>
     });
   }
 
-  try {
-    Promise.all([
-      fetch(API_BASE + '/api/github/convert?url=' + encodeURIComponent(GH_URL)).then(function (r) { return r.json(); }),
-      fetch(API_BASE + '/api/github/list').then(function (r) { return r.json(); })
-    ]).then(function (results) {
-      var converted = (results[0].data || []).map(safeUrl).filter(Boolean);
-      var sources = results[1].data || [];
-      var scored = [];
-      converted.forEach(function (u) {
-        var prefix = u.slice(0, u.length - GH_URL.length).replace(/\/$/, '');
-        for (var i = 0; i < sources.length; i++) {
-          var s = sources[i];
-          if ((s.url || '').replace(/\/$/, '') === prefix) {
-            if (s.status === 'success') scored.push({ name: s.name || nameOf(prefix), url: u, latency: s.latency });
-            break;
-          }
-        }
-      });
-      if (scored.length) {
-        scored.sort(function (a, b) { return (a.latency || 99999) - (b.latency || 99999); });
-        renderList(document.getElementById('supportMirrorLinks'), scored.slice(0, 6));
-      } else localProbe();
-    }).catch(localProbe);
-  } catch (e) { localProbe(); }
+  // 说明: 曾尝试 git.mxg.pub API 择优, 但其无 Access-Control-Allow-Origin 头, 浏览器端必然
+  // 被 CORS 拦截(控制台报错且永远失败), 故移除该路径; 若未来 API 开启 CORS 可恢复。
+  // 当前直接使用 Image 探针本地测速。
+  try { localProbe(); } catch (e) { /* 保持 ghproxy.net 默认 */ }
 })();
 </script>
 </body>
