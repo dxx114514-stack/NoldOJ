@@ -268,9 +268,9 @@
       <a class="btn btn-ghost" href="support.html">支持中心
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       </a>
-      <a class="btn btn-primary" href="https://ghproxy.net/https://github.com/dxx114514-stack/winoj.mimo/releases/download/1.0/OJDependenciesSetup.exe" target="_blank" rel="noopener">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        镜像站下载 (ghproxy)
+      <a class="btn btn-primary" id="heroMirrorBtn" href="https://ghproxy.net/https://github.com/dxx114514-stack/winoj.mimo/releases/download/1.0/OJDependenciesSetup.exe" target="_blank" rel="noopener" title="正在通过 GitHub ProxyUI 测速选择最快镜像…">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        镜像站下载<span id="heroMirrorMeta"></span>
       </a>
     </div>
     <div class="hero-stats">
@@ -472,7 +472,7 @@
           最小安装 1.08GB，无需任何配置
         </p>
         <p style="margin-top: 14px; font-size: 13px; color: var(--text-faint);">
-          镜像站下载：<a href="https://ghproxy.net/https://github.com/dxx114514-stack/winoj.mimo/releases/download/1.0/OJDependenciesSetup.exe" target="_blank" rel="noopener" style="color: var(--accent-2); word-break: break-all;">https://ghproxy.net/https://github.com/dxx114514-stack/winoj.mimo/releases/download/1.0/OJDependenciesSetup.exe</a>
+          镜像站下载（按延迟排序）：<span id="mirrorLinks"><a href="https://ghproxy.net/https://github.com/dxx114514-stack/winoj.mimo/releases/download/1.0/OJDependenciesSetup.exe" target="_blank" rel="noopener" style="color: var(--accent-2); word-break: break-all;">ghproxy.net（默认）</a></span>
         </p>
       </div>
       <ol>
@@ -642,6 +642,106 @@ npm install</code></pre>
       toggle.textContent = '☰';
     });
   });
+})();
+
+// 智能镜像选择: 优先用 GitHub ProxyUI API 测速; API 被 CORS 拦截时降级为本地探针测速; 全部失败保持 ghproxy.net 兜底
+(function () {
+  var GH_URL = 'https://github.com/dxx114514-stack/winoj.mimo/releases/download/1.0/OJDependenciesSetup.exe';
+  var DEFAULT_PREFIX = 'https://ghproxy.net';
+  var API_BASE = 'https://git.mxg.pub';
+  // 内置镜像候选 (来源: git.mxg.pub /api/github/convert, 2026-08 实测)
+  var CANDIDATES = [
+    'https://ghproxy.net', 'https://gh.llkk.cc', 'https://tvv.tw', 'https://gh-proxy.com',
+    'https://fastgit.cc', 'https://git.yylx.win', 'https://g.blfrp.cn', 'https://gh-proxy.net',
+    'https://ghproxy.monkeyray.net', 'https://gitproxy.click'
+  ];
+
+  function safeUrl(x) {
+    if (typeof x !== 'string' || x.indexOf('https://') !== 0) return null;
+    // 兼容两种输入: convert 返回的完整 URL 已含原始地址; 探针候选为纯前缀需拼接
+    var u = (x.lastIndexOf(GH_URL) === x.length - GH_URL.length) ? x : x + GH_URL;
+    return (u.lastIndexOf(GH_URL) === u.length - GH_URL.length && u.length > GH_URL.length) ? u : null;
+  }
+
+  function renderList(el, entries) {
+    if (!el) return;
+    el.textContent = '';
+    entries.forEach(function (e, i) {
+      var a = document.createElement('a');
+      a.href = e.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.style.color = 'var(--accent-2)';
+      a.textContent = e.name + (e.latency != null ? ' (' + e.latency + 'ms)' : '');
+      el.appendChild(a);
+      if (i < entries.length - 1) el.appendChild(document.createTextNode(' · '));
+    });
+  }
+
+  function done(list) {
+    list.sort(function (a, b) { return (a.latency || 99999) - (b.latency || 99999); });
+    var best = list[0];
+    var btn = document.getElementById('heroMirrorBtn');
+    if (btn) {
+      btn.href = best.url;
+      btn.title = '最快镜像: ' + best.name + (best.latency != null ? ' (' + best.latency + 'ms)' : '');
+    }
+    var meta = document.getElementById('heroMirrorMeta');
+    if (meta) meta.textContent = ' · ' + best.name + (best.latency != null ? ' ' + best.latency + 'ms' : '');
+    renderList(document.getElementById('mirrorLinks'), list.slice(0, 6));
+    renderList(document.getElementById('supportMirrorLinks'), list.slice(0, 6));
+  }
+
+  function nameOf(prefix) { return prefix.replace(/^https:\/\//, ''); }
+
+  // 本地探针: no-cors HEAD 计时, resolve=可达(记录ms), reject/超时=不可用
+  function probe(prefix) {
+    return new Promise(function (resolve) {
+      var t0 = Date.now();
+      var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timer = setTimeout(function () {
+        if (ctrl) ctrl.abort();
+        resolve(null);
+      }, 3000);
+      fetch(prefix + '/', { method: 'HEAD', mode: 'no-cors', signal: ctrl ? ctrl.signal : undefined })
+        .then(function () { clearTimeout(timer); resolve({ prefix: prefix, latency: Date.now() - t0 }); })
+        .catch(function () { clearTimeout(timer); resolve(null); });
+    });
+  }
+
+  function localProbe() {
+    if (typeof fetch === 'undefined' || !('AbortController' in window)) return;
+    Promise.all(CANDIDATES.map(probe)).then(function (results) {
+      var ok = results.filter(Boolean).map(function (r) {
+        var url = safeUrl(r.prefix);
+        return url ? { name: nameOf(r.prefix), url: url, latency: r.latency } : null;
+      }).filter(Boolean);
+      if (ok.length) done(ok);
+    });
+  }
+
+  try {
+    Promise.all([
+      fetch(API_BASE + '/api/github/convert?url=' + encodeURIComponent(GH_URL)).then(function (r) { return r.json(); }),
+      fetch(API_BASE + '/api/github/list').then(function (r) { return r.json(); })
+    ]).then(function (results) {
+      var converted = (results[0].data || []).map(safeUrl).filter(Boolean);
+      var sources = results[1].data || [];
+      var scored = [];
+      converted.forEach(function (u) {
+        var prefix = u.slice(0, u.length - GH_URL.length).replace(/\/$/, '');
+        for (var i = 0; i < sources.length; i++) {
+          var s = sources[i];
+          if ((s.url || '').replace(/\/$/, '') === prefix) {
+            if (s.status === 'success') scored.push({ name: s.name || nameOf(prefix), url: u, latency: s.latency });
+            break;
+          }
+        }
+      });
+      if (scored.length) done(scored);
+      else localProbe();
+    }).catch(localProbe); // CORS 拦截/API 不可达 → 本地探针
+  } catch (e) { localProbe(); }
 })();
 </script>
 </body>
