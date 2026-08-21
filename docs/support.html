@@ -804,15 +804,15 @@ build.bat</code></pre>
 
   function safeUrl(x) {
     if (typeof x !== 'string' || x.indexOf('https://') !== 0) return null;
-    // 兼容两种输入: convert 返回的完整 URL 已含原始地址; 探针候选为纯前缀需拼接
-    var u = (x.lastIndexOf(GH_URL) === x.length - GH_URL.length) ? x : x + GH_URL;
+    // 兼容两种输入: convert 完整 URL(已含原始地址); 探针候选为纯前缀, 需补 "/" 分隔再拼接
+    var u = (x.lastIndexOf(GH_URL) === x.length - GH_URL.length) ? x : x.replace(/\/+$/, '') + '/' + GH_URL;
     return (u.lastIndexOf(GH_URL) === u.length - GH_URL.length && u.length > GH_URL.length) ? u : null;
   }
 
   function renderList(el, entries) {
     if (!el) return;
     entries = entries.filter(function (e) { return validMirror(e.url); });
-    el.textContent = '';
+    if (!entries.length) return; // 全部不合规: 保留默认内容, 不清空
     entries.forEach(function (e, i) {
       var a = document.createElement('a');
       a.href = e.url;

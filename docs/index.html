@@ -664,8 +664,8 @@ npm install</code></pre>
 
   function safeUrl(x) {
     if (typeof x !== 'string' || x.indexOf('https://') !== 0) return null;
-    // 兼容两种输入: convert 返回的完整 URL 已含原始地址; 探针候选为纯前缀需拼接
-    var u = (x.lastIndexOf(GH_URL) === x.length - GH_URL.length) ? x : x + GH_URL;
+    // 兼容两种输入: convert 完整 URL(已含原始地址); 探针候选为纯前缀, 需补 "/" 分隔再拼接
+    var u = (x.lastIndexOf(GH_URL) === x.length - GH_URL.length) ? x : x.replace(/\/+$/, '') + '/' + GH_URL;
     return (u.lastIndexOf(GH_URL) === u.length - GH_URL.length && u.length > GH_URL.length) ? u : null;
   }
 
@@ -685,9 +685,15 @@ npm install</code></pre>
     });
   }
 
+  function setDefaultLine(reason) {
+    console.info('[mirror] 使用默认线路:', reason);
+    var meta = document.getElementById('heroMirrorMeta');
+    if (meta) meta.textContent = ' · 默认线路';
+  }
+
   function done(list) {
     list = list.filter(function (e) { return validMirror(e.url); });
-    if (!list.length) return;
+    if (!list.length) { setDefaultLine('无合规镜像 URL'); return; }
     list.sort(function (a, b) { return (a.latency || 99999) - (b.latency || 99999); });
     var best = list[0];
     var btn = document.getElementById('heroMirrorBtn');
@@ -731,8 +737,7 @@ npm install</code></pre>
       }).filter(Boolean);
       if (ok.length) { done(ok); return; }
       // 全部候选超时/不可达: 明确显示保持默认, 便于诊断
-      var meta = document.getElementById('heroMirrorMeta');
-      if (meta) meta.textContent = ' · 默认线路';
+      setDefaultLine('全部候选不可达');
     });
   }
 
