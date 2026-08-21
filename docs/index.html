@@ -701,23 +701,23 @@ npm install</code></pre>
   var MIRROR_RE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{2,5})?\/https:\/\/[^\s'"<>\\]+$/;
   function validMirror(u) { return typeof u === 'string' && MIRROR_RE.test(u); }
 
-  // 本地探针: no-cors HEAD 计时, resolve=可达(记录ms), reject/超时=不可用
+  // 本地探针: Image 加载计时, 无 CORS 依赖; onload/onerror 均视为可达(服务器有响应), 仅超时判不可用
   function probe(prefix) {
     return new Promise(function (resolve) {
       var t0 = Date.now();
-      var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var img = new Image();
+      var settled = false;
       var timer = setTimeout(function () {
-        if (ctrl) ctrl.abort();
-        resolve(null);
-      }, 3000);
-      fetch(prefix + '/', { method: 'HEAD', mode: 'no-cors', signal: ctrl ? ctrl.signal : undefined })
-        .then(function () { clearTimeout(timer); resolve({ prefix: prefix, latency: Date.now() - t0 }); })
-        .catch(function () { clearTimeout(timer); resolve(null); });
+        if (!settled) { settled = true; img.src = ''; resolve(null); }
+      }, 4000);
+      function ok() { if (!settled) { settled = true; clearTimeout(timer); resolve({ prefix: prefix, latency: Date.now() - t0 }); } }
+      img.onload = ok;
+      img.onerror = ok; // 非图片响应(404/403 等)同样证明主机在线
+      img.src = prefix + '/favicon.ico?_=' + t0;
     });
   }
 
   function localProbe() {
-    if (typeof fetch === 'undefined' || !('AbortController' in window)) return;
     Promise.all(CANDIDATES.map(probe)).then(function (results) {
       var ok = results.filter(Boolean).map(function (r) {
         var url = safeUrl(r.prefix);
