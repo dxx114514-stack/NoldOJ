@@ -656,6 +656,12 @@ npm install</code></pre>
     'https://ghproxy.monkeyray.net', 'https://gitproxy.click'
   ];
 
+  // 状态可见化: 初始即显示测速中, 结束后更新为结果或默认
+  (function () {
+    var meta = document.getElementById('heroMirrorMeta');
+    if (meta) meta.textContent = ' · 测速中…';
+  })();
+
   function safeUrl(x) {
     if (typeof x !== 'string' || x.indexOf('https://') !== 0) return null;
     // 兼容两种输入: convert 返回的完整 URL 已含原始地址; 探针候选为纯前缀需拼接
@@ -723,7 +729,10 @@ npm install</code></pre>
         var url = safeUrl(r.prefix);
         return url ? { name: nameOf(r.prefix), url: url, latency: r.latency } : null;
       }).filter(Boolean);
-      if (ok.length) done(ok);
+      if (ok.length) { done(ok); return; }
+      // 全部候选超时/不可达: 明确显示保持默认, 便于诊断
+      var meta = document.getElementById('heroMirrorMeta');
+      if (meta) meta.textContent = ' · 默认线路';
     });
   }
 
