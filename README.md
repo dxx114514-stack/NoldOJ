@@ -69,6 +69,9 @@
 - **内嵌网站**：`@[url](URL)` 嵌入任意网站 iframe
 - **内嵌音频**：`@[audio](URL)` 嵌入音频播放器
 - **内嵌视频**：`@[video](URL)` 嵌入视频播放器
+- **Office 文档预览**：`@[office](URL)` 嵌入 docx/xlsx/pptx 在线预览（微软 Office Online 渲染，文档 URL 须公网可访问）
+- **ECharts 图表**：`@[echarts]({JSON配置})` 嵌入图表（饼图/折线图/柱状图等），JSON 无效时降级显示原文
+- **Mermaid 图表**：`@[mermaid]` 与 `@[/mermaid]` 包裹多行文本，渲染流程图/时序图/类图等 SVG
 
 ### 用户与权限
 - **四级角色体系**：用户 → 教师 → 管理员 → 超级管理员
@@ -532,7 +535,7 @@ A: 使用 `@变量` 赋值、`if/fi` 条件判断（支持括号）、`min()`/`m
 A: 行内公式用 `$E=mc^2$`，块级公式用 `$$\sum_{i=1}^{n} i$$`。
 
 **Q: 如何嵌入视频/网站？**
-A: Bilibili 用 `@[bilibili](BV号)`，任意网站用 `@[url](URL)`，音频 `@[audio](URL)`，视频 `@[video](URL)`。
+A: Bilibili 用 `@[bilibili](BV号)`，任意网站用 `@[url](URL)`，音频 `@[audio](URL)`，视频 `@[video](URL)`，Office 文档用 `@[office](URL)`（须公网 https），ECharts 图表用 `@[echarts]({JSON})`，Mermaid 流程图用 `@[mermaid]` 与 `@[/mermaid]` 包裹多行文本。
 
 **Q: AI 安全审查如何配置？**
 A: 编辑 `config/ai.txt` 文件。将 `AI_ENABLED` 设为 `true` 启用审查，通过 `URL` 设置 AI 服务地址（默认 `http://localhost:11434/api/chat`），`MODEL` 设置模型名称（默认 `qwen3:1.7b`），`KEY` 设置 API Key（可选，用于需要认证的服务）。

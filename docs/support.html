@@ -405,6 +405,9 @@ npm install</code></pre>
             <tr><td>嵌入网站</td><td><code>@[url](https://example.com)</code></td><td>iframe 内嵌任意 https 网站</td></tr>
             <tr><td>嵌入音频</td><td><code>@[audio](URL)</code></td><td>音频播放器</td></tr>
             <tr><td>嵌入视频</td><td><code>@[video](URL)</code></td><td>视频播放器</td></tr>
+            <tr><td>Office 文档预览</td><td><code>@[office](https://…/doc.docx)</code></td><td>微软 Office Online 渲染 docx/xlsx/pptx, 文档 URL 须公网可访问(如图床)</td></tr>
+            <tr><td>ECharts 图表</td><td><code>@[echarts]({…JSON…})</code></td><td>参数为 ECharts JSON 配置(单行), 自动渲染图表; JSON 无效时降级显示原文</td></tr>
+            <tr><td>Mermaid 图表</td><td><code>@[mermaid]</code> 换行 …多行文本… 换行 <code>@[/mermaid]</code></td><td>块级跨行语法, 渲染流程图 / 时序图 / 类图等 SVG</td></tr>
           </tbody>
         </table>
       </div>
