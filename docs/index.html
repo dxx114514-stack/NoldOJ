@@ -655,8 +655,23 @@ npm install</code></pre>
     'https://fastgit.cc', 'https://git.yylx.win', 'https://g.blfrp.cn', 'https://gh-proxy.net',
     'https://ghproxy.monkeyray.net'
   ];
-  // 黑名单: 已知不可用/不可信镜像, 探针前先剔除
+  // 黑名单: 内置兜底 + docs/proxyban.txt(每行一个, 支持 # 注释), 两者合并; file:// 打开时仅用兜底
   var BLOCKLIST = ['https://gitproxy.click'];
+  function parseBanlist(text) {
+    return String(text || '').split(/\r?\n/).map(function (s) { return s.trim(); })
+      .filter(function (s) { return s && s.charAt(0) !== '#'; })
+      .map(function (s) {
+        var p = (s.indexOf('http://') === 0 || s.indexOf('https://') === 0) ? s : 'https://' + s;
+        return p.replace(/\/+$/, '');
+      });
+  }
+  function loadBanlist() {
+    if (typeof fetch === 'undefined') return Promise.resolve([]);
+    return fetch('proxyban.txt')
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(parseBanlist)
+      .catch(function () { return []; });
+  }
 
   // 状态可见化: 初始即显示测速中, 结束后更新为结果或默认
   (function () {
@@ -732,15 +747,18 @@ npm install</code></pre>
   }
 
   function localProbe() {
-    var list = CANDIDATES.filter(function (p) { return BLOCKLIST.indexOf(p) === -1; });
-    Promise.all(list.map(probe)).then(function (results) {
-      var ok = results.filter(Boolean).map(function (r) {
-        var url = safeUrl(r.prefix);
-        return url ? { name: nameOf(r.prefix), url: url, latency: r.latency } : null;
-      }).filter(Boolean);
-      if (ok.length) { done(ok); return; }
-      // 全部候选超时/不可达: 明确显示保持默认, 便于诊断
-      setDefaultLine('全部候选不可达');
+    loadBanlist().then(function (remoteBan) {
+      var banned = BLOCKLIST.concat(remoteBan);
+      var list = CANDIDATES.filter(function (p) { return banned.indexOf(p) === -1; });
+      return Promise.all(list.map(probe)).then(function (results) {
+        var ok = results.filter(Boolean).map(function (r) {
+          var url = safeUrl(r.prefix);
+          return url ? { name: nameOf(r.prefix), url: url, latency: r.latency } : null;
+        }).filter(Boolean);
+        if (ok.length) { done(ok); return; }
+        // 全部候选超时/不可达: 明确显示保持默认, 便于诊断
+        setDefaultLine('全部候选不可达');
+      });
     });
   }
 

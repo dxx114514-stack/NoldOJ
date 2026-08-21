@@ -1,0 +1,4 @@
+# WinOJ 镜像站黑名单
+# 每行一个; 支持 # 注释; 可填裸域名(gitproxy.click)或完整前缀(https://gitproxy.click)
+# 已知不可用 / 不可信镜像
+gitproxy.click
