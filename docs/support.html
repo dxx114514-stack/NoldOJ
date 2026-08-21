@@ -799,8 +799,10 @@ build.bat</code></pre>
   var CANDIDATES = [
     'https://ghproxy.net', 'https://gh.llkk.cc', 'https://tvv.tw', 'https://gh-proxy.com',
     'https://fastgit.cc', 'https://git.yylx.win', 'https://g.blfrp.cn', 'https://gh-proxy.net',
-    'https://ghproxy.monkeyray.net', 'https://gitproxy.click'
+    'https://ghproxy.monkeyray.net'
   ];
+  // 黑名单: 已知不可用/不可信镜像, 探针前先剔除
+  var BLOCKLIST = ['https://gitproxy.click'];
 
   function safeUrl(x) {
     if (typeof x !== 'string' || x.indexOf('https://') !== 0) return null;
@@ -848,7 +850,8 @@ build.bat</code></pre>
   }
 
   function localProbe() {
-    Promise.all(CANDIDATES.map(probe)).then(function (results) {
+    var list = CANDIDATES.filter(function (p) { return BLOCKLIST.indexOf(p) === -1; });
+    Promise.all(list.map(probe)).then(function (results) {
       var ok = results.filter(Boolean).map(function (r) {
         var url = safeUrl(r.prefix);
         return url ? { name: nameOf(r.prefix), url: url, latency: r.latency } : null;
