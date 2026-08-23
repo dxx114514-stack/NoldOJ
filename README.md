@@ -421,6 +421,13 @@ winoj/
 - 成就/数据看板/收藏页面支持 `user_id` 参数查看他人数据（遵循隐私开关）
 - 成就、数据看板、收藏 API 文档补全（openapi.yaml / APIuse.md）
 
+### v1.10.0
+- 新增超管管理工具：用户管理工具条「+ 创建用户」表单（含随机强密码生成，可直接转告用户首次登录后修改）
+- 新增 Excel 批量导入用户：SheetJS 前端解析，支持中英文表头（username/用户名）与角色中文别名（用户/教师/管理员/超管），实时进度汇总，失败项显示原因
+- 新增注册开关：管理员可在用户管理面板一键关闭/开放访客自行注册（仅超管可见），落盘 `config/register.txt` 热生效无需重启；关闭后注册接口返回明确提示并跳过限流计数
+- 新增题面多样例：`problem_samples` 表 + admin 编辑器动态行管理 + 旧字段幂等迁移 + problem.html 多样例展示
+- 新增 Markdown 增强：`@[office](URL)` Office 文档内嵌 / `@[echarts](JSON)` ECharts 图表 / `@[mermaid]...@[/mermaid]` 流程图渲染
+
 ### v1.8.0
 - 数据库引擎从 sql.js 更换为 Node 内置 node:sqlite（原生同步直写，零依赖，性能与可靠性大幅提升）
 - 新增数据库迁移脚本 `scripts/migrate-sqlite.js`（备份 + 完整性校验 + 数据统计）

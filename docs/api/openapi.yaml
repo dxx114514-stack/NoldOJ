@@ -505,6 +505,9 @@ paths:
     post:
       tags: [认证]
       summary: 注册（需验证码）
+      description: |
+        注册新账号。若管理员已关闭自行注册（通过 `PUT /users/register-enabled`），则返回 403 `ERR_REGISTER_DISABLED`。
+        超管可通过 `POST /users` 直接创建账号，不受此开关限制。
       requestBody:
         required: true
         content:
@@ -2095,8 +2098,48 @@ paths:
                     type: string
                   max_file_size:
                     type: integer
-                  max_storage:
-                    type: integer
+                    max_storage:
+                      type: integer
+
+  /users/register-enabled:
+    get:
+      tags: [用户]
+      summary: 查询注册开关状态
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 注册开关状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [用户]
+      summary: 切换注册开关（仅超管）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+                  description: true=开放访客注册 / false=仅管理员创建
+      responses:
+        '200':
+          description: 切换成功，返回新状态
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   # ===== ACHIEVEMENTS =====
   /achievements:

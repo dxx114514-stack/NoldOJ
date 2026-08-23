@@ -542,6 +542,18 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需超级管理员权限。不能删除最后一个超级管理员。
 
+### GET /users/register-enabled — 查询注册开关状态
+
+需超级管理员权限。返回 `{ "enabled": true/false }`。
+
+### PUT /users/register-enabled — 切换注册开关
+
+需超级管理员权限。请求体 `{ "enabled": true/false }`（布尔值，必填）。
+
+- 写入 `config/register.txt` 并热更新内存态，无需重启
+- 关闭后 `POST /auth/register` 返回 403 `ERR_REGISTER_DISABLED` 且不消耗注册限流配额
+- 超管通过 `POST /users` 创建账号不受此开关影响
+
 ---
 
 ## 6. 语言管理模块 `/languages`（仅超级管理员）
