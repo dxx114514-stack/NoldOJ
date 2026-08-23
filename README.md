@@ -11,6 +11,7 @@
 > - **权限降级**：`CreateRestrictedToken` 剥离 `SeDebugPrivilege`、`SeImpersonatePrivilege` 等高危特权
 > - **资源限制**：内存上限、CPU 时间限制、进程数限制
 > - **数据隔离**：每次判题使用独立临时目录，判题结束后暴力删除；SQLite 启用 WAL 模式防止锁死
+> - **三层安全架构（Sandboxie + Job Object + 受限令牌/AppContainer）**：编译与运行阶段均可选通过 Sandboxie-Classic 沙盒隔离，与 Job Object 资源限制、受限令牌/ AppContainer 权限隔离叠加。Sandboxie 提供文件系统重定向与网络阻断，Job Object 兜底 CPU/内存/进程数限制
 >
 > 编译沙箱运行器（需要 MinGW）：
 > ```bat
@@ -362,6 +363,7 @@ CORS_RESTRICTED=true
 > - `captcha.txt` — 验证码开关，缺失时默认开启
 > - `jwt.txt` — JWT 密钥，缺失时首次启动自动生成强随机密钥
 > - `judge.txt` — 判题并发，缺失时按 CPU 核数自动确定
+> - `sandboxie.txt` — Sandboxie 隔离开关、路径配置、模板克隆。默认开启；未安装 Sandboxie 时自动回退 Job Object
 
 ### 核心配置
 
@@ -439,6 +441,7 @@ winoj/
 - 新增 Markdown 增强：`@[office](URL)` Office 文档内嵌 / `@[echarts](JSON)` ECharts 图表 / `@[mermaid]...@[/mermaid]` 流程图渲染
 - 新增 AI 提示（AI Hint）：学生对题目失败 2 次后可获取方向性算法提示，60 秒冷却
 - 新增 AI 测试数据生成：教师可在管理面板一键生成题目测试用例（正常 + 边界），自动写入磁盘
+- 新增 Sandboxie-Classic 三层安全隔离：编译/运行均通过 Sandboxie 沙盒包装，模板克隆 + 路径白名单 + AutoDelete，自动检测 Start.exe + SbieSvc 服务，未安装时静默回退
 
 ### v1.8.0
 - 数据库引擎从 sql.js 更换为 Node 内置 node:sqlite（原生同步直写，零依赖，性能与可靠性大幅提升）

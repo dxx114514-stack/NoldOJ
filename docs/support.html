@@ -534,6 +534,16 @@ build.bat</code></pre>
         <b>权限说明：</b>以管理员 / 服务身份运行时额外启用 AppContainer（文件系统 + 网络隔离）；普通用户运行时自动回退到受限令牌 + Low Integrity + Job Object（仍具备进程隔离与高危特权剥离），不会裸奔执行。
       </div>
 
+      <h4>Sandboxie-Classic 隔离（可选，三层防护）</h4>
+      <p>在 Job Object + 受限令牌基础上叠加 Sandboxie 文件系统重定向与网络阻断。配置文件：<code>config/sandboxie.txt</code>。</p>
+      <ul class="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 mt-2 space-y-1">
+        <li><code>SANDBOXIE_ENABLED</code>：开关，默认开启</li>
+        <li><code>START_EXE</code> / <code>SBIE_INI</code>：Sandboxie 工具路径，相对文件名自动在安装根目录的 sandboxie/ 下查找</li>
+        <li><code>TEMPLATE_BOX</code>：克隆的模板沙盒名（默认 JudgeBox）</li>
+        <li><code>COMPILER_PATH</code> / <code>WORKSPACE_PATH</code>：路径白名单，未配置时自动探测 mingw64 和 workspace</li>
+      </ul>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">未安装 Sandboxie 或 SbieSvc 服务未运行时自动回退到 Job Object 模式，不影响判题。</p>
+
       <h3 class="block" id="migrate">数据库迁移（sql.js → node:sqlite）</h3>
       <div class="card">
         <p>v1.8.0 起数据库引擎由 <code>sql.js</code>（WASM 内存库）更换为 Node 内置 <code>node:sqlite</code>（原生同步直写，零依赖）。sql.js 导出的数据库文件本身就是标准 SQLite 格式，<b>旧数据无需转换</b>。</p>
@@ -584,6 +594,10 @@ build.bat</code></pre>
       <details>
         <summary>非管理员运行 node 进程，判题会失败吗？</summary>
         <p>不会。普通用户运行时自动跳过 AppContainer，回退到受限令牌 + Low Integrity + Job Object，隔离与限制照常生效（唯一差异是评测代码可访问网络）。仅当受限令牌路径也失败时才 fail-closed 拒绝执行，绝不裸奔回退。</p>
+      </details>
+      <details>
+        <summary>Sandboxie 隔离是什么？需要额外安装吗？</summary>
+        <p>Sandboxie-Classic 提供文件系统重定向和网络阻断，与 Job Object（资源限制）+ 受限令牌/AppContainer（权限隔离）叠加形成三层防护。默认开启，安装了 Sandboxie 且 SbieSvc 服务运行中即自动生效。未安装时自动回退到 Job Object 模式，不影响判题。</p>
       </details>
 
       <h3 class="block">功能使用</h3>

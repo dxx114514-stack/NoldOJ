@@ -388,6 +388,8 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需管理员权限。编号自动回收。
 
+**安全隔离**：用户代码在三层隔离环境中执行（Sandboxie 文件/网络隔离 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。编译与运行阶段均可选通过 Sandboxie 沙盒包装，Job Object 兜底 CPU/内存/进程数限制。
+
 ---
 
 ## 4. 在线编程模块 `/ide`
@@ -498,6 +500,8 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 ```
 
 状态流转：`pending` → `compiling` → `running` → `accepted`/`compile_error`/`runtime_error`
+
+**安全隔离**：运行环境与提交评测相同，三层隔离（Sandboxie + Job Object + 受限令牌/AppContainer）。
 
 ---
 
