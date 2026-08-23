@@ -204,8 +204,19 @@ function loadCorsConfig() {
 }
 
 // ── Sandboxie 配置: config/sandboxie.txt ──
+// 路径自动检测: 默认从 OJ 根目录的上级查找 (即 {OJ_ROOT}/../sandboxie/)
+// 例: OJ 装在 C:\WinOJ，则 Sandboxie 在 C:\sandboxie\ (与 WinOJ 同级)
 function loadSandboxieConfig() {
-  const result = { enabled: false, startExe: 'Start.exe', sbieIni: 'SbieIni.exe', boxPrefix: 'WinOJ' };
+  const result = {
+    enabled: false,
+    startExe: 'Start.exe',
+    sbieIni: 'SbieIni.exe',
+    boxPrefix: 'WinOJ',
+    templateBox: 'JudgeBox',
+    // 编译器/运行时路径白名单（Sandboxie ReadFilePath/OpenFilePath）
+    compilerPaths: [],
+    workspacePaths: []
+  };
   try {
     const p = path.join(__dirname, '..', '..', 'config', 'sandboxie.txt');
     const content = fs.readFileSync(p, 'utf8');
@@ -215,8 +226,39 @@ function loadSandboxieConfig() {
       if (t.startsWith('START_EXE=')) result.startExe = t.split('=').slice(1).join('=');
       if (t.startsWith('SBIE_INI=')) result.sbieIni = t.split('=').slice(1).join('=');
       if (t.startsWith('BOX_PREFIX=')) result.boxPrefix = t.split('=').slice(1).join('=');
+      if (t.startsWith('TEMPLATE_BOX=')) result.templateBox = t.split('=').slice(1).join('=');
+      if (t.startsWith('COMPILER_PATH=')) result.compilerPaths.push(t.split('=').slice(1).join('='));
+      if (t.startsWith('WORKSPACE_PATH=')) result.workspacePaths.push(t.split('=').slice(1).join('='));
     }
   } catch {}
+
+  // 路径自动检测：若 startExe/sbieIni 是相对文件名，在 OJ 根目录下的 sandboxie/ 目录查找
+  // 例: OJ 装在 C:\WinOJ，则查找 C:\WinOJ\sandboxie\Start.exe
+  const ojRoot = path.join(__dirname, '..', '..');
+  const sbieDir = path.join(ojRoot, 'sandboxie');
+
+  if (!path.isAbsolute(result.startExe)) {
+    const candidate = path.join(sbieDir, result.startExe);
+    if (fs.existsSync(candidate)) result.startExe = candidate;
+  }
+  if (!path.isAbsolute(result.sbieIni)) {
+    const candidate = path.join(sbieDir, result.sbieIni);
+    if (fs.existsSync(candidate)) result.sbieIni = candidate;
+  }
+
+  // 若未配置编译器路径，自动探测 mingw64 (在 OJ 根目录下)
+  if (result.compilerPaths.length === 0) {
+    const mingwDir = path.join(ojRoot, 'mingw64');
+    if (fs.existsSync(mingwDir)) {
+      result.compilerPaths.push(path.join(mingwDir, '*'));
+    }
+  }
+
+  // 若未配置工作目录路径，使用 OJ 根目录下的 workspace
+  if (result.workspacePaths.length === 0) {
+    result.workspacePaths.push(path.join(ojRoot, 'workspace', '*'));
+  }
+
   return result;
 }
 
