@@ -208,7 +208,7 @@ function loadCorsConfig() {
 // 例: OJ 装在 C:\WinOJ，则 Sandboxie 在 C:\sandboxie\ (与 WinOJ 同级)
 function loadSandboxieConfig() {
   const result = {
-    enabled: false,
+    enabled: true,
     startExe: 'Start.exe',
     sbieIni: 'SbieIni.exe',
     boxPrefix: 'WinOJ',
