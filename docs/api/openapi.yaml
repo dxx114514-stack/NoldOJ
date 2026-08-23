@@ -1576,6 +1576,101 @@ paths:
                     type: string
                     enum: [none, low, medium, high, critical]
 
+  /problems/{id}/hint:
+    post:
+      tags: [题目]
+      summary: AI 提示（AI Hint）
+      description: |
+        学生对某题失败 2 次后可获取方向性算法提示。每用户每题 60 秒冷却。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: 提示内容
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hint:
+                    type: string
+                    description: 方向性算法提示（300 字以内中文）
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /problems/{id}/ai-testdata:
+    post:
+      tags: [题目]
+      summary: AI 生成测试数据
+      description: |
+        教师可自动生成测试用例（正常 + 边界），自动写入磁盘。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                samples:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  default: 3
+                  description: 正常用例数量
+                edge_cases:
+                  type: integer
+                  minimum: 0
+                  maximum: 10
+                  default: 3
+                  description: 边界用例数量
+      responses:
+        '200':
+          description: 生成成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_cases:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        input:
+                          type: string
+                        expected_output:
+                          type: string
+                  count:
+                    type: integer
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: AI 未启用
+
   /ide/run:
     post:
       tags: [IDE]

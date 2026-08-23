@@ -611,6 +611,14 @@ build.bat</code></pre>
         <summary>验证码是如何工作的？</summary>
         <p>svg-captcha 动态生成 4 位字符（排除易混淆 O/0/I/1），带干扰线和彩色噪点。一次性使用、5 分钟有效、点击刷新、大小写不敏感（自动转大写匹配）。开关：<code>config/captcha.txt</code> 的 <code>CAPTCHA_ENABLED</code>。</p>
       </details>
+      <details>
+        <summary>AI 提示（AI Hint）怎么用？</summary>
+        <p>登录后进入题目页，对同一题提交失败 2 次以上，「AI Hint」按钮自动出现。点击即可获取方向性算法提示（不给完整代码）。每题 60 秒冷却。需管理员启用 AI（<code>config/ai.txt</code> 的 <code>AI_ENABLED=true</code>）。</p>
+      </details>
+      <details>
+        <summary>AI 测试数据生成怎么用？</summary>
+        <p>以教师或管理员身份进入管理面板 → 题目管理 → 编辑测试点时点击「🤖 AI 生成」。可指定正常用例数和边界用例数，AI 自动为题目生成测试用例并写入磁盘。需管理员启用 AI。</p>
+      </details>
 
       <h3 class="block">数据与安全</h3>
       <details>

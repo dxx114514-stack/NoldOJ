@@ -217,6 +217,10 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需教师权限。multipart/form-data，字段名 `file`，上传 `.zip` 文件。
 
+### POST /problems/:id/ai-testdata — AI 生成测试数据
+
+需教师权限。自动为题目生成测试用例（正常 + 边界），参数：`samples`（1-10）、`edge_cases`（0-10）。详见上方「AI 测试数据生成」一节。
+
 **ZIP 结构说明：**
 ```
 ├── Script.txt           # 题目级计分脚本（可选）
@@ -408,6 +412,47 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
   "safe": true,
   "reason": "...",
   "threat_level": "none"
+}
+```
+
+### POST /problems/:id/hint — AI 提示（AI Hint）
+
+需认证。学生对某题失败 2 次后可获取方向性算法提示（不给完整代码，300 字以内中文）。每用户每题 60 秒冷却。
+
+**请求体：**
+```json
+{}
+```
+
+**响应：**
+```json
+{
+  "hint": "建议考虑贪心策略..."
+}
+```
+
+### POST /problems/:id/ai-testdata — AI 生成测试数据
+
+需教师权限。为指定题目自动生成测试用例（正常用例 + 边界用例），自动写入磁盘。
+
+**请求体：**
+```json
+{
+  "samples": 3,
+  "edge_cases": 3
+}
+```
+
+- `samples`：正常用例数量（1-10，默认 3）
+- `edge_cases`：边界用例数量（0-10，默认 3）
+
+**响应：**
+```json
+{
+  "test_cases": [
+    { "name": "ai_1", "input": "...", "expected_output": "..." }
+  ],
+  "count": 6
 }
 ```
 
