@@ -5,28 +5,32 @@
 # 与 Job Object + 受限令牌 / AppContainer 叠加形成三层防护。
 #
 # 依赖: Sandboxie-Classic 已安装，SbieSvc 服务运行中
+#
+# 部署目录结构:
+#   {INSTALL_ROOT}/WinOJ/     ← OJ 根目录 (start.bat)
+#   {INSTALL_ROOT}/sandboxie/ ← Start.exe, SbieIni.exe
+#   {INSTALL_ROOT}/mingw64/   ← gcc 编译器
+#
+# 路径为相对文件名时，程序自动在安装根目录的 sandboxie/ 下查找
 # ============================================================
 
 SANDBOXIE_ENABLED=false
 
 # ── 路径配置 ──────────────────────────────────────────────────
-# 路径为相对文件名时，程序自动在 OJ 根目录的上级 sandboxie/ 目录查找
-# 例: OJ 装在 C:\WinOJ，则默认查找 C:\sandboxie\Start.exe
-# 填绝对路径则直接使用
+# 相对文件名 → 自动查找 {INSTALL_ROOT}/sandboxie/Start.exe
+# 绝对路径 → 直接使用
 START_EXE=Start.exe
 SBIE_INI=SbieIni.exe
 
 # ── 沙盒配置 ──────────────────────────────────────────────────
-# 沙盒名前缀（编译: <PREFIX>_compile_<UUID>, 运行: <PREFIX>_submit_<UUID>）
 BOX_PREFIX=WinOJ
-# 克隆的模板沙盒名（需在 Sandboxie 中预先创建 JudgeBox 模板）
 TEMPLATE_BOX=JudgeBox
 
 # ── 路径白名单 ────────────────────────────────────────────────
-# 编译器路径（ReadFilePath: 沙盒内只读，放头文件/库文件）
-# 未配置时自动探测 OJ 同级的 mingw64 目录
+# 编译器路径（ReadFilePath: 沙盒内只读）
+# 未配置时自动探测 {INSTALL_ROOT}/mingw64/*
 # COMPILER_PATH=C:\WinOJ\mingw64\*
 
-# 工作目录路径（OpenFilePath: 沙盒内读写直通，放输入输出文件）
-# 未配置时默认 OJ 根目录下的 workspace/*
-# WORKSPACE_PATH=C:\WinOJ\workspace\*
+# 工作目录路径（OpenFilePath: 沙盒内读写直通）
+# 未配置时默认 {OJ_ROOT}/workspace/*
+# WORKSPACE_PATH=C:\WinOJ\WinOJ\workspace\*

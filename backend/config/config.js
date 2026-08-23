@@ -232,10 +232,12 @@ function loadSandboxieConfig() {
     }
   } catch {}
 
-  // 路径自动检测：若 startExe/sbieIni 是相对文件名，在 OJ 根目录下的 sandboxie/ 目录查找
-  // 例: OJ 装在 C:\WinOJ，则查找 C:\WinOJ\sandboxie\Start.exe
+  // 路径自动检测：若 startExe/sbieIni 是相对文件名，在 OJ 安装根目录的 sandboxie/ 目录查找
+  // 部署结构: {INSTALL_ROOT}/WinOJ/ (OJ根) + {INSTALL_ROOT}/sandboxie/ + {INSTALL_ROOT}/mingw64/
+  // __dirname = backend/config/ → 往上两级 = OJ 根 → 再往上一级 = 安装根
   const ojRoot = path.join(__dirname, '..', '..');
-  const sbieDir = path.join(ojRoot, 'sandboxie');
+  const installRoot = path.join(ojRoot, '..'); // 安装根 (C:\WinOJ)
+  const sbieDir = path.join(installRoot, 'sandboxie');
 
   if (!path.isAbsolute(result.startExe)) {
     const candidate = path.join(sbieDir, result.startExe);
@@ -246,9 +248,9 @@ function loadSandboxieConfig() {
     if (fs.existsSync(candidate)) result.sbieIni = candidate;
   }
 
-  // 若未配置编译器路径，自动探测 mingw64 (在 OJ 根目录下)
+  // 若未配置编译器路径，自动探测 mingw64 (在安装根目录下)
   if (result.compilerPaths.length === 0) {
-    const mingwDir = path.join(ojRoot, 'mingw64');
+    const mingwDir = path.join(installRoot, 'mingw64');
     if (fs.existsSync(mingwDir)) {
       result.compilerPaths.push(path.join(mingwDir, '*'));
     }
