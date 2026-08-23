@@ -40,9 +40,7 @@
             <p class="text-sm text-gray-400 dark:text-gray-500 mb-6">${escapeHtml(a.nickname || a.username || '系统')} · ${new Date(a.created_at).toLocaleString()}${a.updated_at && a.updated_at !== a.created_at ? ' · 更新于 ' + new Date(a.updated_at).toLocaleString() : ''}</p>
             <div class="border-t border-gray-100 dark:border-gray-700 pt-6" id="mdBody">${renderMarkdown(a.content)}</div>
           </div>`;
-        if (window.renderMathInElement) {
-          try { renderMathInElement(document.getElementById('mdBody'), { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
-        }
+        renderMathDefaults(document.getElementById('mdBody'));
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${escapeHtml(err.message) || '加载失败'}</p>`;
       }

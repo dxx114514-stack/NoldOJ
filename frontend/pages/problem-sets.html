@@ -62,24 +62,11 @@
           `;
         }).join('');
 
-        // 简单分页
         const totalPages = Math.ceil(data.total / 12) || 1;
-        const pager = document.getElementById('pager');
-        let html = '';
-        for (let i = 1; i <= totalPages; i++) {
-          html += `<button onclick="gotoPage(${i})" class="px-3 py-1 text-sm rounded-lg ${i===page?'bg-indigo-600 text-white':'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 dark:text-gray-500 border border-gray-200 dark:border-gray-700'}">${i}</button>`;
-        }
-        pager.innerHTML = html;
+        renderPagination('pager', totalPages, page, 'load');
       } catch (err) {
         document.getElementById('list').innerHTML = `<p class="col-span-2 text-center text-red-500 py-12">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
-    }
-
-    function gotoPage(p) {
-      page = p;
-      window.history.replaceState({}, '', `?page=${p}`);
-      load();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     load();

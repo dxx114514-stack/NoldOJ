@@ -29,7 +29,7 @@
     if (!isSelf) document.getElementById('pageTitle').textContent = '⭐ TA 的收藏';
     const DIFF = ['入门','简单','中等','较难','困难','极难'];
 
-    if (!getToken()) window.location.href = '/pages/login.html';
+    requireAuth();
 
     async function load() {
       try {

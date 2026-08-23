@@ -20,7 +20,7 @@
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('achievements');
-    if (!getToken()) window.location.href = '/pages/login.html';
+    requireAuth();
 
     const params = new URLSearchParams(window.location.search);
     const viewUserId = params.get('user_id');

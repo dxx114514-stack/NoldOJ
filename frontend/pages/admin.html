@@ -23,7 +23,7 @@
   <div id="nav"></div>
   <div class="max-w-7xl mx-auto px-4 py-8">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">管理面板</h1>
-    <div class="flex space-x-2 mb-6">
+    <div class="flex space-x-2 mb-6 overflow-x-auto flex-wrap">
       <button onclick="showTab('problems')" id="tab-problems" class="px-4 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white">题目管理</button>
       <button onclick="showTab('users')" id="tab-users" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">用户管理</button>
       <button onclick="showTab('online')" id="tab-online" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700">在线用户</button>
@@ -50,7 +50,7 @@
 
       <div id="createProblemForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
         <h3 class="font-semibold mb-3" id="problemFormTitle">新建题目</h3>
-        <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <input id="pTitle" placeholder="题目标题" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
           <select id="pType" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
             <option value="traditional">传统题</option>
@@ -126,7 +126,7 @@
 
         <div id="groupEditor" class="hidden mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-700">
           <h4 class="text-sm font-semibold mb-3" id="groupEditorTitle">添加分组</h4>
-          <div class="grid grid-cols-2 gap-3 mb-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Subtask ID</label>
               <input id="gSubtaskId" type="text" placeholder="如 st1" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
@@ -191,7 +191,7 @@
 
         <div id="tcEditor" class="hidden mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
           <h4 class="text-sm font-semibold mb-2" id="tcEditorTitle">编辑测试点</h4>
-          <div class="grid grid-cols-2 gap-3 mb-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">输入</label>
               <textarea id="tcInput" rows="4" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
@@ -201,7 +201,7 @@
               <textarea id="tcOutput" rows="4" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
             </div>
           </div>
-          <div class="grid grid-cols-5 gap-3 mb-3">
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">分数</label>
               <input id="tcScore" type="number" value="0" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
@@ -237,7 +237,7 @@
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">统一分数</label>
                 <input id="batchScore" type="number" placeholder="留空则不修改" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
               </div>
-              <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">时间限制 (ms)</label>
                   <input id="batchTimeLimit" type="number" placeholder="留空则不修改" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
@@ -256,7 +256,7 @@
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-x-auto">
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
             <tr>
@@ -323,7 +323,7 @@
         </div>
         <div id="importProgress" class="hidden mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-xl text-sm max-h-60 overflow-y-auto"></div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-x-auto">
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
             <tr>
@@ -357,7 +357,7 @@
         <button onclick="showCreateContest()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 新建比赛</button>
       </div>
       <div id="createContestForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
-        <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <input id="cTitle" placeholder="比赛标题" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
           <input id="cStart" type="datetime-local" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
           <input id="cEnd" type="datetime-local" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
@@ -390,7 +390,7 @@
 
         <div class="mb-4">
           <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">添加题目</h4>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">题目 ID</label>
               <input id="cpProblemId" type="number" placeholder="如 1" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
@@ -411,7 +411,7 @@
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-x-auto">
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
             <tr>
@@ -452,7 +452,7 @@
       </div>
       <div id="createCategoryForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-4">
         <h3 class="font-semibold mb-3" id="categoryFormTitle">新建分类</h3>
-        <div class="grid grid-cols-3 gap-4 mb-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
           <input id="catName" placeholder="分类名称（如：一代上）" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
           <input id="catDesc" placeholder="分类描述（选填）" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
           <input id="catOrder" type="number" placeholder="排序" value="0" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
@@ -462,7 +462,7 @@
           <button onclick="saveCategory()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700" id="categorySaveBtn">创建</button>
         </div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-x-auto">
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
             <tr>
@@ -486,7 +486,7 @@
       </div>
       <div id="createTagForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-4">
         <h3 class="font-semibold mb-3" id="tagFormTitle">新建标签</h3>
-        <div class="grid grid-cols-2 gap-4 mb-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
           <div>
             <label class="text-xs text-gray-500 dark:text-gray-400 mb-1 block">标签名称</label>
             <input id="tagName" placeholder="如：二分答案" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
@@ -505,7 +505,7 @@
           <button onclick="saveTag()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700" id="tagSaveBtn">创建</button>
         </div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-x-auto">
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
             <tr>
@@ -528,7 +528,7 @@
       <div id="createAnnouncementForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-4">
         <h3 class="font-semibold mb-3" id="announcementFormTitle">发布公告</h3>
         <input id="annTitle" placeholder="公告标题" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl mb-3 focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
-        <div class="grid grid-cols-2 gap-3 mb-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <select id="annType" onchange="toggleAnnContest()" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white">
             <option value="global">全局公告</option>
             <option value="contest">比赛公告</option>
@@ -539,7 +539,7 @@
           <input id="annPinned" type="checkbox" class="mr-2">
           <label for="annPinned" class="text-sm text-gray-600 dark:text-gray-300">置顶</label>
         </div>
-        <div class="grid grid-cols-2 gap-4 mb-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
           <textarea id="annContent" rows="10" placeholder="公告内容（支持 Markdown 和 KaTeX）" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" oninput="previewAnnouncement()"></textarea>
           <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 overflow-auto max-h-80 text-sm" id="annPreview">
             <p class="text-gray-400">预览区...</p>
@@ -1049,7 +1049,7 @@
           </div>
         </div>
         <input class="sample-note w-full mb-2 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-800 dark:text-white" placeholder="样例说明 (可选, 如: 最小数据)" value="${(s.note || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}">
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <textarea class="sample-in w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" rows="3" placeholder="输入"></textarea>
           <textarea class="sample-out w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" rows="3" placeholder="输出"></textarea>
         </div>`;

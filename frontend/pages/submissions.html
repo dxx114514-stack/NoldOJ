@@ -64,7 +64,7 @@
       </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-x-auto">
       <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
           <tr>
@@ -128,7 +128,7 @@
     }
 
     async function loadSubmissions() {
-      if (!getToken()) { window.location.href = '/pages/login.html'; return; }
+      if (!requireAuth()) return;
       try {
         const filters = getFilters();
         const qs = new URLSearchParams(filters).toString();
@@ -156,9 +156,7 @@
           `).join('');
         }
         const totalPages = Math.max(1, Math.ceil(data.total / 20));
-        document.getElementById('pagination').innerHTML = Array.from({length: totalPages}, (_, i) => `
-          <button onclick="currentPage=${i+1};loadSubmissions()" class="px-3 py-1 rounded-lg text-sm ${i+1===currentPage?'bg-indigo-600 text-white':'bg-white border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700'}">${i+1}</button>
-        `).join('');
+        renderPagination('pagination', totalPages, currentPage, 'loadSubmissions');
       } catch (err) { console.error(err); }
     }
 

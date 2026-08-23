@@ -7,15 +7,11 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" integrity="sha384-zaeBlB/vwYsDRSlFajnDd7OydJ0cWk+c2OWybl3eSUf6hW2EbhlCsQPqKr3gkznT" crossorigin="anonymous">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js" integrity="sha384-ZYmwuq4n2gOcNxMSiJ6jyTj+BbIrilr7p6dlq6q5nmSWKmsH9UU4K1qqjycMkfmR" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js" integrity="sha384-o9m634t2Hy35pPNKd9Xe16ntbSw11jCOuKPDrzQGXI8k87L2JZthaA3rwmJjnF7Z" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js" integrity="sha384-Xy+2exU6lBoT4OpUOtnQb+cUpn+nlJQEHvRobWVtwz6wIsw4oNoO7xyd/l8rYgMy" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js" integrity="sha384-g0o+WW9mdIxA7LaaCKTkRm0M5TVT+Bb4s9eocxPsI2G0Xm0POG9iD6G6qP1IIsfS" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="/js/api.js"></script>
   <style>
-    .CodeMirror { height: 500px; border-radius: 0.75rem; font-size: 14px; text-align: left; }
-    .CodeMirror-code { text-align: left !important; }
+    #editorContainer { width: 100%; height: 500px; border-radius: 0.75rem; overflow: hidden; border: 1px solid #e5e7eb; }
+    .dark #editorContainer { border-color: #374151; }
     .dark select option { background-color: #1f2937; color: #f9fafb; }
   </style>
 </head>
@@ -36,7 +32,7 @@
             <span>运行</span>
           </button>
         </div>
-        <textarea id="codeEditor"></textarea>
+        <div id="editorContainer"></div>
         <div class="mt-4">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">标准输入 (stdin)</label>
           <textarea id="stdinInput" rows="6" class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" placeholder="在此输入测试数据..."></textarea>
@@ -56,13 +52,24 @@
     </div>
   </div>
   <script>
-    if (!getToken()) { window.location.href = '/pages/login.html'; }
+    requireAuth();
     document.getElementById('nav').innerHTML = renderNav('ide');
     let editor;
-    const langModes = { c: 'text/x-csrc', cpp: 'text/x-c++src', python3: 'text/x-python', java: 'text/x-java', javascript: 'text/javascript' };
+    const langMap = { c: 'c', cpp: 'cpp', python3: 'python', java: 'java', javascript: 'javascript' };
     async function init() {
-      editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
-        lineNumbers: true, mode: 'text/x-csrc', theme: 'default', indentUnit: 4, tabSize: 4
+      require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+      require(['vs/editor/editor.main'], function () {
+        const lang = document.getElementById('language').value;
+        editor = monaco.editor.create(document.getElementById('editorContainer'), {
+          value: '',
+          language: langMap[lang] || 'plaintext',
+          fontSize: 14,
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          tabSize: 4,
+          theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs'
+        });
       });
       try {
         const langs = await apiCall('GET', '/ide/languages');
@@ -77,7 +84,7 @@
     }
     function changeLang() {
       const lang = document.getElementById('language').value;
-      editor.setOption('mode', langModes[lang] || 'text/plain');
+      if (editor) monaco.editor.setModelLanguage(editor.getModel(), langMap[lang] || 'plaintext');
     }
     async function runCode() {
       const btn = document.getElementById('runBtn');
@@ -139,6 +146,9 @@
       btn.disabled = false; btn.innerHTML = '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>运行</span>';
     }
     init();
+    new MutationObserver(() => {
+      if (editor) monaco.editor.setTheme(document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs');
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   </script>
 </body>
 </html>

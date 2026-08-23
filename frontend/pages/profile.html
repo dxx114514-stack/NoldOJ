@@ -72,7 +72,7 @@
 
             <div class="text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400">注册时间: ${new Date(u.created_at).toLocaleDateString()}</div>
 
-            <div class="grid grid-cols-3 gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-gray-700">
               ${canViewField(u.hide_achievements) ? `
               <a href="/pages/achievements.html?user_id=${encodeURIComponent(u.id)}" class="flex flex-col items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
                 <span class="text-2xl">🏆</span>
@@ -159,7 +159,7 @@
         `;
         if ((u.bio || '').trim()) {
           const bioEl = document.getElementById('bioContent');
-          if (bioEl && window.renderMathInElement) renderMathInElement(bioEl);
+          if (bioEl) renderMathDefaults(bioEl);
         }
         const prefLangSel = document.getElementById('edPrefLang');
         if (prefLangSel && u.preferred_language) prefLangSel.value = u.preferred_language;

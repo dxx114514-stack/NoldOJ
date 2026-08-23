@@ -134,9 +134,8 @@
     async function handleRegister(e) {
       e.preventDefault();
       const btn = document.getElementById('regBtn');
-      const errDiv = document.getElementById('error');
       btn.disabled = true; btn.textContent = '创建中...';
-      errDiv.classList.add('hidden');
+      hideError('error');
       try {
         const body = {
           username: document.getElementById('username').value,
@@ -154,8 +153,7 @@
         setUser(data.user);
         window.location.href = '/pages/index.html';
       } catch (err) {
-        errDiv.textContent = err.message || '注册失败';
-        errDiv.classList.remove('hidden');
+        showError('error', err.message || '注册失败');
         btn.disabled = false; btn.textContent = '创建账户';
         if (captchaEnabled) {
           document.getElementById('captchaCode').value = '';

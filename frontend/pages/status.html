@@ -37,9 +37,7 @@
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('admin');
-    if (!getToken()) window.location.href = '/pages/login.html';
-    const me = getUser();
-    if (!me || !['admin','su'].includes(me.role)) window.location.href = '/pages/problems.html';
+    if (!requireRole(['admin','su'])) return;
 
     function fmtBytes(n) {
       if (n === undefined || n === null) return '-';

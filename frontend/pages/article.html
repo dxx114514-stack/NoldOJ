@@ -61,7 +61,7 @@
             <div id="articleContent">${renderMarkdown(a.content)}</div>
           </div>
         `;
-        if (window.renderMathInElement) { renderMathInElement(document.getElementById('articleContent')); }
+        renderMathDefaults(document.getElementById('articleContent'));
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${escapeHtml(err.message) || '加载失败'}</p>`;
       }

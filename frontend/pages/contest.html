@@ -70,7 +70,7 @@
             leaderboardHtml = `
               <div id="contest-tab-leaderboard" class="mt-6">
                 ${frozenBanner}
-                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-x-auto">
                   <table class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
                       <tr>
@@ -184,9 +184,7 @@
             <p class="text-xs text-gray-400 mt-2">${escapeHtml(a.nickname || a.username || '')} · ${new Date(a.created_at).toLocaleString()}</p>
           </div>
         `).join('');
-        if (window.renderMathInElement) {
-          try { renderMathInElement(el, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
-        }
+        renderMathDefaults(el);
       } catch (err) {
         el.innerHTML = `<p class="text-red-500 text-center py-8">${escapeHtml(err.message) || '加载公告失败'}</p>`;
       }

@@ -246,6 +246,9 @@ function renderNav(activePage) {
               <svg class="w-7 h-7 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
               <span class="text-xl font-bold text-gray-900 dark:text-white">WinOJ</span>
             </a>
+            <button onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
             <div class="hidden md:flex space-x-0.5 flex-shrink-0">
               <a href="/pages/problems.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='problems'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题库</a>
               <a href="/pages/problem-sets.html" class="px-2 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${activePage==='problem-sets'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题单</a>
@@ -288,6 +291,21 @@ function renderNav(activePage) {
         </div>
       </div>
     </nav>
+    <div id="mobileMenu" class="hidden md:hidden bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div class="max-w-7xl mx-auto px-4 py-3 space-y-1">
+        <a href="/pages/problems.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='problems'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题库</a>
+        <a href="/pages/problem-sets.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='problem-sets'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">题单</a>
+        <a href="/pages/submissions.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='submissions'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">提交记录</a>
+        <a href="/pages/articles.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='articles'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">文章</a>
+        <a href="/pages/announcements.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='announcements'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">公告</a>
+        <a href="/pages/ide.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='ide'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">在线编程</a>
+        ${isTeacher ? `<a href="/pages/upload.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='upload'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">图床</a>` : ''}
+        <a href="/pages/rating.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='rating'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">排行</a>
+        <a href="/pages/contests.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='contests'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">比赛</a>
+        ${isTeacher ? `<a href="/pages/admin.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='admin'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">管理</a>` : ''}
+        ${isSu ? `<a href="/pages/languages.html" class="block px-3 py-2 rounded-md text-base font-medium ${activePage==='languages'?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300':'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}">语言</a>` : ''}
+      </div>
+    </div>
     <div id="passwordModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
       <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-md">
         <h3 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white">修改密码</h3>
@@ -307,6 +325,10 @@ function renderNav(activePage) {
 
 function showPasswordModal() { document.getElementById('passwordModal').classList.remove('hidden'); }
 function closePasswordModal() { document.getElementById('passwordModal').classList.add('hidden'); }
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  if (menu) menu.classList.toggle('hidden');
+}
 
 async function changePassword() {
   const old_password = document.getElementById('oldPwd').value;
@@ -492,4 +514,78 @@ async function loadCaptcha(onLoaded) {
 // 页面加载后初始化 socket
 if (getToken()) {
   initSocket();
+}
+
+// ── 公共组件工具函数 (P1) ──────────────────────────────────
+
+function requireAuth(redirectUrl) {
+  if (!getToken()) {
+    window.location.href = redirectUrl || '/pages/login.html';
+    return false;
+  }
+  return true;
+}
+
+function requireRole(roles, redirectUrl) {
+  if (!requireAuth(redirectUrl)) return false;
+  const user = getUser();
+  if (!user || !roles.includes(user.role)) {
+    window.location.href = redirectUrl || '/pages/problems.html';
+    return false;
+  }
+  return true;
+}
+
+function showError(elId, message) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  el.textContent = message || '操作失败';
+  el.classList.remove('hidden');
+}
+
+function hideError(elId) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (el) el.classList.add('hidden');
+}
+
+function showEmpty(elId) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (el) el.classList.remove('hidden');
+}
+
+function hideEmpty(elId) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (el) el.classList.add('hidden');
+}
+
+function renderPagination(containerId, totalPages, currentPage, loadFn) {
+  const el = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
+  if (!el || totalPages <= 1) { if (el) el.innerHTML = ''; return; }
+  let html = '';
+  const prev = Math.max(1, currentPage - 1);
+  const next = Math.min(totalPages, currentPage + 1);
+  html += `<button onclick="${loadFn}(${prev})" class="px-3 py-1 rounded-lg text-sm ${currentPage===1?'opacity-50 pointer-events-none':''} bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">上一页</button>`;
+  const start = Math.max(1, currentPage - 2);
+  const end = Math.min(totalPages, currentPage + 2);
+  if (start > 1) html += `<button onclick="${loadFn}(1)" class="px-3 py-1 rounded-lg text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">1</button>`;
+  if (start > 2) html += `<span class="px-2 text-gray-400">...</span>`;
+  for (let i = start; i <= end; i++) {
+    html += `<button onclick="${loadFn}(${i})" class="px-3 py-1 rounded-lg text-sm ${i===currentPage?'bg-indigo-600 text-white':'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}">${i}</button>`;
+  }
+  if (end < totalPages - 1) html += `<span class="px-2 text-gray-400">...</span>`;
+  if (end < totalPages) html += `<button onclick="${loadFn}(${totalPages})" class="px-3 py-1 rounded-lg text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">${totalPages}</button>`;
+  html += `<button onclick="${loadFn}(${next})" class="px-3 py-1 rounded-lg text-sm ${currentPage===totalPages?'opacity-50 pointer-events-none':''} bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">下一页</button>`;
+  el.innerHTML = html;
+}
+
+function renderMathDefaults(rootEl) {
+  if (!window.renderMathInElement) return;
+  try {
+    renderMathInElement(rootEl || document.body, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false }
+      ]
+    });
+  } catch {}
 }

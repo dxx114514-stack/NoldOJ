@@ -28,11 +28,7 @@
     const params = new URLSearchParams(window.location.search);
     let page = parseInt(params.get('page')) || 1;
 
-    function renderMath(root) {
-      if (window.renderMathInElement) {
-        try { renderMathInElement(root, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] }); } catch {}
-      }
-    }
+
 
     async function loadList() {
       const list = document.getElementById('list');
@@ -57,22 +53,10 @@
             </div>
           </div>
         `).join('');
-        renderPager(data.total, data.page, data.size);
+        renderPagination('pager', Math.ceil(data.total / data.size), data.page, 'loadList');
       } catch (err) {
         list.innerHTML = `<p class="text-red-500 text-center py-12">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
-    }
-
-    function renderPager(total, cur, size) {
-      const pages = Math.ceil(total / size) || 1;
-      const pager = document.getElementById('pager');
-      if (pages <= 1) { pager.innerHTML = ''; return; }
-      let html = '';
-      const go = (p) => `onclick="goPage(${p})"`;
-      html += `<button ${go(Math.max(1, cur-1))} class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 ${cur===1?'opacity-40 pointer-events-none':'hover:bg-gray-100 dark:hover:bg-gray-700'}">上一页</button>`;
-      html += `<span class="text-sm text-gray-500 dark:text-gray-400">${cur} / ${pages}</span>`;
-      html += `<button ${go(Math.min(pages, cur+1))} class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 ${cur===pages?'opacity-40 pointer-events-none':'hover:bg-gray-100 dark:hover:bg-gray-700'}">下一页</button>`;
-      pager.innerHTML = html;
     }
 
     function goPage(p) {

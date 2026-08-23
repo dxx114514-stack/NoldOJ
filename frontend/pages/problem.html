@@ -138,10 +138,10 @@
               </div>
             `).join('');
             document.getElementById('solutions').innerHTML = solHtml;
-            if (window.renderMathInElement) { sols.forEach(s => renderMathInElement(document.getElementById(`sol-${s.id}`))); }
+            sols.forEach(s => renderMathDefaults(document.getElementById(`sol-${s.id}`)));
           }
         } catch {}
-        if (window.renderMathInElement) { renderMathInElement(document.getElementById('content')); }
+        renderMathDefaults(document.getElementById('content'));
         // 加载讨论列表
         loadDiscussions(1);
       } catch (err) {
