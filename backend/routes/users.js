@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
+const config = require('../config/config');
 const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser, ONLINE_TTL_MS } = require('../middleware/auth');
 const { sanitizeLog, sanitizeText } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
@@ -22,6 +23,26 @@ function audit(operator, action, target) {
 router.get('/online', requireAuth, requireRole('admin'), (req, res) => {
   const users = getOnlineUsers(ONLINE_TTL_MS);
   res.json({ total: users.length, users });
+});
+
+// R12-3: 注册开关查询/热切换 (仅超管)。写在 /:id 之前避免被通配路由吞掉
+router.get('/register-enabled', requireAuth, requireRole('su'), (req, res) => {
+  res.json({ enabled: config.register.enabled });
+});
+router.put('/register-enabled', requireAuth, requireRole('su'), (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'enabled 必须为布尔值。' });
+  }
+  try {
+    const content = '# 是否允许访客自行注册 (R12-3)\n# true = 开放注册 / false = 仅管理员创建账号\nREGISTER_ENABLED=' + (enabled ? 'true' : 'false') + '\n';
+    fs.writeFileSync(config.register.path, content, 'utf8');
+  } catch (err) {
+    return res.status(500).json({ code: 2, reason: 'ERR_INTERNAL', message: '写入配置失败: ' + sanitizeLog(String(err.message || err)) });
+  }
+  config.register.enabled = enabled; // 热更新内存态
+  audit(req.user, enabled ? '开启自行注册' : '关闭自行注册', null);
+  res.json({ enabled });
 });
 
 // 公开排行榜。show_hidden=1 需要登录且 admin/su（optionalAuth 保持公开访问，同时对隐私分支显式认证）

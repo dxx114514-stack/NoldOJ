@@ -10,6 +10,7 @@
   <script src="/js/api.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" integrity="sha384-ZuC+DIACqSIZTsp+7YF57cR5Y+6qXa7YFbEKdA/EHA/R0T+41dtorqucYl71Zp+t" crossorigin="anonymous"></script>
   <script src="/js/markdown.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
   <style>
     .CodeMirror { height: 200px; border-radius: 0.5rem; font-size: 13px; }
     textarea.script-editor { font-family: monospace; font-size: 13px; tab-size: 4; }
@@ -275,7 +276,53 @@
     </div>
 
     <div id="panel-users" class="hidden">
-      <h2 class="text-lg font-semibold mb-4">用户管理</h2>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <h2 class="text-lg font-semibold">用户管理</h2>
+        <div id="userAdminTools" class="hidden items-center space-x-2 flex-wrap gap-2">
+          <span id="registerToggleWrap" class="hidden items-center mr-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm">
+            <span class="text-gray-500 dark:text-gray-400 mr-2">自行注册</span>
+            <button id="registerToggleBtn" onclick="toggleRegister()" class="font-semibold"></button>
+          </span>
+          <button onclick="showCreateUser()" class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-sm hover:bg-indigo-700">+ 创建用户</button>
+          <button onclick="document.getElementById('excelImportInput').click()" class="px-3 py-1.5 bg-green-600 text-white rounded-xl text-sm hover:bg-green-700">导入 Excel</button>
+          <input type="file" id="excelImportInput" accept=".xlsx,.xls" class="hidden" onchange="handleExcelImport(this)">
+        </div>
+      </div>
+
+      <!-- R12-2: 创建用户表单 -->
+      <div id="createUserForm" class="hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold" id="createUserTitle">创建用户</h3>
+          <button onclick="hideCreateUser()" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">关闭</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="text-xs text-gray-500 dark:text-gray-400">用户名 * (字母/数字/_/./-)</label>
+            <input id="cUsername" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white" placeholder="username">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 dark:text-gray-400">昵称</label>
+            <input id="cNickname" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white" placeholder="默认同用户名">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 dark:text-gray-400">初始密码 * (≥8 位, 含字母与数字或符号)</label>
+            <input id="cPassword" type="text" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono dark:bg-gray-800 dark:text-white">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 dark:text-gray-400">角色</label>
+            <select id="cRole" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white">
+              <option value="user">用户</option>
+              <option value="teacher">教师</option>
+              <option value="admin">管理员</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end space-x-3">
+          <button onclick="hideCreateUser()" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl">取消</button>
+          <button onclick="createUser()" id="createUserBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700">创建</button>
+        </div>
+        <div id="importProgress" class="hidden mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-xl text-sm max-h-60 overflow-y-auto"></div>
+      </div>
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden">
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
@@ -522,7 +569,7 @@
         const btn = document.getElementById(`tab-${t}`);
         btn.className = t === tab ? 'px-4 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white' : 'px-4 py-2 rounded-xl text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50';
       });
-      if (tab === 'users') loadUsers();
+      if (tab === 'users') { loadUsers(); initUserAdminTools(); }
       if (tab === 'online') loadOnlineUsers();
       if (tab === 'articles') loadAdminArticles();
       if (tab === 'files') loadAdminFiles();
@@ -1395,6 +1442,142 @@
         alert(err.message || '上传失败');
       }
       document.getElementById('zipInput').value = '';
+    }
+
+    // ── R12-2/R12-3: 用户管理工具条(创建用户 / Excel 导入 / 注册开关, 仅超管) ──
+    let userToolsInited = false;
+    function initUserAdminTools() {
+      const currentUser = getUser();
+      const isSu = currentUser && currentUser.role === 'su';
+      const tools = document.getElementById('userAdminTools');
+      if (!tools) return;
+      tools.classList.toggle('hidden', !isSu);
+      tools.classList.toggle('flex', isSu);
+      if (!isSu || userToolsInited) return;
+      userToolsInited = true;
+      const wrap = document.getElementById('registerToggleWrap');
+      wrap.classList.remove('hidden');
+      wrap.classList.add('inline-flex');
+      refreshRegisterToggle();
+    }
+    async function refreshRegisterToggle() {
+      try {
+        const data = await apiCall('GET', '/users/register-enabled');
+        paintRegisterToggle(data.enabled);
+      } catch { document.getElementById('registerToggleBtn').textContent = '?'; }
+    }
+    function paintRegisterToggle(enabled) {
+      const btn = document.getElementById('registerToggleBtn');
+      btn.dataset.enabled = enabled ? '1' : '0';
+      btn.textContent = enabled ? '已开放' : '已关闭';
+      btn.className = 'font-semibold ' + (enabled ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400');
+    }
+    async function toggleRegister() {
+      const btn = document.getElementById('registerToggleBtn');
+      const next = btn.dataset.enabled !== '1';
+      if (!confirm(next ? '确定开放访客自行注册？' : '确定关闭自行注册？此后新用户只能由超管创建。')) return;
+      try {
+        const res = await apiCall('PUT', '/users/register-enabled', { enabled: next });
+        paintRegisterToggle(res.enabled);
+      } catch (err) { alert(err.message || '操作失败'); refreshRegisterToggle(); }
+    }
+
+    function showCreateUser() {
+      document.getElementById('createUserTitle').textContent = '创建用户';
+      document.getElementById('createUserBtn').textContent = '创建';
+      document.getElementById('cUsername').value = '';
+      document.getElementById('cNickname').value = '';
+      document.getElementById('cPassword').value = genPassword();
+      document.getElementById('cRole').value = 'user';
+      document.getElementById('importProgress').classList.add('hidden');
+      document.getElementById('createUserForm').classList.remove('hidden');
+    }
+    function hideCreateUser() { document.getElementById('createUserForm').classList.add('hidden'); }
+    function genPassword() {
+      // 随机强密码: 10 位, 含大小写/数字/符号
+      const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghjkmnpqrstuvwxyz', '23456789', '!@#$%'];
+      let out = sets.map(s => s[Math.floor(Math.random() * s.length)]).join('');
+      const all = sets.join('');
+      while (out.length < 10) out += all[Math.floor(Math.random() * all.length)];
+      return out.split('').sort(() => Math.random() - 0.5).join('');
+    }
+    async function createUser(silent) {
+      const data = {
+        username: document.getElementById('cUsername').value.trim(),
+        nickname: document.getElementById('cNickname').value.trim(),
+        password: document.getElementById('cPassword').value,
+        role: document.getElementById('cRole').value
+      };
+      try {
+        await apiCall('POST', '/users', data);
+        if (!silent) {
+          hideCreateUser();
+          alert(`用户 ${data.username} 创建成功\n初始密码: ${data.password}\n请妥善保存并转告用户首次登录后修改。`);
+        }
+        loadUsers();
+        return true;
+      } catch (err) {
+        if (!silent) alert(err.message || '创建失败');
+        throw err;
+      }
+    }
+
+    // Excel 导入: SheetJS 解析 → 表头映射(中英文) → 逐个调创建接口 → 结果汇总
+    const ROLE_ALIAS = { 'user': 'user', 'teacher': 'teacher', 'admin': 'admin', 'su': 'su',
+      '用户': 'user', '学生': 'user', '教师': 'teacher', '老师': 'teacher', '管理员': 'admin', '超级管理员': 'su' };
+    const HEADER_ALIAS = {
+      'username': 'username', '用户名': 'username', '账号': 'username',
+      'password': 'password', '密码': 'password', '初始密码': 'password',
+      'nickname': 'nickname', '昵称': 'nickname', '姓名': 'nickname',
+      'role': 'role', '角色': 'role', '权限': 'role'
+    };
+    async function handleExcelImport(input) {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      if (typeof XLSX === 'undefined') { alert('Excel 解析库未加载, 请检查网络后刷新重试'); return; }
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+        if (!rows.length) { alert('表格为空'); return; }
+        // 表头映射: 首行按列名识别; 无法识别表头时按固定顺序 用户名|密码|昵称|角色
+        let map = {};
+        const head = rows[0].map(c => String(c).trim().toLowerCase());
+        const recognized = head.some(h => HEADER_ALIAS[h]);
+        if (recognized) {
+          head.forEach((h, i) => { if (HEADER_ALIAS[h]) map[HEADER_ALIAS[h]] = i; });
+        } else {
+          // 无表头: 按固定列序 用户名|密码|昵称|角色
+          map = { username: 0, password: 1, nickname: 2, role: 3 };
+        }
+        if (map.username === undefined || map.password === undefined) { alert('缺少「用户名」或「密码」列'); return; }
+        const users = rows.slice(recognized ? 1 : 0).map(r => ({
+          username: String(r[map.username] ?? '').trim(),
+          password: String(r[map.password] ?? '').trim(),
+          nickname: map.nickname !== undefined ? String(r[map.nickname] ?? '').trim() : '',
+          role: ROLE_ALIAS[String(r[map.role] ?? '').trim()] || 'user'
+        })).filter(u => u.username && u.password);
+        if (!users.length) { alert('未解析到有效数据行 (需要用户名与密码两列)'); return; }
+        if (!confirm(`解析到 ${users.length} 个账号，确认批量创建？`)) return;
+
+        const prog = document.getElementById('importProgress');
+        prog.classList.remove('hidden');
+        let ok = 0; const failed = [];
+        for (const u of users) {
+          try {
+            await apiCall('POST', '/users', u);
+            ok++;
+          } catch (err) {
+            failed.push(`${u.username}: ${err.message || '失败'}`);
+          }
+          prog.innerHTML = `导入中… ${ok + failed.length}/${users.length} (成功 ${ok}, 失败 ${failed.length})`;
+        }
+        prog.innerHTML = `<b>导入完成</b>: 成功 ${ok} 个${failed.length ? `, 失败 ${failed.length} 个:<br>` + failed.map(f => `<span class="text-red-500 dark:text-red-400">${escapeHtml(f)}</span>`).join('<br>') : ''}`;
+        loadUsers();
+      } catch (err) {
+        alert('Excel 解析失败: ' + (err.message || err));
+      }
     }
 
     async function loadUsers() {

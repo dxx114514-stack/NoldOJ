@@ -69,6 +69,26 @@ function loadCaptchaConfig() {
 }
 
 const captchaCfg = loadCaptchaConfig();
+const registerCfg = loadRegisterConfig();
+
+// ── 注册开关: config/register.txt 的 REGISTER_ENABLED=，默认开启；可由超管面板热切换(R12-3) ──
+const registerPath = path.join(__dirname, '..', '..', 'config', 'register.txt');
+function loadRegisterConfig() {
+  const result = { enabled: true };
+  try {
+    const content = fs.readFileSync(registerPath, 'utf8');
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('REGISTER_ENABLED=')) result.enabled = t.split('=').slice(1).join('=').trim() === 'true';
+    }
+  } catch {}
+  return result;
+}
+function reloadRegisterConfig() {
+  const cfg = loadRegisterConfig();
+  module.exports.register.enabled = cfg.enabled;
+  return cfg.enabled;
+}
 
 // ── 判题并发: config/judge.txt 的 MAX_THREADS= 或环境变量 WINOJ_JUDGE_THREADS，
 //    默认 (CPU 数 + 1) / 2，最小 1 ──
@@ -236,6 +256,13 @@ module.exports = {
   },
   captcha: {
     enabled: captchaCfg.enabled
+  },
+  register: {
+    // R12-3: 注册开关, 默认开放; registerPath/reloadRegisterConfig 供管理接口热切换
+    get enabled() { return registerCfg.enabled; },
+    set enabled(v) { registerCfg.enabled = !!v; },
+    reload: reloadRegisterConfig,
+    path: registerPath
   },
   email: {
     enabled: email.enabled,

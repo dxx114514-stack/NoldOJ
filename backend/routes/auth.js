@@ -169,7 +169,15 @@ router.post('/login', loginRateLimit, requireCaptcha, async (req, res) => {
   });
 });
 
-router.post('/register', registerRateLimit, requireCaptcha, async (req, res) => {
+// R12-3: 注册开关守卫——置于最前, 关闭时不消耗限流配额且优先返回明确错误
+function requireRegisterOpen(req, res, next) {
+  if (!config.register.enabled) {
+    return res.status(403).json({ code: 6, reason: 'ERR_REGISTER_DISABLED', message: '本站已关闭自行注册，请联系管理员创建账号。' });
+  }
+  next();
+}
+
+router.post('/register', requireRegisterOpen, registerRateLimit, requireCaptcha, async (req, res) => {
   const { username, password, nickname, email, email_code } = req.body;
   if (!username || !password) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Username and password are required.' });
