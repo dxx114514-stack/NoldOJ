@@ -36,18 +36,35 @@ const email = loadEmailConfig();
 
 function loadAiConfig() {
   const aiPath = path.join(__dirname, '..', '..', 'config', 'ai.txt');
-  const result = { enabled: false, url: 'http://localhost:11434/api/chat', model: 'qwen3:1.7b', key: '', codeLengthLimit: 131072 };
+  const defaults = { enabled: false, url: 'http://localhost:11434/api/chat', model: 'qwen3:1.7b', key: '' };
+  const result = { codeLengthLimit: 131072, security: { ...defaults }, hint: { ...defaults }, testdata: { ...defaults } };
   try {
     const content = fs.readFileSync(aiPath, 'utf8');
     for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('AI_ENABLED=')) result.enabled = trimmed.split('=')[1] === 'true';
-      if (trimmed.startsWith('URL=')) result.url = trimmed.split('=').slice(1).join('=');
-      if (trimmed.startsWith('MODEL=')) result.model = trimmed.split('=').slice(1).join('=');
-      if (trimmed.startsWith('KEY=')) result.key = trimmed.split('=').slice(1).join('=');
-      if (trimmed.startsWith('CODE_LENGTH_LIMIT=')) result.codeLengthLimit = parseInt(trimmed.split('=')[1], 10) || 131072;
+      const t = line.trim();
+      if (t.startsWith('CODE_LENGTH_LIMIT=')) result.codeLengthLimit = parseInt(t.split('=')[1], 10) || 131072;
+      // 安全审查
+      if (t.startsWith('SECURITY_ENABLED=')) result.security.enabled = t.split('=')[1] === 'true';
+      if (t.startsWith('SECURITY_URL=')) result.security.url = t.split('=').slice(1).join('=');
+      if (t.startsWith('SECURITY_MODEL=')) result.security.model = t.split('=').slice(1).join('=');
+      if (t.startsWith('SECURITY_KEY=')) result.security.key = t.split('=').slice(1).join('=');
+      // AI 提示
+      if (t.startsWith('HINT_ENABLED=')) result.hint.enabled = t.split('=')[1] === 'true';
+      if (t.startsWith('HINT_URL=')) result.hint.url = t.split('=').slice(1).join('=');
+      if (t.startsWith('HINT_MODEL=')) result.hint.model = t.split('=').slice(1).join('=');
+      if (t.startsWith('HINT_KEY=')) result.hint.key = t.split('=').slice(1).join('=');
+      // AI 测试数据
+      if (t.startsWith('TESTDATA_ENABLED=')) result.testdata.enabled = t.split('=')[1] === 'true';
+      if (t.startsWith('TESTDATA_URL=')) result.testdata.url = t.split('=').slice(1).join('=');
+      if (t.startsWith('TESTDATA_MODEL=')) result.testdata.model = t.split('=').slice(1).join('=');
+      if (t.startsWith('TESTDATA_KEY=')) result.testdata.key = t.split('=').slice(1).join('=');
     }
   } catch {}
+  // 回退：未单独配置的字段继承 SECURITY_* 的值
+  for (const sec of ['url', 'model', 'key']) {
+    if (!result.hint[sec]) result.hint[sec] = result.security[sec];
+    if (!result.testdata[sec]) result.testdata[sec] = result.security[sec];
+  }
   hardenConfigFileAcl(aiPath); // R9-13
   return result;
 }
@@ -246,13 +263,18 @@ module.exports = {
     ideRun: { windowMs: 60000, max: 20 }
   },
   security: {
-    enabled: ai.enabled,
-    url: ai.url,
-    model: ai.model,
-    key: ai.key,
+    enabled: ai.security.enabled,
+    url: ai.security.url,
+    model: ai.security.model,
+    key: ai.security.key,
     codeLengthLimit: ai.codeLengthLimit,
     // R9-20: security.txt contact 可由 config/security.txt 配置，缺省回退仓库地址
     contact: loadSecurityContact()
+  },
+  ai: {
+    security: ai.security,
+    hint: ai.hint,
+    testdata: ai.testdata
   },
   captcha: {
     enabled: captchaCfg.enabled

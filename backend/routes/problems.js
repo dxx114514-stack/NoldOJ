@@ -1025,8 +1025,9 @@ router.post('/:id/ai-testdata', requireAuth, requireRole('teacher'), aiTestdataR
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
-  const { aiEnabled, aiChatJSON } = require('../services/aiClient');
-  if (!aiEnabled()) {
+const { aiEnabled, aiChatJSON } = require('../services/aiClient');
+const config = require('../config/config');
+if (!aiEnabled(config.ai.testdata)) {
     return res.status(503).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 服务未启用，请先在 config/ai.txt 中启用。' });
   }
   const samples = Math.min(Math.max(parseInt(req.body.samples) || 3, 1), 10);
@@ -1048,7 +1049,7 @@ router.post('/:id/ai-testdata', requireAuth, requireRole('teacher'), aiTestdataR
 {"test_cases": [{"name": "case1", "input": "...", "expected_output": "..."}]}`;
 
   try {
-    const result = await aiChatJSON(prompt, `请为这道题生成测试点。`, { numPredict: 8192, timeoutMs: 90000 });
+    const result = await aiChatJSON(prompt, `请为这道题生成测试点。`, { cfg: config.ai.testdata, numPredict: 8192, timeoutMs: 90000 });
     const cases = Array.isArray(result.test_cases) ? result.test_cases : [];
     if (cases.length === 0) {
       return res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 未返回有效测试点，请重试。' });

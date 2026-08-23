@@ -1,9 +1,9 @@
 const config = require('../config/config');
 
-const AI_ENABLED = config.security.enabled;
-const AI_URL = config.security.url;
-const AI_MODEL = config.security.model;
-const AI_KEY = config.security.key;
+const AI_ENABLED = config.ai.security.enabled;
+const AI_URL = config.ai.security.url;
+const AI_MODEL = config.ai.security.model;
+const AI_KEY = config.ai.security.key;
 const CODE_LENGTH_LIMIT = config.security.codeLengthLimit;
 
 const SECURITY_PROMPT = `你是一个代码安全审查专家。你的任务是审查下方"用户提交的代码"区域中的代码，判断是否包含恶意代码。

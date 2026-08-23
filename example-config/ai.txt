@@ -1,12 +1,30 @@
-# AI 审查服务配置（代码安全审查 / 反作弊）
-# 说明：
-#  - 默认接入本地 Ollama（OpenAI 兼容 /api/chat 接口），也可配置其他兼容端点。
-#  - AI_ENABLED=false 时 AI 审查关闭，IDE 运行与提交仍可正常执行。
-#  - KEY 仅当远程端点需要鉴权时填写，留空表示无鉴权。
-
-AI_ENABLED=false
-URL=http://localhost:11434/api/chat
-MODEL=qwen3:1.7b
-KEY=
-# 单次提交源码最大字符数（超出直接拒绝，防止内存耗尽）
+# ============================================================
+# AI 服务配置
+# ------------------------------------------------------------
+# 全局: 单次提交源码最大字符数（超出直接拒绝，防止内存耗尽）
 CODE_LENGTH_LIMIT=131072
+#
+# ── AI 审查（代码安全审查 / 反作弊）──
+SECURITY_ENABLED=false
+SECURITY_URL=http://localhost:11434/api/chat
+SECURITY_MODEL=qwen3:1.7b
+SECURITY_KEY=
+#
+# ── AI 提示（学生失败后思路引导）──
+HINT_ENABLED=false
+HINT_URL=http://localhost:11434/api/chat
+HINT_MODEL=qwen3:1.7b
+HINT_KEY=
+#
+# ── AI 测试数据生成（教师一键生成测试点）──
+TESTDATA_ENABLED=false
+TESTDATA_URL=http://localhost:11434/api/chat
+TESTDATA_MODEL=qwen3:1.7b
+TESTDATA_KEY=
+# ============================================================
+# 说明：
+#  - 每个功能独立开关，可分别指向不同 Ollama 模型或远程 AI 服务。
+#  - URL 需为 OpenAI 兼容 /api/chat 端点（默认本地 Ollama）。
+#  - KEY 仅当远程端点需要鉴权时填写，留空表示无鉴权。
+#  - 未配置的字段自动回退到同名 SECURITY_* 的值。
+# ============================================================

@@ -73,8 +73,9 @@ router.post('/:id/hint', requireAuth, async (req, res) => {
   }
   pruneCooldown(); // R9-8: 保持有界
 
-  const { aiEnabled, aiChat } = require('../services/aiClient');
-  if (!aiEnabled()) {
+const { aiEnabled, aiChat } = require('../services/aiClient');
+const config = require('../config/config');
+if (!aiEnabled(config.ai.hint)) {
     return res.status(503).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 服务未启用，请先在 config/ai.txt 中启用。' });
   }
 
@@ -99,7 +100,7 @@ ${(sub?.source_code || '').slice(0, 6000)}
 
   try {
     cooldown.set(key, now);
-    const hint = await aiChat(HINT_PROMPT, userMsg, { numPredict: 1500, timeoutMs: 90000 });
+    const hint = await aiChat(HINT_PROMPT, userMsg, { cfg: config.ai.hint, numPredict: 1500, timeoutMs: 90000 });
     res.json({ hint: hint.trim() });
   } catch (err) {
     console.error(`AI hint error for problem ${problemId}:`, sanitizeLog(String(err.message || err)));

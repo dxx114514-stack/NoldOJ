@@ -1,22 +1,25 @@
 const config = require('../config/config');
 
-// 通用 AI 客户端：复用 config.security 的端点/模型/密钥，面向 OpenAI 兼容 chat 接口（Ollama /api/chat）。
-// 供 AI 测试点生成、AI 代码思路提示等新功能使用。与 security.js 保持相同调用风格。
+// 通用 AI 客户端：面向 OpenAI 兼容 chat 接口（Ollama /api/chat）。
+// aiChat / aiChatJSON 接受可选 cfg 参数，实现每个 AI 功能独立的 URL/模型/密钥配置。
+// cfg 格式: { enabled, url, model, key } —— 缺省回退 config.security。
 
-function aiEnabled() {
-  return config.security.enabled === true;
+function isFeatureEnabled(cfg) {
+  const c = cfg || config.security;
+  return c.enabled === true;
 }
 
 // 发一次非流式 chat 请求，返回模型输出文本；失败/超时抛错。
 async function aiChat(systemPrompt, userMessage, opts = {}) {
+  const cfg = opts.cfg || config.security;
   const headers = { 'Content-Type': 'application/json' };
-  if (config.security.key) headers['Authorization'] = `Bearer ${config.security.key}`;
+  if (cfg.key) headers['Authorization'] = `Bearer ${cfg.key}`;
   const timeoutMs = opts.timeoutMs || 60000;
-  const response = await fetch(config.security.url, {
+  const response = await fetch(cfg.url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      model: config.security.model,
+      model: cfg.model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
@@ -43,4 +46,4 @@ async function aiChatJSON(systemPrompt, userMessage, opts = {}) {
   return JSON.parse(match[0]);
 }
 
-module.exports = { aiEnabled, aiChat, aiChatJSON };
+module.exports = { aiEnabled: isFeatureEnabled, aiChat, aiChatJSON };
