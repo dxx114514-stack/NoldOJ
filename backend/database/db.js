@@ -249,6 +249,29 @@ async function initDB() {
     }
   }
 
+  // R12-1: 多样例 problem_samples 表(题面样例点不再限一个)
+  if (!tableExists('problem_samples')) {
+    sqlDb.exec(`CREATE TABLE IF NOT EXISTS problem_samples (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL,
+      input TEXT DEFAULT '',
+      output TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+    )`);
+    sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problem_samples_problem ON problem_samples(problem_id)');
+  }
+  // 旧单样例字段一次性迁移: 非空且该题尚无样例记录 → 迁移为首条(幂等)
+  {
+    const legacyRows = sqlDb.prepare("SELECT id, sample_input, sample_output FROM problems WHERE IFNULL(sample_input,'') != '' OR IFNULL(sample_output,'') != ''").all();
+    const hasSample = sqlDb.prepare('SELECT COUNT(*) as c FROM problem_samples WHERE problem_id = ?');
+    const insSample = sqlDb.prepare("INSERT INTO problem_samples (problem_id, input, output, note, sort_order) VALUES (?, ?, ?, '', 1)");
+    for (const r of legacyRows) {
+      if (hasSample.get(r.id).c === 0) insSample.run(r.id, r.sample_input || '', r.sample_output || '');
+    }
+  }
+
   if (!tableExists('email_codes')) {
     sqlDb.exec(`CREATE TABLE IF NOT EXISTS email_codes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

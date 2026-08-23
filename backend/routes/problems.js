@@ -32,6 +32,33 @@ function assertInsideProblemDir(baseDir, filePath) {
   }
 }
 
+// R12-1: 多样例读写 helpers ─────────────────────────────
+// 规范化客户端传入的 samples 数组; 非法结构返回 null(调用方决定报错/忽略)
+function normalizeSamples(raw) {
+  if (!Array.isArray(raw)) return null;
+  const out = [];
+  for (const s of raw) {
+    if (!s || typeof s !== 'object') return null;
+    const input = typeof s.input === 'string' ? s.input : '';
+    const output = typeof s.output === 'string' ? s.output : '';
+    const note = typeof s.note === 'string' ? s.note.slice(0, 500) : '';
+    if (input.length > 65536 || output.length > 65536) return null;
+    out.push({ input, output, note });
+  }
+  return out;
+}
+function getSamples(problemId) {
+  return db.prepare('SELECT input, output, note FROM problem_samples WHERE problem_id = ? ORDER BY sort_order, id').all(problemId);
+}
+// 全量替换某题样例; 并双写首条到旧 sample_input/sample_output 字段(兼容旧客户端/搜索)
+function replaceSamples(problemId, samples) {
+  db.prepare('DELETE FROM problem_samples WHERE problem_id = ?').run(problemId);
+  const ins = db.prepare('INSERT INTO problem_samples (problem_id, input, output, note, sort_order) VALUES (?, ?, ?, ?, ?)');
+  samples.forEach((s, i) => ins.run(problemId, s.input, s.output, s.note, i + 1));
+  const first = samples[0] || { input: '', output: '' };
+  db.prepare('UPDATE problems SET sample_input = ?, sample_output = ? WHERE id = ?').run(first.input, first.output, problemId);
+}
+
 // 公开脱敏视图: 移除 SPJ 脚本与评分脚本，防止泄露判题逻辑
 function sanitizeProblem(p) {
   if (!p) return null;
@@ -214,6 +241,12 @@ router.get('/:id', optionalAuth, (req, res) => {
     WHERE pt.problem_id = ?
   `).all(problem.id);
   result.tags = tags;
+  // R12-1: 多样例。新表为准; 兼容旧数据(表空但旧字段非空)构造单元素数组
+  let samples = getSamples(problem.id);
+  if (samples.length === 0 && ((problem.sample_input || '') !== '' || (problem.sample_output || '') !== '')) {
+    samples = [{ input: problem.sample_input || '', output: problem.sample_output || '', note: '' }];
+  }
+  result.samples = samples;
   res.json(result);
 });
 
@@ -230,6 +263,12 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'memory_limit 必须在 1~1048576 KB 之间。' });
   }
   const newId = db.findNextId('problems');
+  // R12-1: samples 数组存在时以首条双写旧字段, 全量入新表
+  let samples = normalizeSamples(req.body.samples);
+  if (samples === null && req.body.samples !== undefined) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'samples 必须为 [{input,output,note}] 数组。' });
+  }
+  const first = samples && samples[0] ? samples[0] : null;
   db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     newId,
     title,
@@ -247,12 +286,13 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     is_public !== undefined ? (is_public ? 1 : 0) : 1,
     provider || '',
     req.user.id,
-    sample_input || '',
-    sample_output || '',
+    first ? first.input : (sample_input || ''),
+    first ? first.output : (sample_output || ''),
     subtask_mode || 'simple',
     difficulty !== undefined ? parseInt(difficulty) || 0 : 0,
     is_hidden !== undefined ? (is_hidden ? 1 : 0) : 0
   );
+  if (samples && samples.length > 0) replaceSamples(newId, samples);
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(newId);
   res.status(201).json(problem);
 });
@@ -290,10 +330,26 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     return value;
   };
   const u = buildUpdates(fields.map(f => ({ key: f, value: req.body[f], transform: v => transformValue(f, v) })), { touchUpdatedAt: true });
-  if (u.count === 0) {
+  if (u.count === 0 && req.body.samples === undefined) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
   }
-  db.prepare(`UPDATE problems SET ${u.clause} WHERE id = ?`).run(...u.values, problem.id);
+  if (u.count > 0) {
+    db.prepare(`UPDATE problems SET ${u.clause} WHERE id = ?`).run(...u.values, problem.id);
+  }
+  // R12-1: samples 数组存在即全量替换(含空数组=清空样例); 否则旧字段变化时同步回新表首条
+  let samples = normalizeSamples(req.body.samples);
+  if (samples === null && req.body.samples !== undefined) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'samples 必须为 [{input,output,note}] 数组。' });
+  }
+  if (samples !== null) {
+    replaceSamples(problem.id, samples);
+    // 同步旧字段到返回视图
+    const first = samples[0] || { input: '', output: '' };
+    db.prepare('UPDATE problems SET sample_input = ?, sample_output = ?, updated_at = datetime(\'now\') WHERE id = ?').run(first.input, first.output, problem.id);
+  } else if (req.body.sample_input !== undefined || req.body.sample_output !== undefined) {
+    const cur = db.prepare('SELECT sample_input, sample_output FROM problems WHERE id = ?').get(problem.id);
+    replaceSamples(problem.id, [{ input: cur.sample_input || '', output: cur.sample_output || '', note: '' }]);
+  }
 
   const updated = db.prepare('SELECT * FROM problems WHERE id = ?').get(problem.id);
   res.json(updated);
@@ -310,6 +366,7 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   }
   db.prepare('DELETE FROM test_cases WHERE problem_id = ?').run(problem.id);
   db.prepare('DELETE FROM test_groups WHERE problem_id = ?').run(problem.id);
+  db.prepare('DELETE FROM problem_samples WHERE problem_id = ?').run(problem.id);
   db.prepare('DELETE FROM problems WHERE id = ?').run(problem.id);
   // R11-?: 同步清理磁盘 testdata 目录，避免删题后残留孤儿目录
   const problemDir = path.join(__dirname, '../../problems', String(problem.id));
@@ -362,7 +419,8 @@ router.put('/:id/reindex', requireAuth, requireRole('admin'), (req, res) => {
     const refTables = [
       'test_groups', 'test_cases', 'submissions', 'problem_set_items',
       'problem_set_progress', 'contest_problems', 'problem_solutions',
-      'problem_tags', 'problem_categories', 'discussions', 'user_favorites'
+      'problem_tags', 'problem_categories', 'discussions', 'user_favorites',
+      'problem_samples'
     ];
     for (const t of refTables) {
       db.prepare(`UPDATE ${t} SET problem_id = ? WHERE problem_id = ?`).run(newId, problem.id);
@@ -1067,6 +1125,7 @@ router.get('/:id/export', requireAuth, requireRole('teacher'), (req, res) => {
       provider: problem.provider,
       sample_input: problem.sample_input,
       sample_output: problem.sample_output,
+      samples: getSamples(problem.id),
       subtask_mode: problem.subtask_mode,
       difficulty: problem.difficulty
     },
@@ -1218,6 +1277,10 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
       const r = insertGroup.run(newId, g.subtask_id || null, g.score || 0, g.aggregator || 'sum', g.dependency || '', g.scoring_script || '');
       groupIdMap[g.id] = r.lastInsertRowid;
     }
+
+    // R12-1: 导入多样例(Array.isArray 校验; 旧格式无 samples 字段则跳过, 旧字段已随 INSERT 写入)
+    const importSamples = normalizeSamples(p.samples);
+    if (importSamples && importSamples.length > 0) replaceSamples(newId, importSamples);
 
     // 写入测试点
     const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, score, sort_order, group_id, time_limit, memory_limit, input_file, output_file) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');

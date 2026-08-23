@@ -125,6 +125,19 @@ components:
           type: string
         created_at:
           type: string
+        samples:
+          type: array
+          description: 题面样例点(R12-1, 按 sort_order 排序; 兼容旧单样例字段)
+          items:
+            type: object
+            properties:
+              input:
+                type: string
+              output:
+                type: string
+              note:
+                type: string
+                description: 可选说明(≤500 字符)
 
     Submission:
       type: object

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS users (
+﻿CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   email TEXT DEFAULT '',
@@ -293,6 +293,16 @@ CREATE TABLE IF NOT EXISTS problem_tags (
   FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS problem_samples (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  problem_id INTEGER NOT NULL,
+  input TEXT DEFAULT '',
+  output TEXT DEFAULT '',
+  note TEXT DEFAULT '',
+  sort_order INTEGER DEFAULT 0,
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_problem_samples_problem ON problem_samples(problem_id);
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE NOT NULL,

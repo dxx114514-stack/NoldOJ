@@ -169,9 +169,29 @@ user（用户） < teacher（教师） < admin（管理员） < su（超级管�
 
 需教师权限。支持 `provider`（提供者）、`sample_input`（输入样例）、`sample_output`（输出样例）字段。
 
+**多样例（R12-1）**：可传 `samples` 数组，每项 `{ input: string, output: string, note?: string }`（note 为可选说明，≤500 字符；input/output ≤64KB）。传入后全量写入并以首条同步旧 `sample_input`/`sample_output` 字段。不传则沿用旧单样例字段。
+
+```json
+{
+  "title": "A+B Problem",
+  "samples": [
+    { "input": "1 2\n", "output": "3\n", "note": "最小数据" },
+    { "input": "100 200\n", "output": "300\n" }
+  ]
+}
+```
+
+### GET /problems/:id — 题目详情
+
+返回体含 `samples` 数组（按 sort_order 排序）。兼容旧数据：无多样例记录时由旧字段构造单元素数组。
+
 ### PUT /problems/:id — 更新题目
 
 需教师权限。不能更新已在比赛中的题目。
+
+`samples` 数组语义：
+- **传数组（含空数组）**：全量替换该题样例，首条双写旧字段
+- **不传**：不影响样例；若单独更新 `sample_input`/`sample_output`，会同步覆盖新表首条
 
 ### DELETE /problems/:id — 删除题目
 

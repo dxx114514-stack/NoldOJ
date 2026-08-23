@@ -75,27 +75,40 @@
             </div>
             ${p.input_desc ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">输入格式</h3>${renderMarkdown(p.input_desc)}</div>` : ''}
             ${p.output_desc ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">输出格式</h3>${renderMarkdown(p.output_desc)}</div>` : ''}
-            ${(p.sample_input || p.sample_output) ? `
+            ${(function(){
+              const samples = Array.isArray(p.samples) && p.samples.length > 0
+                ? p.samples
+                : ((p.sample_input || p.sample_output) ? [{ input: p.sample_input || '', output: p.sample_output || '', note: '' }] : []);
+              if (samples.length === 0) return '';
+              return `
             <div class="mb-6">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">输入输出样例</h3>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                ${p.sample_input ? `<div>
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输入</span>
-                    <button onclick="copySample(this, 'sample-input-${p.id}')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">输入输出样例${samples.length > 1 ? `<span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">共 ${samples.length} 组</span>` : ''}</h3>
+              ${samples.map((s, idx) => {
+                const sid = 'sample-' + p.id + '-' + idx;
+                const multi = samples.length > 1;
+                return `
+                <div class="${multi ? 'mb-5 pb-5 border-b border-gray-100 dark:border-gray-700 last:border-0 last:mb-0 last:pb-0' : ''}">
+                  ${multi || s.note ? `<div class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">${multi ? `样例 #${idx + 1}` : '样例'}${s.note ? `<span class="font-normal text-gray-500 dark:text-gray-400 ml-2">${escapeHtml(s.note)}</span>` : ''}</div>` : ''}
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${s.input ? `<div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输入</span>
+                        <button onclick="copySample(this, '${sid}-in')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
+                      </div>
+                      <pre id="${sid}-in" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(s.input)}</pre>
+                    </div>` : ''}
+                    ${s.output ? `<div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输出</span>
+                        <button onclick="copySample(this, '${sid}-out')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
+                      </div>
+                      <pre id="${sid}-out" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(s.output)}</pre>
+                    </div>` : ''}
                   </div>
-                  <pre id="sample-input-${p.id}" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(p.sample_input)}</pre>
-                </div>` : ''}
-                ${p.sample_output ? `<div>
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输出</span>
-                    <button onclick="copySample(this, 'sample-output-${p.id}')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
-                  </div>
-                  <pre id="sample-output-${p.id}" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(p.sample_output)}</pre>
-                </div>` : ''}
-              </div>
-            </div>
-            ` : ''}
+                </div>`;
+              }).join('')}
+            </div>`;
+            })()}
             ${p.hint ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">提示</h3>${renderMarkdown(p.hint)}</div>` : ''}
             <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
               测试点: ${p.test_cases_count || 0}
@@ -215,10 +228,16 @@
       if (p.description) md += p.description + '\n\n';
       if (p.input_desc) md += `## 输入格式\n\n${p.input_desc}\n\n`;
       if (p.output_desc) md += `## 输出格式\n\n${p.output_desc}\n\n`;
-      if (p.sample_input || p.sample_output) {
+      const samples = Array.isArray(p.samples) && p.samples.length > 0
+        ? p.samples
+        : ((p.sample_input || p.sample_output) ? [{ input: p.sample_input || '', output: p.sample_output || '' }] : []);
+      if (samples.length > 0) {
         md += '## 输入输出样例\n\n';
-        if (p.sample_input) md += '```\n' + p.sample_input + '\n```\n\n';
-        if (p.sample_output) md += '```\n' + p.sample_output + '\n```\n\n';
+        samples.forEach((s, i) => {
+          if (samples.length > 1) md += `### 样例 #${i + 1}${s.note ? '：' + s.note : ''}\n\n`;
+          if (s.input) md += '**输入**\n```\n' + s.input + '\n```\n\n';
+          if (s.output) md += '**输出**\n```\n' + s.output + '\n```\n\n';
+        });
       }
       if (p.hint) md += `## 提示\n\n${p.hint}\n`;
       navigator.clipboard.writeText(md).then(() => {

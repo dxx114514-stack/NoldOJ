@@ -92,15 +92,12 @@
           <label class="text-xs text-gray-500 dark:text-gray-400 mb-1 block">标签 (按住 Ctrl/Cmd 多选)</label>
           <select id="pTags" multiple class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-gray-800 dark:text-white min-h-[80px]"></select>
         </div>
-        <div class="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label class="text-xs text-gray-500 dark:text-gray-400">输入样例</label>
-            <textarea id="pSampleInput" rows="3" placeholder="输入样例" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
+        <div class="mb-3">
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs text-gray-500 dark:text-gray-400">输入输出样例 (支持多组)</label>
+            <button onclick="addSampleRow()" type="button" class="text-xs px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50">+ 添加样例</button>
           </div>
-          <div>
-            <label class="text-xs text-gray-500 dark:text-gray-400">输出样例</label>
-            <textarea id="pSampleOutput" rows="3" placeholder="输出样例" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
-          </div>
+          <div id="sampleRows" class="space-y-3"></div>
         </div>
         <div class="flex justify-end space-x-3">
           <button onclick="hideCreateProblem()" class="px-4 py-2 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl">取消</button>
@@ -933,8 +930,7 @@
       document.getElementById('pOutput').value = '';
       document.getElementById('pHint').value = '';
       document.getElementById('pProvider').value = '';
-      document.getElementById('pSampleInput').value = '';
-      document.getElementById('pSampleOutput').value = '';
+      renderSampleRows([]);
       document.getElementById('pDifficulty').value = '0';
       const catSel = document.getElementById('pCategories');
       if (catSel) Array.from(catSel.options).forEach(opt => opt.selected = false);
@@ -961,8 +957,12 @@
         document.getElementById('pOutput').value = p.output_desc || '';
         document.getElementById('pHint').value = p.hint || '';
         document.getElementById('pProvider').value = p.provider || '';
-        document.getElementById('pSampleInput').value = p.sample_input || '';
-        document.getElementById('pSampleOutput').value = p.sample_output || '';
+        {
+          const samples = Array.isArray(p.samples) && p.samples.length > 0
+            ? p.samples
+            : ((p.sample_input || p.sample_output) ? [{ input: p.sample_input || '', output: p.sample_output || '', note: '' }] : []);
+          renderSampleRows(samples);
+        }
         document.getElementById('pDifficulty').value = String(p.difficulty || 0);
         document.getElementById('createProblemForm').classList.remove('hidden');
         await loadAllCategories();
@@ -970,6 +970,63 @@
         await loadAllTags();
         await loadProblemTags(id);
       } catch (err) { alert(err.message); }
+    }
+
+    // R12-1: 多样例编辑器 ─────────────────────────────
+    function collectSamples() {
+      return Array.from(document.querySelectorAll('#sampleRows .sample-row')).map(row => ({
+        input: row.querySelector('.sample-in').value,
+        output: row.querySelector('.sample-out').value,
+        note: row.querySelector('.sample-note').value
+      })).filter(s => s.input !== '' || s.output !== '' || s.note !== '');
+    }
+    function renderSampleRows(samples) {
+      const box = document.getElementById('sampleRows');
+      box.innerHTML = '';
+      if (!samples || samples.length === 0) { addSampleRow(); return; }
+      samples.forEach(s => addSampleRow(s));
+    }
+    function addSampleRow(sample) {
+      const s = sample || { input: '', output: '', note: '' };
+      const box = document.getElementById('sampleRows');
+      const idx = box.children.length + 1;
+      const div = document.createElement('div');
+      div.className = 'sample-row border border-gray-200 dark:border-gray-700 rounded-xl p-3';
+      div.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">样例 #<span class="sample-idx">${idx}</span></span>
+          <div class="flex items-center space-x-2">
+            <button type="button" onclick="moveSampleRow(this, -1)" title="上移" class="text-xs px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400">↑</button>
+            <button type="button" onclick="moveSampleRow(this, 1)" title="下移" class="text-xs px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400">↓</button>
+            <button type="button" onclick="this.closest('.sample-row').remove(); renumberSampleRows()" class="text-xs px-2 py-0.5 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded">删除</button>
+          </div>
+        </div>
+        <input class="sample-note w-full mb-2 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-800 dark:text-white" placeholder="样例说明 (可选, 如: 最小数据)" value="${(s.note || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}">
+        <div class="grid grid-cols-2 gap-3">
+          <textarea class="sample-in w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" rows="3" placeholder="输入"></textarea>
+          <textarea class="sample-out w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl font-mono text-sm text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white" rows="3" placeholder="输出"></textarea>
+        </div>`;
+      div.querySelector('.sample-in').value = s.input || '';
+      div.querySelector('.sample-out').value = s.output || '';
+      box.appendChild(div);
+      renumberSampleRows();
+    }
+    function moveSampleRow(btn, dir) {
+      const row = btn.closest('.sample-row');
+      const box = document.getElementById('sampleRows');
+      const kids = Array.from(box.children);
+      const i = kids.indexOf(row);
+      const j = i + dir;
+      if (j < 0 || j >= kids.length) return;
+      if (dir === -1) box.insertBefore(row, kids[j]);
+      else box.insertBefore(kids[j], row);
+      renumberSampleRows();
+    }
+    function renumberSampleRows() {
+      document.querySelectorAll('#sampleRows .sample-row').forEach((row, i) => {
+        const el = row.querySelector('.sample-idx');
+        if (el) el.textContent = String(i + 1);
+      });
     }
 
     async function saveProblem() {
@@ -985,8 +1042,7 @@
         compare_mode: document.getElementById('pCompare').value,
         subtask_mode: document.getElementById('pSubtask').value,
         provider: document.getElementById('pProvider').value,
-        sample_input: document.getElementById('pSampleInput').value,
-        sample_output: document.getElementById('pSampleOutput').value,
+        samples: collectSamples(),
         difficulty: parseInt(document.getElementById('pDifficulty').value) || 0,
       };
       try {
