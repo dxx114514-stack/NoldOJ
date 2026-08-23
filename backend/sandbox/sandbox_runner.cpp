@@ -37,9 +37,11 @@
 // 隔离粒度：每次评测派生独立的包 SID，题与题之间互不可见。
 //
 // 编译: g++ -O2 -static -o sandbox_runner.exe sandbox_runner.cpp -lpsapi -luserenv
-// 用法: sandbox_runner.exe <time_limit_ms> <memory_limit_mb> <max_processes> <meta_file> <exe_path> [args...]
+// 用法: sandbox_runner.exe <time_limit_ms> <memory_limit_mb> <max_processes> <meta_file> <exe> [args...]
+//       sandbox_runner.exe --sandbox <boxName> <time_limit_ms> <memory_limit_mb> <max_processes> <meta_file> <exe> [args...]
 // stdout/stderr: 子进程的直接透传
 // meta_file: 评测结束后写入 JSON 元数据
+// --sandbox: 使用 Sandboxie 隔离（Start.exe /box:<boxName> /wait），Job Object 嵌套其内
 
 #define WINVER 0x0602
 #define _WIN32_WINNT 0x0602
@@ -810,22 +812,38 @@ int main(int argc, char* argv[]) {
     if (argc == 2 && strcmp(argv[1], "--make-container") == 0)
         return containerHelperMain();
 
-    if (argc < 6) {
-        fprintf(stderr, "Usage: sandbox_runner.exe <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]\n");
+    // 解析 --sandbox <boxName> 参数（Sandboxie 隔离模式）
+    std::string sandboxBox;
+    int argOffset = 1;
+    if (argc >= 3 && strcmp(argv[1], "--sandbox") == 0) {
+        sandboxBox = argv[2];
+        argOffset = 3;
+    }
+
+    if (argc - argOffset < 5) {
+        fprintf(stderr, "Usage: sandbox_runner.exe [--sandbox <boxName>] <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]\n");
         return 1;
     }
 
-    DWORD timeLimitMs   = (DWORD)atoll(argv[1]);
-    SIZE_T memLimitBytes = (SIZE_T)atoll(argv[2]) * 1024 * 1024;
-    DWORD maxProcs      = (DWORD)atoll(argv[3]);
-    const char* metaFile = argv[4];
-    const char* exePath  = argv[5];
+    DWORD timeLimitMs   = (DWORD)atoll(argv[argOffset]);
+    SIZE_T memLimitBytes = (SIZE_T)atoll(argv[argOffset + 1]) * 1024 * 1024;
+    DWORD maxProcs      = (DWORD)atoll(argv[argOffset + 2]);
+    const char* metaFile = argv[argOffset + 3];
+    const char* exePath  = argv[argOffset + 4];
 
     // 构建命令行（D-L13：标准 CRT 转义，正确处理反斜杠+引号组合）
     std::string cmdLine;
-    for (int i = 5; i < argc; i++) {
-        if (i > 5) cmdLine += " ";
+    for (int i = argOffset + 4; i < argc; i++) {
+        if (i > argOffset + 4) cmdLine += " ";
         cmdLine += quoteCmdArg(argv[i]);
+    }
+
+    // Sandboxie 隔离模式：用 Start.exe /box:<boxName> /wait 包装命令
+    // Job Object 仍然嵌套在 Sandboxie 内部，两层叠加
+    if (!sandboxBox.empty()) {
+        std::string sbieCmd = "Start.exe /box:" + sandboxBox + " /wait " + cmdLine;
+        sandboxLog("Sandboxie mode: box=%s, cmd=%s", sandboxBox.c_str(), sbieCmd.c_str());
+        cmdLine = sbieCmd;
     }
     std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
     cmdBuf.push_back('\0');

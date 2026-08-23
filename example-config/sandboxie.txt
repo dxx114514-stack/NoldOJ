@@ -1,0 +1,22 @@
+# ============================================================
+# Sandboxie-Classic 隔离配置
+# ------------------------------------------------------------
+# 启用后，编译和运行阶段均通过 Sandboxie 沙盒隔离,
+# 与 Job Object + 受限令牌 / AppContainer 叠加形成三层防护。
+#
+# 依赖: Sandboxie-Classic 已安装且 Start.exe / SbieIni.exe 在 PATH 中
+#       或通过下方路径配置指定完整路径。
+# ============================================================
+
+SANDBOXIE_ENABLED=false
+
+# Start.exe 完整路径或 PATH 中的文件名
+# 安装后默认: C:\Program Files\Sandboxie-Classic\Start.exe
+START_EXE=Start.exe
+
+# SbieIni.exe 完整路径（动态沙盒配置用）
+# 安装后默认: C:\Program Files\Sandboxie-Classic\SbieIni.exe
+SBIE_INI=SbieIni.exe
+
+# 沙盒名前缀（每次提交生成: <BOX_PREFIX>_<submitId>）
+BOX_PREFIX=WinOJ

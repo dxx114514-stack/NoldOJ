@@ -11,6 +11,10 @@ const db = require('../database/db');
 const SANDBOX_RUNNER_PATH = path.join(__dirname, 'sandbox_runner.exe');
 const hasSandboxRunner = process.platform === 'win32' && fs.existsSync(SANDBOX_RUNNER_PATH);
 
+// ── Sandboxie 隔离 ──────────────────────────────────────────
+const sbieConfig = config.sandbox.sandboxie || {};
+const hasSandboxie = process.platform === 'win32' && sbieConfig.enabled && sbieConfig.startExe;
+
 const LANG_MAP = {
   c: { compile: 'gcc -O2 -Wall -o "{exe}" "{src}"', run: '"{exe}"', ext: '.c', runUnix: './{exe}', compiled: true },
   cpp: { compile: 'g++ -O2 -Wall -std=c++17 -o "{exe}" "{src}"', run: '"{exe}"', ext: '.cpp', runUnix: './{exe}', compiled: true },
@@ -123,16 +127,33 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
 
   const actualExe = isWindows ? exeFile + '.exe' : exeFile;
 
+  // Sandboxie 编译隔离: 生成唯一沙盒名, 通过 Start.exe /box: 包装编译命令
+  const useSbie = hasSandboxie && isWindows;
+  const boxName = useSbie ? `${sbieConfig.boxPrefix}_compile_${path.basename(workDir)}` : null;
+
   // 多文件 C++: 参数数组直传 spawnSync，不经 shell/token 化，杜绝参数注入。
   if (isMultiFile && lang.ext === '.cpp') {
     const extraSources = collectExtraSources(workDir, srcFile);
+    const gppArgs = ['-O2', '-Wall', '-std=c++17', '-o', actualExe, ...extraSources, srcFile];
     try {
-      const result = spawnSync('g++', ['-O2', '-Wall', '-std=c++17', '-o', actualExe, ...extraSources, srcFile], {
-        cwd: workDir,
-        timeout: 30000,
-        maxBuffer: 1024 * 1024,
-        windowsHide: true
-      });
+      let result;
+      if (useSbie) {
+        // Sandboxie: Start.exe /box:<boxName> /wait g++ <args...>
+        const sbieArgs = ['/box:' + boxName, '/wait', 'g++', ...gppArgs];
+        result = spawnSync(sbieConfig.startExe, sbieArgs, {
+          cwd: workDir,
+          timeout: 30000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true
+        });
+      } else {
+        result = spawnSync('g++', gppArgs, {
+          cwd: workDir,
+          timeout: 30000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true
+        });
+      }
       if (result.status === 0) return { success: true, output: String(result.stdout || '') };
       return { success: false, output: String(result.stderr || result.stdout || errMsg(result)) };
     } catch (err) {
@@ -153,12 +174,24 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
   const argTokens = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
 
   try {
-    const result = spawnSync(compiler, argTokens, {
-      cwd: workDir,
-      timeout: 30000,
-      maxBuffer: 1024 * 1024,
-      windowsHide: true
-    });
+    let result;
+    if (useSbie) {
+      // Sandboxie: Start.exe /box:<boxName> /wait <compiler> <args...>
+      const sbieArgs = ['/box:' + boxName, '/wait', compiler, ...argTokens];
+      result = spawnSync(sbieConfig.startExe, sbieArgs, {
+        cwd: workDir,
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true
+      });
+    } else {
+      result = spawnSync(compiler, argTokens, {
+        cwd: workDir,
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true
+      });
+    }
     if (result.status === 0) {
       return { success: true, output: String(result.stdout || '') };
     }
@@ -205,8 +238,9 @@ function killProc(proc, isWindows) {
 }
 
 // ── 安全沙箱模式: 使用 sandbox_runner.exe ───────────────────
-// 流程: Node.js ↔ sandbox_runner.exe (Job Object 容器) ↔ 子进程
+// 流程: Node.js ↔ sandbox_runner.exe (Job Object 容器 + 可选 Sandboxie) ↔ 子进程
 // sandbox_runner.exe 负责: CREATE_SUSPENDED + Job 绑定 + 内存/时间监控 + 进程树清理
+// Sandboxie 模式: sandbox_runner.exe 通过 Start.exe /box: 包装命令, Job Object 嵌套其内
 function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
   return new Promise((resolve) => {
     const actualExe = isWindows ? exeFile + '.exe' : exeFile;
@@ -224,15 +258,23 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
     const metaFile = path.join(workDir, '_meta.json');
     const maxProcs = config.sandbox.maxProcesses || 64;
 
-    // sandbox_runner.exe <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]
-    const runnerArgs = [
+    // Sandboxie: 每次提交生成唯一沙盒名, 传给 sandbox_runner.exe --sandbox
+    const useSbie = hasSandboxie && isWindows;
+    const boxName = useSbie ? `${sbieConfig.boxPrefix}_submit_${path.basename(workDir)}` : null;
+
+    // sandbox_runner.exe [--sandbox <boxName>] <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]
+    const runnerArgs = [];
+    if (useSbie) {
+      runnerArgs.push('--sandbox', boxName);
+    }
+    runnerArgs.push(
       String(timeLimitMs),
       String(memoryLimitMb),
       String(maxProcs),
       metaFile,
       execFile,
       ...execArgs
-    ];
+    );
 
     const startTime = Date.now();
     let stdout = '';

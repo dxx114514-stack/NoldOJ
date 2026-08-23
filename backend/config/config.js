@@ -203,6 +203,23 @@ function loadCorsConfig() {
   return { restricted, origins: Array.from(origins) };
 }
 
+// ── Sandboxie 配置: config/sandboxie.txt ──
+function loadSandboxieConfig() {
+  const result = { enabled: false, startExe: 'Start.exe', sbieIni: 'SbieIni.exe', boxPrefix: 'WinOJ' };
+  try {
+    const p = path.join(__dirname, '..', '..', 'config', 'sandboxie.txt');
+    const content = fs.readFileSync(p, 'utf8');
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('SANDBOXIE_ENABLED=')) result.enabled = t.split('=')[1] === 'true';
+      if (t.startsWith('START_EXE=')) result.startExe = t.split('=').slice(1).join('=');
+      if (t.startsWith('SBIE_INI=')) result.sbieIni = t.split('=').slice(1).join('=');
+      if (t.startsWith('BOX_PREFIX=')) result.boxPrefix = t.split('=').slice(1).join('=');
+    }
+  } catch {}
+  return result;
+}
+
 const corsCfg = loadCorsConfig();
 
 // R9-20: security.txt 联系方式：可写 config/security.txt（CONTACT=），缺省回退仓库地址
@@ -251,7 +268,10 @@ module.exports = {
     // 未编译时自动回退到传统模式 (spawn + memwatch)
     networkIsolation: true,   // 断网: 通过受限令牌剥离网络相关特权
     killOnJobClose: true,     // Job 关闭时杀死整棵进程树
-    noBreakaway: true          // 禁止子进程脱离沙箱
+    noBreakaway: true,        // 禁止子进程脱离沙箱
+    // Sandboxie-Classic 隔离: 编译/运行均可选包装, 与 Job Object 叠加
+    // 启用条件: config/sandboxie.txt 中 SANDBOXIE_ENABLED=true 且 Start.exe 可用
+    sandboxie: loadSandboxieConfig()
   },
   judge: judgeCfg,
   ide: {
