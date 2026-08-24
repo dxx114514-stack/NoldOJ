@@ -7,11 +7,20 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link id="cm-theme" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
   <script src="/js/api.js"></script>
   <style>
-    #editorContainer { width: 100%; height: 500px; border-radius: 0.75rem; border: 1px solid #e5e7eb; position: relative; }
+    #editorContainer { width: 100%; height: 500px; border-radius: 0.75rem; border: 1px solid #e5e7eb; }
     .dark #editorContainer { border-color: #374151; }
+    .dark #editorContainer .CodeMirror { background: #282a36; color: #f8f8f2; }
     .dark select option { background-color: #1f2937; color: #f9fafb; }
   </style>
 </head>
@@ -55,23 +64,26 @@
     requireAuth();
     document.getElementById('nav').innerHTML = renderNav('ide');
     let editor;
-    const langMap = { c: 'c', cpp: 'cpp', python3: 'python', java: 'java', javascript: 'javascript' };
+    const langModeMap = { c: 'text/x-csrc', cpp: 'text/x-c++src', python3: 'text/x-python', java: 'text/x-java', javascript: 'javascript' };
+    function isDark() { return document.documentElement.classList.contains('dark'); }
     async function init() {
-      require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
-      require(['vs/editor/editor.main'], function () {
-        const lang = document.getElementById('language').value;
-        editor = monaco.editor.create(document.getElementById('editorContainer'), {
-          value: '',
-          language: langMap[lang] || 'plaintext',
-          fontSize: 14,
-          minimap: { enabled: false },
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 4,
-          theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs'
-        });
-        editor.focus();
+      const lang = document.getElementById('language').value || 'cpp';
+      editor = CodeMirror(document.getElementById('editorContainer'), {
+        value: '',
+        mode: langModeMap[lang] || 'text/plain',
+        theme: isDark() ? 'dracula' : 'default',
+        lineNumbers: true,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        styleActiveLine: true,
+        indentUnit: 4,
+        tabSize: 4,
+        indentWithTabs: false,
+        lineWrapping: false,
+        viewportMargin: Infinity
       });
+      editor.setSize('100%', '500px');
+      editor.focus();
       try {
         const langs = await apiCall('GET', '/ide/languages');
         const sel = document.getElementById('language');
@@ -85,7 +97,7 @@
     }
     function changeLang() {
       const lang = document.getElementById('language').value;
-      if (editor) monaco.editor.setModelLanguage(editor.getModel(), langMap[lang] || 'plaintext');
+      if (editor) editor.setOption('mode', langModeMap[lang] || 'text/plain');
     }
     async function runCode() {
       const btn = document.getElementById('runBtn');
@@ -148,7 +160,10 @@
     }
     init();
     new MutationObserver(() => {
-      if (editor) monaco.editor.setTheme(document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs');
+      if (editor) {
+        editor.setOption('theme', isDark() ? 'dracula' : 'default');
+        editor.refresh();
+      }
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   </script>
 </body>
