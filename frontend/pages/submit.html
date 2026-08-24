@@ -7,9 +7,9 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+  <script src="/lib/monaco/min/vs/loader.js"></script>
   <script src="/js/api.js"></script>
-  <style>#editorContainer { width: 100%; height: 400px; border-radius: 0.75rem; border: 1px solid #e5e7eb; }
+  <style>#editorContainer { width: 100%; height: 400px; border-radius: 0.75rem; border: 1px solid #e5e7eb; position: relative; }
   .dark #editorContainer { border-color: #374151; }
   .file-tab { cursor: pointer; user-select: none; }
   .file-tab.active { background: #6366f1; color: white; }
@@ -60,7 +60,7 @@
     }
 
     async function init() {
-      require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+      require.config({ paths: { vs: '/lib/monaco/min/vs' } });
       require(['vs/editor/editor.main'], function () {
         const lang = document.getElementById('language').value;
         editor = monaco.editor.create(document.getElementById('editorContainer'), {
@@ -74,6 +74,7 @@
           theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs'
         });
         monacoReady = true;
+        editor.focus();
         // Load saved code if any
         const saved = localStorage.getItem('winoj_submit_code');
         if (saved) editor.setValue(saved);

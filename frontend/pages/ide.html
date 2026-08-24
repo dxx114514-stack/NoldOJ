@@ -7,10 +7,10 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+    <script src="/lib/monaco/min/vs/loader.js"></script>
   <script src="/js/api.js"></script>
   <style>
-    #editorContainer { width: 100%; height: 500px; border-radius: 0.75rem; border: 1px solid #e5e7eb; }
+    #editorContainer { width: 100%; height: 500px; border-radius: 0.75rem; border: 1px solid #e5e7eb; position: relative; }
     .dark #editorContainer { border-color: #374151; }
     .dark select option { background-color: #1f2937; color: #f9fafb; }
   </style>
@@ -57,7 +57,7 @@
     let editor;
     const langMap = { c: 'c', cpp: 'cpp', python3: 'python', java: 'java', javascript: 'javascript' };
     async function init() {
-      require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+      require.config({ paths: { vs: '/lib/monaco/min/vs' } });
       require(['vs/editor/editor.main'], function () {
         const lang = document.getElementById('language').value;
         editor = monaco.editor.create(document.getElementById('editorContainer'), {
@@ -70,6 +70,7 @@
           tabSize: 4,
           theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs'
         });
+        editor.focus();
       });
       try {
         const langs = await apiCall('GET', '/ide/languages');
