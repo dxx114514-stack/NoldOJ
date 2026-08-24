@@ -188,7 +188,7 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
 
   // Sandboxie 编译隔离: 克隆模板 → 开放编译器+工作目录 → 编译 → 清理
   const useSbie = hasSandboxie && isWindows;
-  const boxName = useSbie ? `${sbieConfig.boxPrefix}_compile_${path.basename(workDir)}` : null;
+  const boxName = useSbie ? `${sbieConfig.boxPrefix}_compile_${path.basename(workDir).replace(/-/g, '_')}` : null;
   if (useSbie) {
     sbieCreateTempBox(boxName, {
       compilerPaths: sbieConfig.compilerPaths,
@@ -318,7 +318,7 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
 
     // Sandboxie: 每次提交创建临时沙盒（克隆模板 + 开放工作目录 + AutoDelete）
     const useSbie = hasSandboxie && isWindows;
-    const boxName = useSbie ? `${sbieConfig.boxPrefix}_submit_${path.basename(workDir)}` : null;
+    const boxName = useSbie ? `${sbieConfig.boxPrefix}_submit_${path.basename(workDir).replace(/-/g, '_')}` : null;
     if (useSbie) {
       sbieCreateTempBox(boxName, {
         workspacePaths: [workDir + '\\*']

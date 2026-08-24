@@ -841,7 +841,39 @@ int main(int argc, char* argv[]) {
     // Sandboxie 隔离模式：用 Start.exe /box:<boxName> /wait 包装命令
     // Job Object 仍然嵌套在 Sandboxie 内部，两层叠加
     if (!sandboxBox.empty()) {
-        std::string sbieCmd = "Start.exe /box:" + sandboxBox + " /wait " + cmdLine;
+        // 查找 Start.exe：优先 sandbox_runner.exe 同级 sandboxie/ 目录，再试标准安装路径
+        std::string startExe = "Start.exe";  // fallback: 依赖 PATH
+        {
+            char selfPath[MAX_PATH];
+            if (GetModuleFileNameA(NULL, selfPath, MAX_PATH)) {
+                // 同级 sandboxie/Start.exe（安装根/sandboxie/Start.exe）
+                char* lastSlash = strrchr(selfPath, '\\');
+                if (lastSlash) {
+                    *lastSlash = '\0';
+                    char* prevSlash = strrchr(selfPath, '\\');
+                    if (prevSlash) {
+                        *prevSlash = '\0';
+                        std::string candidate = std::string(selfPath) + "\\sandboxie\\Start.exe";
+                        if (GetFileAttributesA(candidate.c_str()) != INVALID_FILE_ATTRIBUTES)
+                            startExe = candidate;
+                    }
+                }
+            }
+            // 回退：标准安装路径
+            if (startExe == "Start.exe") {
+                const char* paths[] = {
+                    "C:\\Program Files\\Sandboxie\\Start.exe",
+                    "C:\\Program Files (x86)\\Sandboxie\\Start.exe"
+                };
+                for (const char* p : paths) {
+                    if (GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES) {
+                        startExe = p;
+                        break;
+                    }
+                }
+            }
+        }
+        std::string sbieCmd = "\"" + startExe + "\" /box:" + sandboxBox + " /wait " + cmdLine;
         sandboxLog("Sandboxie mode: box=%s, cmd=%s", sandboxBox.c_str(), sbieCmd.c_str());
         cmdLine = sbieCmd;
     }
