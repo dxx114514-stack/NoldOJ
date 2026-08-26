@@ -188,7 +188,8 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
 
   // Sandboxie 编译隔离: 克隆模板 → 开放编译器+工作目录 → 编译 → 清理
   const useSbie = hasSandboxie && isWindows;
-  const boxName = useSbie ? `${sbieConfig.boxPrefix}_compile_${path.basename(workDir).replace(/-/g, '_')}` : null;
+  // Sandboxie 沙盒名限制: 仅字母数字 + 最长 32 字符 → 取 UUID 前 8 位 hex
+  const boxName = useSbie ? `${sbieConfig.boxPrefix}_c_${path.basename(workDir).replace(/-/g, '').slice(0, 8)}` : null;
   if (useSbie) {
     sbieCreateTempBox(boxName, {
       compilerPaths: sbieConfig.compilerPaths,
@@ -318,7 +319,7 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
 
     // Sandboxie: 每次提交创建临时沙盒（克隆模板 + 开放工作目录 + AutoDelete）
     const useSbie = hasSandboxie && isWindows;
-    const boxName = useSbie ? `${sbieConfig.boxPrefix}_submit_${path.basename(workDir).replace(/-/g, '_')}` : null;
+    const boxName = useSbie ? `${sbieConfig.boxPrefix}_s_${path.basename(workDir).replace(/-/g, '').slice(0, 8)}` : null;
     if (useSbie) {
       sbieCreateTempBox(boxName, {
         workspacePaths: [workDir + '\\*']
