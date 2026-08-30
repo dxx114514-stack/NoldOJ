@@ -2,7 +2,7 @@
 info:
   title: NoldOJ API
   description: |
-    Windows 在线评测系统 API。支持多语言代码评测、安全沙箱执行、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查等功能。
+    Windows 在线评测系统 API。支持多语言代码评测、三层安全沙箱执行（Sandboxie 文件/网络隔离 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查等功能。
 
     ## 认证
     大部分接口需携带 JWT Token：`Authorization: Bearer <access_token>`
@@ -1411,6 +1411,8 @@ paths:
     post:
       tags: [提交]
       summary: 提交代码
+      description: |
+        代码在三层隔离环境中编译与执行：Sandboxie（文件/网络隔离）+ Job Object（CPU/内存/进程数限制）+ 受限令牌/AppContainer（权限隔离）。
       security:
         - bearerAuth: []
       requestBody:
@@ -1675,6 +1677,8 @@ paths:
     post:
       tags: [IDE]
       summary: 运行代码
+      description: |
+        运行环境与提交评测相同，三层隔离（Sandboxie + Job Object + 受限令牌/AppContainer）。
       requestBody:
         required: true
         content:

@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>提交 - NoldOJ</title>
+  <title>提交 - WinOJ</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
@@ -24,7 +24,7 @@
   .file-tab.active { background: #6366f1; color: white; }
   .file-tab:not(.active) { background: #e5e7eb; color: #374151; }
   .dark .file-tab:not(.active) { background: #374151; color: #d1d5db; }
-</style>
+  </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
@@ -89,7 +89,7 @@
       editor.setSize('100%', '400px');
       editor.focus();
 
-      const saved = localStorage.getItem('NoldOJ_submit_code');
+      const saved = localStorage.getItem('winoj_submit_code');
       if (saved) editor.setValue(saved);
 
       try {

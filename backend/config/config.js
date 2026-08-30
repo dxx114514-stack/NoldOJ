@@ -203,6 +203,67 @@ function loadCorsConfig() {
   return { restricted, origins: Array.from(origins) };
 }
 
+// ── Sandboxie 配置: config/sandboxie.txt ──
+// 路径自动检测: 默认从 OJ 根目录的上级查找 (即 {OJ_ROOT}/../sandboxie/)
+// 例: OJ 装在 C:\WinOJ，则 Sandboxie 在 C:\sandboxie\ (与 WinOJ 同级)
+function loadSandboxieConfig() {
+  const result = {
+    enabled: true,
+    startExe: 'Start.exe',
+    sbieIni: 'SbieIni.exe',
+    boxPrefix: 'WinOJ',
+    templateBox: 'JudgeBox',
+    // 编译器/运行时路径白名单（Sandboxie ReadFilePath/OpenFilePath）
+    compilerPaths: [],
+    workspacePaths: []
+  };
+  try {
+    const p = path.join(__dirname, '..', '..', 'config', 'sandboxie.txt');
+    const content = fs.readFileSync(p, 'utf8');
+    for (const line of content.split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('SANDBOXIE_ENABLED=')) result.enabled = t.split('=')[1] === 'true';
+      if (t.startsWith('START_EXE=')) result.startExe = t.split('=').slice(1).join('=');
+      if (t.startsWith('SBIE_INI=')) result.sbieIni = t.split('=').slice(1).join('=');
+      if (t.startsWith('BOX_PREFIX=')) result.boxPrefix = t.split('=').slice(1).join('=');
+      if (t.startsWith('TEMPLATE_BOX=')) result.templateBox = t.split('=').slice(1).join('=');
+      if (t.startsWith('COMPILER_PATH=')) result.compilerPaths.push(t.split('=').slice(1).join('='));
+      if (t.startsWith('WORKSPACE_PATH=')) result.workspacePaths.push(t.split('=').slice(1).join('='));
+    }
+  } catch {}
+
+  // 路径自动检测：若 startExe/sbieIni 是相对文件名，在 OJ 安装根目录的 sandboxie/ 目录查找
+  // 部署结构: {INSTALL_ROOT}/WinOJ/ (OJ根) + {INSTALL_ROOT}/sandboxie/ + {INSTALL_ROOT}/mingw64/
+  // __dirname = backend/config/ → 往上两级 = OJ 根 → 再往上一级 = 安装根
+  const ojRoot = path.join(__dirname, '..', '..');
+  const installRoot = path.join(ojRoot, '..'); // 安装根 (C:\WinOJ)
+  const sbieDir = path.join(installRoot, 'sandboxie');
+
+  if (!path.isAbsolute(result.startExe)) {
+    const candidate = path.join(sbieDir, result.startExe);
+    if (fs.existsSync(candidate)) result.startExe = candidate;
+  }
+  if (!path.isAbsolute(result.sbieIni)) {
+    const candidate = path.join(sbieDir, result.sbieIni);
+    if (fs.existsSync(candidate)) result.sbieIni = candidate;
+  }
+
+  // 若未配置编译器路径，自动探测 mingw64 (在安装根目录下)
+  if (result.compilerPaths.length === 0) {
+    const mingwDir = path.join(installRoot, 'mingw64');
+    if (fs.existsSync(mingwDir)) {
+      result.compilerPaths.push(path.join(mingwDir, '*'));
+    }
+  }
+
+  // 若未配置工作目录路径，使用 OJ 根目录下的 workspace
+  if (result.workspacePaths.length === 0) {
+    result.workspacePaths.push(path.join(ojRoot, 'workspace', '*'));
+  }
+
+  return result;
+}
+
 const corsCfg = loadCorsConfig();
 
 // R9-20: security.txt 联系方式：可写 config/security.txt（CONTACT=），缺省回退仓库地址
@@ -251,7 +312,10 @@ module.exports = {
     // 未编译时自动回退到传统模式 (spawn + memwatch)
     networkIsolation: true,   // 断网: 通过受限令牌剥离网络相关特权
     killOnJobClose: true,     // Job 关闭时杀死整棵进程树
-    noBreakaway: true          // 禁止子进程脱离沙箱
+    noBreakaway: true,        // 禁止子进程脱离沙箱
+    // Sandboxie-Classic 隔离: 编译/运行均可选包装, 与 Job Object 叠加
+    // 启用条件: config/sandboxie.txt 中 SANDBOXIE_ENABLED=true 且 Start.exe 可用
+    sandboxie: loadSandboxieConfig()
   },
   judge: judgeCfg,
   ide: {
