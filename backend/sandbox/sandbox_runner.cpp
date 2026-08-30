@@ -811,21 +811,29 @@ int main(int argc, char* argv[]) {
     if (argc == 2 && strcmp(argv[1], "--make-container") == 0)
         return containerHelperMain();
 
-    if (argc < 6) {
-        fprintf(stderr, "Usage: sandbox_runner.exe <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]\n");
+    // 解析 --file-io 参数（文件IO题目模式：强制 workDir 降为 Low IL）
+    bool fileIoMode = false;
+    int argOffset = 1;
+    if (argc >= 2 && strcmp(argv[1], "--file-io") == 0) {
+        fileIoMode = true;
+        argOffset = 2;
+    }
+
+    if (argc - argOffset < 5) {
+        fprintf(stderr, "Usage: sandbox_runner.exe [--file-io] <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]\n");
         return 1;
     }
 
-    DWORD timeLimitMs   = (DWORD)atoll(argv[1]);
-    SIZE_T memLimitBytes = (SIZE_T)atoll(argv[2]) * 1024 * 1024;
-    DWORD maxProcs      = (DWORD)atoll(argv[3]);
-    const char* metaFile = argv[4];
-    const char* exePath  = argv[5];
+    DWORD timeLimitMs   = (DWORD)atoll(argv[argOffset]);
+    SIZE_T memLimitBytes = (SIZE_T)atoll(argv[argOffset + 1]) * 1024 * 1024;
+    DWORD maxProcs      = (DWORD)atoll(argv[argOffset + 2]);
+    const char* metaFile = argv[argOffset + 3];
+    const char* exePath  = argv[argOffset + 4];
 
     // 构建命令行（D-L13：标准 CRT 转义，正确处理反斜杠+引号组合）
     std::string cmdLine;
-    for (int i = 5; i < argc; i++) {
-        if (i > 5) cmdLine += " ";
+    for (int i = argOffset + 4; i < argc; i++) {
+        if (i > argOffset + 4) cmdLine += " ";
         cmdLine += quoteCmdArg(argv[i]);
     }
     std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
@@ -989,11 +997,15 @@ int main(int argc, char* argv[]) {
         if (env && env[0] == '1') noRelabel = true;
     }
     bool workDirRelabeled = false;
-    if (lowIl && execMode != 2 && !useAppContainer && !noRelabel) {
-        std::wstring workDirW = dirNameW(utf8ToWide(metaFile));
-        setLowLabelRecursive(workDirW.c_str());
-        workDirRelabeled = true;
-        sandboxLogW(L"workdir relabeled to LOW integrity: %ls", workDirW.c_str());
+    // 文件IO模式或常规Low IL路径：强制 workDir 降为 LOW
+    // 文件IO模式下即使使用 AppContainer 也强制降标签，确保进程能写入工作目录
+    if ((lowIl && execMode != 2 && !useAppContainer && !noRelabel) || fileIoMode) {
+        if (!noRelabel) {
+            std::wstring workDirW = dirNameW(utf8ToWide(metaFile));
+            setLowLabelRecursive(workDirW.c_str());
+            workDirRelabeled = true;
+            sandboxLogW(L"workdir relabeled to LOW integrity: %ls", workDirW.c_str());
+        }
     }
 
     // 4. 绑定到 Job Object (进程仍挂起)

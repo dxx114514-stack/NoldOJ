@@ -61,7 +61,7 @@ async function executeIdeRun(runId) {
     db.prepare("UPDATE ide_runs SET status = 'running' WHERE id = ?").run(runId);
 
     const timeLimitMs = config.ide.timeLimitMs;
-    const result = await runCode(workDir, srcFile, exeFile, lang, run.stdin || '', timeLimitMs, config.ide.memoryLimitMb, prepared.isWindows);
+    const result = await runCode(workDir, srcFile, exeFile, lang, run.stdin || '', timeLimitMs, config.ide.memoryLimitMb, prepared.isWindows, 'traditional');
     cleanupWorkDir(workDir);
 
     const finalStatus = result.exitCode === 0 ? 'accepted' : 'runtime_error';

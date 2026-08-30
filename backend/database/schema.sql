@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS problems (
   hint TEXT DEFAULT '',
   time_limit INTEGER DEFAULT 1000,
   memory_limit INTEGER DEFAULT 256,
-  problem_type TEXT DEFAULT 'traditional' CHECK(problem_type IN ('traditional','interactive','communication','submit_answer')),
+  problem_type TEXT DEFAULT 'traditional' CHECK(problem_type IN ('traditional','interactive','communication','submit_answer','file_io')),
   compare_mode TEXT DEFAULT 'text_strict' CHECK(compare_mode IN ('text_strict','text_relaxed','real_number','spj')),
   real_number_tolerance TEXT DEFAULT '{"absolute":0.001,"relative":0.001}',
   spj_code TEXT DEFAULT '',

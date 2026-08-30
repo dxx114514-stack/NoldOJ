@@ -329,7 +329,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
             const stdin = tc.input_data || readTestdata(tc.input_file, problemDir);
             const expected = tc.output_data || readTestdata(tc.output_file, problemDir);
             const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
-            const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
+            const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows, problem.problem_type);
 
             const timeUsed = result.timeUsed;
             const passed = await compareOutput(expected, result.stdout, problem);
@@ -362,7 +362,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
           const stdin = tc.input_data || readTestdata(tc.input_file, problemDir);
           const expected = tc.output_data || readTestdata(tc.output_file, problemDir);
           const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
-          const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows);
+          const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows, problem.problem_type);
 
           const timeUsed = result.timeUsed;
           const passed = await compareOutput(expected, result.stdout, problem);
