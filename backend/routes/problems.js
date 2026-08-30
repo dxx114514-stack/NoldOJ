@@ -369,7 +369,7 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   db.prepare('DELETE FROM problem_samples WHERE problem_id = ?').run(problem.id);
   db.prepare('DELETE FROM problems WHERE id = ?').run(problem.id);
   // R11-?: 同步清理磁盘 testdata 目录，避免删题后残留孤儿目录
-  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  const problemDir = path.join(config.problemsDir, String(problem.id));
   try {
     if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
   } catch (e) {
@@ -400,8 +400,8 @@ router.put('/:id/reindex', requireAuth, requireRole('admin'), (req, res) => {
   }
 
   // 磁盘 testdata 目录迁移
-  const oldDir = path.join(__dirname, '../../problems', String(problem.id));
-  const newDir = path.join(__dirname, '../../problems', String(newId));
+  const oldDir = path.join(config.problemsDir, String(problem.id));
+  const newDir = path.join(config.problemsDir, String(newId));
   if (fs.existsSync(newDir)) {
     return res.status(409).json({ code: 2, reason: 'ERR_INVALID_STATE', message: `目标目录 ${newId} 已存在，无法迁移测试数据。` });
   }
@@ -477,7 +477,7 @@ router.post('/:id/testdata', requireAuth, requireRole('teacher'), upload.array('
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No files uploaded.' });
   }
 
-  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  const problemDir = path.join(config.problemsDir, String(problem.id));
   fs.mkdirSync(problemDir, { recursive: true });
 
   try {
@@ -532,7 +532,7 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'File must be a .zip file.' });
   }
 
-  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  const problemDir = path.join(config.problemsDir, String(problem.id));
   fs.mkdirSync(problemDir, { recursive: true });
 
   try {
@@ -682,7 +682,7 @@ router.get('/:id/testdata', requireAuth, requireRole('teacher'), (req, res) => {
   }
   const testCases = db.prepare('SELECT tc.*, tg.subtask_id FROM test_cases tc LEFT JOIN test_groups tg ON tc.group_id = tg.id WHERE tc.problem_id = ? ORDER BY tc.sort_order, tc.id').all(problem.id);
   
-  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  const problemDir = path.join(config.problemsDir, String(problem.id));
   
   function resolveFilePath(baseDir, storedPath) {
     if (!storedPath) return null;
@@ -1054,7 +1054,7 @@ if (!aiEnabled(config.ai.testdata)) {
     if (cases.length === 0) {
       return res.status(500).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 未返回有效测试点，请重试。' });
     }
-    const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+    const problemDir = path.join(config.problemsDir, String(problem.id));
     fs.mkdirSync(problemDir, { recursive: true });
     const insertTC = db.prepare('INSERT INTO test_cases (problem_id, input_data, output_data, sort_order) VALUES (?, ?, ?, ?)');
     let order = db.prepare('SELECT MAX(sort_order) as m FROM test_cases WHERE problem_id = ?').get(problem.id)?.m || 0;
@@ -1154,7 +1154,7 @@ router.get('/:id/export', requireAuth, requireRole('teacher'), (req, res) => {
   }
 
   // ZIP 模式：problem.json + 每个测试点写入磁盘文件后打包
-  const problemDir = path.join(__dirname, '../../problems', String(problem.id));
+  const problemDir = path.join(config.problemsDir, String(problem.id));
   fs.mkdirSync(problemDir, { recursive: true });
   const zip = new AdmZip();
   zip.addFile('problem.json', Buffer.from(JSON.stringify(bundle, null, 2), 'utf8'));

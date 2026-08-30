@@ -317,6 +317,10 @@ module.exports = {
     // 启用条件: config/sandboxie.txt 中 SANDBOXIE_ENABLED=true 且 Start.exe 可用
     sandboxie: loadSandboxieConfig()
   },
+  // 问题测试数据目录: 与数据库同级，便于备份 (默认 backend/data/problems)
+  problemsDir: process.env.NoldOJ_PROBLEMS_DIR || path.join(__dirname, '..', 'data', 'problems'),
+  // 问题测试数据目录: 与数据库同级，便于备份 (默认 backend/data/problems)
+  problemsDir: process.env.NoldOJ_PROBLEMS_DIR || path.join(__dirname, '..', 'data', 'problems'),
   judge: judgeCfg,
   ide: {
     timeLimitMs: 10000,

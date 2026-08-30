@@ -85,7 +85,7 @@ function compareOutput(expected, actual, problem) {
 // 相对路径（导入路由落库的 safeFileName 纯文件名）以 problemDir（problems/<id>/）为基准解析，
 // 与导出侧 resolveFilePath 的基准一致（9.4），保证"仅有 input_file 且指向问题子目录相对路径"的用例可读。
 // 拒绝越出 problemsRoot 的 .. 穿越，杜绝教师导入 output_file:"../../config/jwt.txt" 等任意文件读取（D-H2）。
-const PROBLEMS_ROOT = path.resolve(__dirname, '..', '..', 'problems');
+const PROBLEMS_ROOT = config.problemsDir;
 function readTestdata(filePath, problemDir) {
   if (!filePath) return '';
   const problemsRoot = path.resolve(PROBLEMS_ROOT);
