@@ -16,6 +16,31 @@ if exist "log\server.log" del /q "log\server.log"
 for %%f in (log\*) do del /q "%%f" 2>nul
 echo [OK] Log directory cleared.
 
+if not exist "log" mkdir log
+if exist "log\server.log" del /q "log\server.log"
+for %%f in (log\*) do del /q "%%f" 2>nul
+echo [OK] Log directory cleared.
+
+REM == Auto-migrate problems/ to backend/data/problems/ ======
+if exist "problems" (
+    if not exist "backend\data\problems" (
+        echo [..] Migrating problems/ to backend/data/problems/...
+        if not exist "backend\data" mkdir "backend\data"
+        move "problems" "backend\data\problems" >nul 2>&1
+        if !errorlevel! equ 0 (
+            echo [OK] problems/ migrated to backend/data/problems/
+        ) else (
+            echo [!!] Failed to migrate problems/ (permission issue?)
+        )
+    ) else (
+        echo [..] backend/data/problems/ already exists, skipping migration
+        REM Optional: merge contents if needed
+        if exist "problems" (
+            echo [!!] Root problems/ exists but target also exists. Manual merge may be needed.
+        )
+    )
+)
+
 where node >nul 2>&1
 if !errorlevel! neq 0 (
     echo [ERROR] Node.js not found. Please install Node.js first.
