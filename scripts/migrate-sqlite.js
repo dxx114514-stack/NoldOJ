@@ -1,7 +1,7 @@
-// migrate-sqlite.js — sql.js → node:sqlite（内置 SQLite）迁移工具
+﻿// migrate-sqlite.js — sql.js → node:sqlite（内置 SQLite）迁移工具
 //
 // 背景：
-//   WinOJ 原本使用 sql.js（WASM 内存数据库），每次写操作都会把整个数据库
+//   NoldOJ 原本使用 sql.js（WASM 内存数据库），每次写操作都会把整个数据库
 //   导出写回磁盘，速度慢且有崩溃丢数据的风险。本版本改用 Node 内置的
 //   node:sqlite（原生 SQLite，同步直写，无需任何 npm 依赖）。
 //
@@ -19,7 +19,7 @@
 //   node scripts\migrate-sqlite.js
 //
 // 建议迁移流程：
-//   1. 停止 WinOJ 服务（start.bat 窗口关闭即可）
+//   1. 停止 NoldOJ 服务（start.bat 窗口关闭即可）
 //   2. 安装依赖：cd backend && npm install
 //   3. 运行本脚本备份 + 校验
 //   4. 启动服务：start.bat（initDB 会自动打开旧库并执行迁移）
@@ -33,7 +33,7 @@ function log(msg) { console.log(`[migrate] ${msg}`); }
 function logError(msg) { console.error(`[migrate][ERROR] ${msg}`); }
 
 // 1. 定位数据库文件
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'backend', 'data', 'winoj.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'backend', 'data', 'NoldOJ.db');
 if (!fs.existsSync(DB_PATH)) {
   logError(`未找到数据库文件: ${DB_PATH}`);
   logError('如果从未运行过旧版本（sql.js），无需迁移，直接启动服务即可。');
@@ -85,4 +85,5 @@ try {
 log('');
 log('迁移完成！数据已就绪，可放心启动服务。');
 log('注意：启动时会自动执行 schema 迁移（initDB），并启用 WAL 模式，');
-log('     数据库目录下会出现 winoj.db-wal / winoj.db-shm 文件，属正常现象。');
+log('     数据库目录下会出现 NoldOJ.db-wal / NoldOJ.db-shm 文件，属正常现象。');
+

@@ -1,4 +1,4 @@
-const path = require('path');
+﻿const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -107,12 +107,12 @@ function reloadRegisterConfig() {
   return cfg.enabled;
 }
 
-// ── 判题并发: config/judge.txt 的 MAX_THREADS= 或环境变量 WINOJ_JUDGE_THREADS，
+// ── 判题并发: config/judge.txt 的 MAX_THREADS= 或环境变量 NoldOJ_JUDGE_THREADS，
 //    默认 (CPU 数 + 1) / 2，最小 1 ──
 function loadJudgeConfig() {
   const cpu = Math.max(1, (os.cpus() || []).length || 1);
   let maxThreads = Math.max(1, Math.floor((cpu + 1) / 2));
-  const envVal = parseInt(process.env.WINOJ_JUDGE_THREADS, 10);
+  const envVal = parseInt(process.env.NoldOJ_JUDGE_THREADS, 10);
   if (envVal && envVal > 0) maxThreads = envVal;
   try {
     const p = path.join(__dirname, '..', '..', 'config', 'judge.txt');
@@ -218,7 +218,7 @@ function loadSecurityContact() {
       }
     }
   } catch {}
-  return 'https://github.com/dxx114514-stack/winoj.mimo';
+  return 'https://github.com/dxx114514-stack/NoldOJ.mimo';
 }
 
 module.exports = {
@@ -239,12 +239,12 @@ module.exports = {
     secure: process.env.COOKIE_SECURE === 'true' || false
   },
   database: {
-    path: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'winoj.db')
+    path: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'NoldOJ.db')
   },
   sandbox: {
     timeLimitMultiplier: 2,
     maxProcesses: 64,
-    tempDir: process.env.SANDBOX_TEMP || path.join(os.tmpdir(), 'winoj-sandbox'),
+    tempDir: process.env.SANDBOX_TEMP || path.join(os.tmpdir(), 'NoldOJ-sandbox'),
     maxOutputSize: 64 * 1024,
     maxSourceSize: 64 * 1024,
     // 安全沙箱: 编译 sandbox_runner.cpp 后自动启用 Job Object + 受限令牌隔离
@@ -292,3 +292,4 @@ module.exports = {
     from: email.from
   }
 };
+

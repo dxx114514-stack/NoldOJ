@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../database/db');
@@ -47,7 +47,7 @@ router.get('/captcha', (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Captcha disabled' });
   }
   const captcha = generateCaptcha();
-  // WINOJ_CAPTCHA_DEBUG=1 时 generateCaptcha 返回 code（仅测试用），其余情况只有 id/svg
+  // NoldOJ_CAPTCHA_DEBUG=1 时 generateCaptcha 返回 code（仅测试用），其余情况只有 id/svg
   res.json(captcha);
 });
 
@@ -321,3 +321,4 @@ router.post('/change-password', requireAuth, changePasswordRateLimit, (req, res)
 });
 
 module.exports = router;
+

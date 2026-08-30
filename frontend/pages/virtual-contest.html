@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>虚拟比赛 - WinOJ</title>
+  <title>虚拟比赛 - NoldOJ</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
@@ -24,7 +24,7 @@
       if (!vcid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定虚拟比赛 ID</p>'; return; }
       try {
         const vc = await apiCall('GET', `/virtual-contests/${vcid}`);
-        document.title = `虚拟比赛 - ${vc.contest.title} - WinOJ`;
+        document.title = `虚拟比赛 - ${vc.contest.title} - NoldOJ`;
 
         const ended = vc.status === 'finished';
         const remainingMin = Math.floor(vc.remaining_ms / 60000);
@@ -174,3 +174,4 @@
   </script>
 </body>
 </html>
+

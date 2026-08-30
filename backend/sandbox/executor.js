@@ -1,4 +1,4 @@
-const { spawn, spawnSync } = require('child_process');
+﻿const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -416,14 +416,14 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
 
 // ── 统一入口: 优先使用安全沙箱 ─────────────────────────────
 // 10.3: 传统模式以服务用户完整权限裸跑用户代码，无 Job/受限令牌/网络隔离。
-// 默认保持回退兼容；显式设置 WINOJ_REQUIRE_RUNNER=1 时缺 runner 即 fail-closed 拒绝判题。
-const requireRunner = process.env.WINOJ_REQUIRE_RUNNER === '1';
+// 默认保持回退兼容；显式设置 NoldOJ_REQUIRE_RUNNER=1 时缺 runner 即 fail-closed 拒绝判题。
+const requireRunner = process.env.NoldOJ_REQUIRE_RUNNER === '1';
 function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
   if (hasSandboxRunner && isWindows) {
     return runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows);
   }
   if (requireRunner) {
-    return Promise.reject(new Error('安全沙箱运行器缺失（WINOJ_REQUIRE_RUNNER=1 启用 fail-closed），已拒绝执行。请编译 sandbox_runner.exe 或关闭该开关。'));
+    return Promise.reject(new Error('安全沙箱运行器缺失（NoldOJ_REQUIRE_RUNNER=1 启用 fail-closed），已拒绝执行。请编译 sandbox_runner.exe 或关闭该开关。'));
   }
   return runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows);
 }
@@ -448,10 +448,10 @@ function cleanupOrphanProcesses() {
       // tempDir 通过环境变量注入，脚本内不拼接用户路径；匹配转义后的字面路径
       const escaped = tempDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const q =
-        'Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.ProcessId -ne $env:WINOJ_PARENT_PID -and $_.CommandLine -match $env:WINOJ_TMP_ESC } | Select-Object -ExpandProperty ProcessId';
+        'Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.ProcessId -ne $env:NoldOJ_PARENT_PID -and $_.CommandLine -match $env:NoldOJ_TMP_ESC } | Select-Object -ExpandProperty ProcessId';
       const res = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', q], {
         encoding: 'utf8', windowsHide: true, timeout: 15000,
-        env: { ...process.env, WINOJ_PARENT_PID: String(process.pid), WINOJ_TMP_ESC: escaped }
+        env: { ...process.env, NoldOJ_PARENT_PID: String(process.pid), NoldOJ_TMP_ESC: escaped }
       });
       if (res.status === 0 && res.stdout) {
         for (const line of res.stdout.split(/\r?\n/)) {
@@ -480,3 +480,4 @@ function cleanupOrphanProcesses() {
 }
 
 module.exports = { prepareWorkDir, prepareWorkDirMulti, compile, runCode, cleanupWorkDir, loadLanguageConfig, cleanupOrphanProcesses };
+

@@ -1,5 +1,5 @@
-(function() {
-  const savedTheme = localStorage.getItem('winoj_theme') || 'light';
+﻿(function() {
+  const savedTheme = localStorage.getItem('NoldOJ_theme') || 'light';
   if (savedTheme === 'dark') document.documentElement.classList.add('dark');
   else document.documentElement.classList.remove('dark');
 
@@ -29,7 +29,7 @@
 function toggleDarkMode() {
   const html = document.documentElement;
   const isDark = html.classList.toggle('dark');
-  localStorage.setItem('winoj_theme', isDark ? 'dark' : 'light');
+  localStorage.setItem('NoldOJ_theme', isDark ? 'dark' : 'light');
   document.querySelectorAll('.dark-toggle-icon').forEach(icon => {
     icon.classList.toggle('hidden');
   });
@@ -244,7 +244,7 @@ function renderNav(activePage) {
           <div class="flex items-center space-x-4 flex-shrink-0">
             <a href="/pages/index.html" class="flex items-center space-x-2">
               <svg class="w-7 h-7 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
-              <span class="text-xl font-bold text-gray-900 dark:text-white">WinOJ</span>
+              <span class="text-xl font-bold text-gray-900 dark:text-white">NoldOJ</span>
             </a>
             <button onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -319,7 +319,7 @@ function renderNav(activePage) {
     </div>`;
   } catch(e) {
     console.error('renderNav error:', e);
-    return `<nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50"><div class="max-w-7xl mx-auto px-4 h-14 flex items-center"><a href="/pages/index.html" class="text-xl font-bold text-gray-900 dark:text-white">WinOJ</a></div></nav>`;
+    return `<nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50"><div class="max-w-7xl mx-auto px-4 h-14 flex items-center"><a href="/pages/index.html" class="text-xl font-bold text-gray-900 dark:text-white">NoldOJ</a></div></nav>`;
   }
 }
 
@@ -358,8 +358,8 @@ async function logout() {
 }
 
 // ── WebSocket 实时推送 (Socket.io) ──────────────────────────
-let winojSocket = null;
-let announcementUnread = parseInt(localStorage.getItem('winoj_ann_unread') || '0');
+let NoldOJSocket = null;
+let announcementUnread = parseInt(localStorage.getItem('NoldOJ_ann_unread') || '0');
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -414,38 +414,38 @@ async function initSocket() {
   if (!token) return;
   try {
     await loadScript('/js/socket.io-client.min.js');
-    winojSocket = io({
+    NoldOJSocket = io({
       auth: { token },
       transports: ['websocket', 'polling']
     });
 
-    winojSocket.on('connect', () => {});
+    NoldOJSocket.on('connect', () => {});
 
-    winojSocket.on('connect_error', (err) => {
+    NoldOJSocket.on('connect_error', (err) => {
       console.warn('[Socket] Connection error:', err.message);
     });
 
-    winojSocket.on('disconnect', () => {});
+    NoldOJSocket.on('disconnect', () => {});
 
     // 公告推送
-    winojSocket.on('announcement', (msg) => {
+    NoldOJSocket.on('announcement', (msg) => {
       if (msg && msg.data) {
         announcementUnread++;
-        localStorage.setItem('winoj_ann_unread', announcementUnread);
+        localStorage.setItem('NoldOJ_ann_unread', announcementUnread);
         updateAnnouncementBadge();
         showToast(`📢 新公告: ${escapeHtml(msg.data.title)}`, 'info');
       }
     });
 
     // 评测状态推送 (全局监听, 页面可覆盖 onJudgeStatus)
-    winojSocket.on('judge_status', (msg) => {
+    NoldOJSocket.on('judge_status', (msg) => {
       if (typeof window.onJudgeStatus === 'function') {
         window.onJudgeStatus(msg);
       }
     });
 
     // 比赛排行榜推送
-    winojSocket.on('contest_ranking_update', (msg) => {
+    NoldOJSocket.on('contest_ranking_update', (msg) => {
       if (typeof window.onContestRankingUpdate === 'function') {
         window.onContestRankingUpdate(msg);
       }
@@ -458,32 +458,32 @@ async function initSocket() {
 }
 
 function joinSubmissionRoom(submissionId) {
-  if (winojSocket && winojSocket.connected) {
-    winojSocket.emit('join_submission', { submission_id: submissionId });
+  if (NoldOJSocket && NoldOJSocket.connected) {
+    NoldOJSocket.emit('join_submission', { submission_id: submissionId });
   }
 }
 
 function leaveSubmissionRoom(submissionId) {
-  if (winojSocket && winojSocket.connected) {
-    winojSocket.emit('leave_submission', { submission_id: submissionId });
+  if (NoldOJSocket && NoldOJSocket.connected) {
+    NoldOJSocket.emit('leave_submission', { submission_id: submissionId });
   }
 }
 
 function joinContestRankingRoom(contestId) {
-  if (winojSocket && winojSocket.connected) {
-    winojSocket.emit('join_contest_ranking', { contest_id: contestId });
+  if (NoldOJSocket && NoldOJSocket.connected) {
+    NoldOJSocket.emit('join_contest_ranking', { contest_id: contestId });
   }
 }
 
 function leaveContestRankingRoom(contestId) {
-  if (winojSocket && winojSocket.connected) {
-    winojSocket.emit('leave_contest_ranking', { contest_id: contestId });
+  if (NoldOJSocket && NoldOJSocket.connected) {
+    NoldOJSocket.emit('leave_contest_ranking', { contest_id: contestId });
   }
 }
 
 function clearAnnouncementUnread() {
   announcementUnread = 0;
-  localStorage.setItem('winoj_ann_unread', '0');
+  localStorage.setItem('NoldOJ_ann_unread', '0');
   updateAnnouncementBadge();
 }
 
@@ -589,3 +589,4 @@ function renderMathDefaults(rootEl) {
     });
   } catch {}
 }
+
