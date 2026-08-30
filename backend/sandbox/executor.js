@@ -210,7 +210,8 @@ function killProc(proc, isWindows) {
 // ── 安全沙箱模式: 使用 sandbox_runner.exe ───────────────────
 // 流程: Node.js ↔ sandbox_runner.exe (Job Object + 受限令牌 + 低完整性级别) ↔ 子进程
 // sandbox_runner.exe 负责: CREATE_SUSPENDED + Job 绑定 + 内存/时间监控 + 进程树清理 + Low IL
-function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
+// fileIoMode: 文件IO题目模式，传递 --file-io 强制 workDir 降为 Low IL
+function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows, fileIoMode) {
   return new Promise((resolve) => {
     const actualExe = isWindows ? exeFile + '.exe' : exeFile;
     const runCmd = (!isWindows && lang.runUnix) ? lang.runUnix : lang.run;
@@ -226,15 +227,17 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
     const metaFile = path.join(workDir, '_meta.json');
     const maxProcs = config.sandbox.maxProcesses || 64;
 
-    // sandbox_runner.exe <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]
-    const runnerArgs = [
+    // sandbox_runner.exe [--file-io] <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]
+    const runnerArgs = [];
+    if (fileIoMode) runnerArgs.push('--file-io');
+    runnerArgs.push(
       String(timeLimitMs),
       String(memoryLimitMb),
       String(maxProcs),
       metaFile,
       execFile,
       ...execArgs
-    ];
+    );
 
     const startTime = Date.now();
     let stdout = '';
@@ -420,9 +423,9 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
 // 传统模式以服务用户完整权限裸跑用户代码，无 Job/受限令牌/网络隔离。
 // 默认保持回退兼容；显式设置 NoldOJ_REQUIRE_RUNNER=1 时缺 runner 即 fail-closed 拒绝判题。
 const requireRunner = process.env.NoldOJ_REQUIRE_RUNNER === '1';
-function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
+function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows, problemType) {
   if (hasSandboxRunner && isWindows) {
-    return runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows);
+    return runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows, problemType === 'file_io');
   }
   if (requireRunner) {
     return Promise.reject(new Error('安全沙箱运行器缺失（NoldOJ_REQUIRE_RUNNER=1 启用 fail-closed），已拒绝执行。请编译 sandbox_runner.exe 或关闭该开关。'));
