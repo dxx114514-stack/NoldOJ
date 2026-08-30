@@ -50,7 +50,7 @@ if exist "backend\sandbox\sandbox_runner.cpp" (
 )
 title NoldOJ
 cd backend
-call npm ls --silent
+call npm ls --silent >nul 2>&1
 if !errorlevel! neq 0 (
     echo [..] Installing dependencies...
 
