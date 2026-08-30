@@ -294,7 +294,7 @@ router.get('/:id/diff', requireAuth, (req, res) => {
           // 允许绝对路径（上传/zip 落库形式）但解析后必须仍在 problemsRoot 内；
           // 相对路径（导入落库的纯文件名）以 problemDir（problems/<id>/）为基准解析，
           // 与判题端/导出侧基准一致（9.4）。
-          const problemsRoot = path.resolve(__dirname, '..', '..', 'problems');
+          const problemsRoot = config.problemsDir;
           const problemDir = waDetail.problem_id ? path.join(problemsRoot, String(waDetail.problem_id)) : problemsRoot;
           const resolved = path.isAbsolute(waDetail.output_file)
             ? path.normalize(waDetail.output_file)

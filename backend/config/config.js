@@ -205,13 +205,13 @@ function loadCorsConfig() {
 
 // ── Sandboxie 配置: config/sandboxie.txt ──
 // 路径自动检测: 默认从 OJ 根目录的上级查找 (即 {OJ_ROOT}/../sandboxie/)
-// 例: OJ 装在 C:\WinOJ，则 Sandboxie 在 C:\sandboxie\ (与 WinOJ 同级)
+// 例: OJ 装在 C:\NoldOJ，则 Sandboxie 在 C:\sandboxie\ (与 NoldOJ 同级)
 function loadSandboxieConfig() {
   const result = {
     enabled: true,
     startExe: 'Start.exe',
     sbieIni: 'SbieIni.exe',
-    boxPrefix: 'WinOJ',
+    boxPrefix: 'NoldOJ',
     templateBox: 'JudgeBox',
     // 编译器/运行时路径白名单（Sandboxie ReadFilePath/OpenFilePath）
     compilerPaths: [],
@@ -233,10 +233,10 @@ function loadSandboxieConfig() {
   } catch {}
 
   // 路径自动检测：若 startExe/sbieIni 是相对文件名，在 OJ 安装根目录的 sandboxie/ 目录查找
-  // 部署结构: {INSTALL_ROOT}/WinOJ/ (OJ根) + {INSTALL_ROOT}/sandboxie/ + {INSTALL_ROOT}/mingw64/
+  // 部署结构: {INSTALL_ROOT}/NoldOJ/ (OJ根) + {INSTALL_ROOT}/sandboxie/ + {INSTALL_ROOT}/mingw64/
   // __dirname = backend/config/ → 往上两级 = OJ 根 → 再往上一级 = 安装根
   const ojRoot = path.join(__dirname, '..', '..');
-  const installRoot = path.join(ojRoot, '..'); // 安装根 (C:\WinOJ)
+  const installRoot = path.join(ojRoot, '..'); // 安装根 (C:\NoldOJ)
   const sbieDir = path.join(installRoot, 'sandboxie');
 
   if (!path.isAbsolute(result.startExe)) {
@@ -317,6 +317,10 @@ module.exports = {
     // 启用条件: config/sandboxie.txt 中 SANDBOXIE_ENABLED=true 且 Start.exe 可用
     sandboxie: loadSandboxieConfig()
   },
+  // 问题测试数据目录: 与数据库同级，便于备份 (默认 backend/data/problems)
+  problemsDir: process.env.NoldOJ_PROBLEMS_DIR || path.join(__dirname, '..', 'data', 'problems'),
+  // 问题测试数据目录: 与数据库同级，便于备份 (默认 backend/data/problems)
+  problemsDir: process.env.NoldOJ_PROBLEMS_DIR || path.join(__dirname, '..', 'data', 'problems'),
   judge: judgeCfg,
   ide: {
     timeLimitMs: 10000,
