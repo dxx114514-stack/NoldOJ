@@ -244,7 +244,7 @@
 
 输入
 ```batch
-git clone https://github.com/dxx114514-stack/NoldOJ.mimo.git
+git clone https://github.com/dxx114514-stack/NoldOJ.git
 ```
 完成后运行`start.bat`
 
@@ -583,4 +583,5 @@ A: 默认在 `backend/data/NoldOJ.db`，SQLite 格式，由 Node 内置 node:sql
 ## 许可证
 
 MIT
+
 
