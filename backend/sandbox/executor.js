@@ -6,7 +6,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 
 // ── 安全沙箱运行器 (sandbox_runner.exe) ─────────────────────
-// 当存在时优先使用，提供 Job Object + 受限令牌 + 进程树隔离
+// 提供 Job Object + 受限令牌 + 低完整性级别 + 进程树隔离
 // 缺失时 start.bat 会自动从 sandbox_runner.cpp 编译；编译失败才回退到传统模式
 const SANDBOX_RUNNER_PATH = path.join(__dirname, 'sandbox_runner.exe');
 const hasSandboxRunner = process.platform === 'win32' && fs.existsSync(SANDBOX_RUNNER_PATH);
@@ -123,15 +123,23 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
 
   const actualExe = isWindows ? exeFile + '.exe' : exeFile;
 
+  try {
+    return _doCompile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile);
+  } finally {
+    // no sandbox cleanup needed
+  }
+}
+
+function _doCompile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
+  const actualExe = isWindows ? exeFile + '.exe' : exeFile;
+
   // 多文件 C++: 参数数组直传 spawnSync，不经 shell/token 化，杜绝参数注入。
   if (isMultiFile && lang.ext === '.cpp') {
     const extraSources = collectExtraSources(workDir, srcFile);
+    const gppArgs = ['-O2', '-Wall', '-std=c++17', '-o', actualExe, ...extraSources, srcFile];
     try {
-      const result = spawnSync('g++', ['-O2', '-Wall', '-std=c++17', '-o', actualExe, ...extraSources, srcFile], {
-        cwd: workDir,
-        timeout: 30000,
-        maxBuffer: 1024 * 1024,
-        windowsHide: true
+      const result = spawnSync('g++', gppArgs, {
+        cwd: workDir, timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true
       });
       if (result.status === 0) return { success: true, output: String(result.stdout || '') };
       return { success: false, output: String(result.stderr || result.stdout || errMsg(result)) };
@@ -141,23 +149,18 @@ function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
   }
 
   let cmd = lang.compile;
-
   cmd = cmd
     .replace('{src}', srcFile)
     .replace('{exe}', actualExe)
     .replace('{workdir}', workDir);
 
-  // 解析为可执行文件 + 参数数组，使用 spawnSync 不经 shell，杜绝命令注入
   const parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [cmd];
   const compiler = parts[0].replace(/^"|"$/g, '');
   const argTokens = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
 
   try {
     const result = spawnSync(compiler, argTokens, {
-      cwd: workDir,
-      timeout: 30000,
-      maxBuffer: 1024 * 1024,
-      windowsHide: true
+      cwd: workDir, timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true
     });
     if (result.status === 0) {
       return { success: true, output: String(result.stdout || '') };
@@ -205,8 +208,8 @@ function killProc(proc, isWindows) {
 }
 
 // ── 安全沙箱模式: 使用 sandbox_runner.exe ───────────────────
-// 流程: Node.js ↔ sandbox_runner.exe (Job Object 容器) ↔ 子进程
-// sandbox_runner.exe 负责: CREATE_SUSPENDED + Job 绑定 + 内存/时间监控 + 进程树清理
+// 流程: Node.js ↔ sandbox_runner.exe (Job Object + 受限令牌 + 低完整性级别) ↔ 子进程
+// sandbox_runner.exe 负责: CREATE_SUSPENDED + Job 绑定 + 内存/时间监控 + 进程树清理 + Low IL
 function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
   return new Promise((resolve) => {
     const actualExe = isWindows ? exeFile + '.exe' : exeFile;
@@ -220,7 +223,6 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
     const execFile = parts[0].replace(/^"|"$/g, '');
     const execArgs = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
 
-    // 元数据临时文件
     const metaFile = path.join(workDir, '_meta.json');
     const maxProcs = config.sandbox.maxProcesses || 64;
 
@@ -415,7 +417,7 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
 }
 
 // ── 统一入口: 优先使用安全沙箱 ─────────────────────────────
-// 10.3: 传统模式以服务用户完整权限裸跑用户代码，无 Job/受限令牌/网络隔离。
+// 传统模式以服务用户完整权限裸跑用户代码，无 Job/受限令牌/网络隔离。
 // 默认保持回退兼容；显式设置 NoldOJ_REQUIRE_RUNNER=1 时缺 runner 即 fail-closed 拒绝判题。
 const requireRunner = process.env.NoldOJ_REQUIRE_RUNNER === '1';
 function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimitMb, isWindows) {
@@ -480,4 +482,3 @@ function cleanupOrphanProcesses() {
 }
 
 module.exports = { prepareWorkDir, prepareWorkDirMulti, compile, runCode, cleanupWorkDir, loadLanguageConfig, cleanupOrphanProcesses };
-
