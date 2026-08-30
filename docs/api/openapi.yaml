@@ -1,6 +1,6 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 info:
-  title: WinOJ API
+  title: NoldOJ API
   description: |
     Windows 在线评测系统 API。支持多语言代码评测、三层安全沙箱执行（Sandboxie 文件/网络隔离 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查等功能。
 
@@ -18,7 +18,7 @@ info:
     user < teacher < admin < su
   version: 1.6.0
   contact:
-    name: WinOJ
+    name: NoldOJ
   license:
     name: MIT
 
@@ -3783,3 +3783,4 @@ paths:
       responses:
         '302':
           description: 重定向
+

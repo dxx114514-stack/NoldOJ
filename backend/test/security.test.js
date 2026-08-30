@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 安全修复验证测试
  *
  * 用法:
@@ -90,7 +90,7 @@ async function login(username, password) {
   return { res, data };
 }
 
-// 获取验证码：优先用 WINOJ_CAPTCHA_DEBUG=1 时响应携带的 code 字段；
+// 获取验证码：优先用 NoldOJ_CAPTCHA_DEBUG=1 时响应携带的 code 字段；
 // 兜底解析 svg 中的 <text>（兼容旧版 <text> 渲染的验证码）。
 async function getCaptcha() {
   const r = await fetch(`${BASE}/api/v1/auth/captcha`);
@@ -129,7 +129,7 @@ async function pollSubmission(sid, token, timeoutMs = 30000) {
 
 async function main() {
   console.log(C.bold(C.cyan('\n═══════════════════════════════════════════════')));
-  console.log(C.bold(C.cyan('  WinOJ 安全修复验证测试')));
+  console.log(C.bold(C.cyan('  NoldOJ 安全修复验证测试')));
   console.log(C.bold(C.cyan('═══════════════════════════════════════════════')));
   console.log(C.gray(`  目标: ${BASE}`));
 
@@ -199,8 +199,8 @@ async function main() {
     assert(data.svg, '未返回验证码 svg');
     assert(!/<text/i.test(data.svg), 'SVG 含 <text> 元素，答案可从 DOM 提取');
     assert(/<path/i.test(data.svg), 'SVG 未使用 <path> 轮廓渲染');
-    // 生产模式（无 WINOJ_CAPTCHA_DEBUG）响应不得携带答案；debug 模式（测试专用）允许
-    if (process.env.WINOJ_CAPTCHA_DEBUG !== '1') {
+    // 生产模式（无 NoldOJ_CAPTCHA_DEBUG）响应不得携带答案；debug 模式（测试专用）允许
+    if (process.env.NoldOJ_CAPTCHA_DEBUG !== '1') {
       assert(!('code' in data), '验证码响应泄露 code 字段');
     }
   });
@@ -249,13 +249,13 @@ async function main() {
   // 6. JWT 旧硬编码密钥失效
   // ─────────────────────────────────────────────
   await test('JWT: 旧硬编码密钥签发的 token 被拒', async () => {
-    const oldToken = jwt.sign({ userId: 1 }, 'winoj-access-secret-key-2024', { expiresIn: '1h' });
+    const oldToken = jwt.sign({ userId: 1 }, 'NoldOJ-access-secret-key-2024', { expiresIn: '1h' });
     const r = await request('GET', '/api/v1/users/me', { headers: { Authorization: `Bearer ${oldToken}` } });
     assertEqual(r.status, 401, `旧密钥 token 未被拒绝: ${r.status}`);
   });
 
   await test('JWT: refresh 密钥同样已更换', async () => {
-    const oldRefresh = jwt.sign({ userId: 1 }, 'winoj-refresh-secret-key-2024', { expiresIn: '1h' });
+    const oldRefresh = jwt.sign({ userId: 1 }, 'NoldOJ-refresh-secret-key-2024', { expiresIn: '1h' });
     const r = await request('POST', '/api/v1/auth/refresh', {
       headers: { Cookie: `refresh_token=${oldRefresh}` }
     });
@@ -529,3 +529,4 @@ main().catch(err => {
   console.error(err.stack);
   process.exit(1);
 });
+

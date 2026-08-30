@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>讨论 - WinOJ</title>
+  <title>讨论 - NoldOJ</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
@@ -40,7 +40,7 @@
       if (!did) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定讨论 ID</p>'; return; }
       try {
         const d = await apiCall('GET', `/discussions/${did}`);
-        document.title = `${d.title} - WinOJ`;
+        document.title = `${d.title} - NoldOJ`;
         const user = getUser();
         const isAdmin = user && ['admin','su'].includes(user.role);
         const isTeacher = user && ['teacher','admin','su'].includes(user.role);
@@ -191,3 +191,4 @@
   </script>
 </body>
 </html>
+

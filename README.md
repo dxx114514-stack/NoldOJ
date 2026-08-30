@@ -1,4 +1,4 @@
-# WinOJ - Windows 在线评测系统
+﻿# NoldOJ - Windows 在线评测系统
 
 > ⚠️ **安全警告与免责声明**
 >
@@ -26,7 +26,7 @@
 
 ### 评测核心
 - **多语言支持**：C、C++、Python 3、Java、JavaScript，可通过管理面板动态添加/禁用
-- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），CPU/内存/进程数受限，每次判题使用独立临时目录；受限令牌（禁用 Administrators 等特权组 + 剥离 SeDebug/SeImpersonate 等高危特权）在普通用户下即可生效；以管理员/服务运行时额外尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn）；所有沙箱诊断消息追加写入 `log/sandbox.log`（亦可设 `WINOJ_ROOT` 指定项目根）
+- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），CPU/内存/进程数受限，每次判题使用独立临时目录；受限令牌（禁用 Administrators 等特权组 + 剥离 SeDebug/SeImpersonate 等高危特权）在普通用户下即可生效；以管理员/服务运行时额外尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn）；所有沙箱诊断消息追加写入 `log/sandbox.log`（亦可设 `NoldOJ_ROOT` 指定项目根）
 - **内存检测**：每个测试点和 IDE 运行均记录峰值内存使用量
 - **多种比较模式**：严格文本比较、宽松文本比较、浮点数容差比较、Special Judge
 - **自定义计分脚本**：支持变量、算术运算、位运算、逻辑运算、条件分支（支持括号）、min/max/abs 函数
@@ -245,7 +245,7 @@
 
 输入
 ```batch
-git clone https://github.com/dxx114514-stack/winoj.mimo.git
+git clone https://github.com/dxx114514-stack/NoldOJ.mimo.git
 ```
 完成后运行`start.bat`
 
@@ -259,7 +259,7 @@ npm install
 ```
 
 - **卸载**
-将winoj整体删除、进入设置-》应用管理-》删除你安装的依赖项（如 Node.js / Mingw64 等）
+将NoldOJ整体删除、进入设置-》应用管理-》删除你安装的依赖项（如 Node.js / Mingw64 等）
 
 ### 默认管理员账户
 
@@ -292,7 +292,7 @@ v1.8.0 起数据库引擎从 `sql.js`（WASM 内存库，每次写操作整库�
    node scripts\migrate-sqlite.js
    ```
    该脚本会：
-   - 自动备份 `backend/data/winoj.db` → `winoj.db.backup-<时间戳>`
+   - 自动备份 `backend/data/NoldOJ.db` → `NoldOJ.db.backup-<时间戳>`
    - 执行 `PRAGMA integrity_check` 完整性校验
    - 统计全部业务表行数，确认数据完好
 5. **启动服务**：
@@ -303,9 +303,9 @@ v1.8.0 起数据库引擎从 `sql.js`（WASM 内存库，每次写操作整库�
 
 ### 说明
 
-- 数据库仍位于 `backend/data/winoj.db`，路径未变。
-- 迁移后数据库目录会出现 `winoj.db-wal` / `winoj.db-shm` 文件（WAL 模式，崩溃安全、读写更快），属正常现象，请勿手动删除。
-- 如需回滚：用第 4 步生成的备份覆盖回 `winoj.db` 即可。
+- 数据库仍位于 `backend/data/NoldOJ.db`，路径未变。
+- 迁移后数据库目录会出现 `NoldOJ.db-wal` / `NoldOJ.db-shm` 文件（WAL 模式，崩溃安全、读写更快），属正常现象，请勿手动删除。
+- 如需回滚：用第 4 步生成的备份覆盖回 `NoldOJ.db` 即可。
 
 ## 配置说明
 
@@ -376,7 +376,7 @@ CORS_RESTRICTED=true
 | `jwt.refreshSecret` | 内置默认值 | Refresh Token 签名密钥 |
 | `jwt.accessExpiry` | `15m` | Access Token 过期时间 |
 | `jwt.refreshExpiry` | `7d` | Refresh Token 过期时间 |
-| `database.path` | `../data/winoj.db` | SQLite 数据库路径 |
+| `database.path` | `../data/NoldOJ.db` | SQLite 数据库路径 |
 | `sandbox.tempDir` | 系统临时目录 | 沙箱工作目录 |
 | `sandbox.maxOutputSize` | 64KB | 最大输出大小 |
 | `rateLimit.submissions` | 10次/分钟 | 提交频率限制 |
@@ -387,7 +387,7 @@ CORS_RESTRICTED=true
 ## 项目结构
 
 ```
-winoj/
+NoldOJ/
 ├── start.bat               # 一键启动脚本
 ├── st.bat                  # 一键启动脚本（含cloudflare tunnel启动和混合输出）
 ├── README.md               # 项目说明
@@ -581,8 +581,9 @@ A: 对已结束的比赛，你可以发起"虚拟参加"获得一个私有实例
 A: 以教师及以上身份登录管理后台，在题目管理点击"查重"按钮即可对该题发起查重。查重在后台异步执行，报告页实时显示进度。结果按相似度排序：≥85% 高度相似（红）、≥70% 疑似相似（橙）。点击"查看详情"可并排对比两份代码，相同 token 金色高亮。比赛结束后可在比赛管理点击"一键查重"对全部题目发起查重。
 
 **Q: 数据库在哪里？**
-A: 默认在 `backend/data/winoj.db`，SQLite 格式，由 Node 内置 node:sqlite 驱动（v1.8.0 起），所有数据在重启后保留。
+A: 默认在 `backend/data/NoldOJ.db`，SQLite 格式，由 Node 内置 node:sqlite 驱动（v1.8.0 起），所有数据在重启后保留。
 
 ## 许可证
 
 MIT
+

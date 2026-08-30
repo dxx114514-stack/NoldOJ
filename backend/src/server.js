@@ -1,4 +1,4 @@
-const http = require('http');
+﻿const http = require('http');
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -43,7 +43,7 @@ function injectNonce(html, nonce) {
 
 async function main() {
   logInfo('BOOT', '==========================================');
-  logInfo('BOOT', '  WinOJ Server Starting');
+  logInfo('BOOT', '  NoldOJ Server Starting');
   logInfo('BOOT', '==========================================');
   logInfo('BOOT', `Platform: ${os.platform()} ${os.arch()}`);
   logInfo('BOOT', `Node.js: ${process.version}`);
@@ -166,7 +166,7 @@ async function main() {
   app.get('/favicon.svg', (req, res) => res.sendFile(path.join(frontendRoot, 'favicon.svg')));
 
   // 安全公告文件 (RFC 9116)
-  const securityContact = config.security?.contact || 'https://github.com/dxx114514-stack/winoj.mimo'; 
+  const securityContact = config.security?.contact || 'https://github.com/dxx114514-stack/NoldOJ.mimo'; 
   const securityTxt = `Contact: ${securityContact}\nPreferred-Languages: zh\nCanonical: /security.txt\n`;
   app.get('/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });
   app.get('/.well-known/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });
@@ -346,7 +346,7 @@ async function main() {
 
   server.listen(config.port, () => {
     logInfo('READY', `==========================================`);
-    logInfo('READY', `  WinOJ Server is READY`);
+    logInfo('READY', `  NoldOJ Server is READY`);
     logInfo('READY', `  URL: http://localhost:${config.port}`);
     logInfo('READY', `  初始管理员密码在数据库首次初始化时已显示，请勿在日志中明文记录凭据`);
     logInfo('READY', `==========================================`);

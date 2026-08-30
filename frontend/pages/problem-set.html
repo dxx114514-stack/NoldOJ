@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>题单详情 - WinOJ</title>
+  <title>题单详情 - NoldOJ</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
@@ -34,7 +34,7 @@
       if (!sid) { document.getElementById('content').innerHTML = '<p class="text-red-500 text-center">未指定题单 ID</p>'; return; }
       try {
         const ps = await apiCall('GET', `/problem-sets/${sid}`);
-        document.title = `${ps.title} - WinOJ`;
+        document.title = `${ps.title} - NoldOJ`;
         const pct = ps.total_count > 0 ? Math.round((ps.solved_count / ps.total_count) * 100) : 0;
         const user = getUser();
         const isTeacher = user && (user.id === ps.creator_id || ['admin','su'].includes(user.role));
@@ -91,3 +91,4 @@
   </script>
 </body>
 </html>
+

@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const opentype = require('opentype.js');
@@ -108,7 +108,7 @@ function generateSvg(text) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}"><defs><filter id="wob" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.08 0.12" numOctaves="2" seed="${turbSeed}" result="t"/><feDisplacementMap in="SourceGraphic" in2="t" scale="${scale}" xChannelSelector="R" yChannelSelector="G"/></filter></defs><rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>${dots.join('')}${lines.join('')}<g filter="url(#wob)">${glyphs}</g></svg>`;
 }
 
-// WINOJ_CAPTCHA_DEBUG=1 时响应携带 code —— 仅供黑盒集成测试获取答案。
+// NoldOJ_CAPTCHA_DEBUG=1 时响应携带 code —— 仅供黑盒集成测试获取答案。
 // 生产环境不要设置该变量。
 function generateCaptcha() {
   const text = pickText();
@@ -122,7 +122,7 @@ function generateCaptcha() {
   }
   cleanup();
   const out = { id, svg: generateSvg(text) };
-  if (process.env.WINOJ_CAPTCHA_DEBUG === '1') out.code = text;
+  if (process.env.NoldOJ_CAPTCHA_DEBUG === '1') out.code = text;
   return out;
 }
 

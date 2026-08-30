@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>比赛详情 - WinOJ</title>
+  <title>比赛详情 - NoldOJ</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
@@ -28,7 +28,7 @@
       if (!cid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定比赛 ID</p>'; return; }
       try {
         const c = await apiCall('GET', `/contests/${cid}`);
-        document.title = `${c.title} - WinOJ`;
+        document.title = `${c.title} - NoldOJ`;
 
         const now = new Date();
         const start = new Date(c.start_time);
@@ -257,3 +257,4 @@
   </script>
 </body>
 </html>
+

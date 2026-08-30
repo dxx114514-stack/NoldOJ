@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
@@ -125,7 +125,7 @@ function runSPJ(spjCode, expected, actual) {
     };
 
     try {
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'winoj-spj-'));
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'NoldOJ-spj-'));
       const dataFile = path.join(tmpDir, 'data.json');
       const wrapperFile = path.join(tmpDir, 'spj.js');
 
@@ -768,3 +768,4 @@ function recoverInterruptedSubmissions() {
 }
 
 module.exports = { judgeSubmission, enqueueSubmission, compareOutput, recoverInterruptedSubmissions };
+

@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>提交详情 - WinOJ</title>
+  <title>提交详情 - NoldOJ</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
@@ -70,7 +70,7 @@
       try {
         const s = await apiCall('GET', `/submissions/${sid}`);
         currentSourceCode = s.source_code || '';
-        document.title = `提交 #${s.id} - WinOJ`;
+        document.title = `提交 #${s.id} - NoldOJ`;
         const langModes = { c: 'text/x-csrc', cpp: 'text/x-c++src', python3: 'text/x-python', java: 'text/x-java', javascript: 'text/javascript' };
 
         const statusDesc = errorDescription(s.status, s.compile_output, null, s.time_used, s.time_limit);
@@ -389,3 +389,4 @@
   </script>
 </body>
 </html>
+

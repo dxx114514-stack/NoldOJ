@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>公告详情 - WinOJ</title>
+  <title>公告详情 - NoldOJ</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
@@ -28,7 +28,7 @@
       if (!id) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定公告 ID</p>'; return; }
       try {
         const a = await apiCall('GET', `/announcements/${id}`);
-        document.title = `${a.title} - WinOJ`;
+        document.title = `${a.title} - NoldOJ`;
         document.getElementById('content').innerHTML = `
           <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-8">
             <a href="/pages/announcements.html" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4 inline-block">&larr; 返回公告列表</a>
@@ -49,3 +49,4 @@
   </script>
 </body>
 </html>
+

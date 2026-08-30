@@ -1,11 +1,11 @@
-@echo off
+﻿@echo off
 cd /d "%~dp0"
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
-title WinOJ
+title NoldOJ
 
 echo ==========================================
-echo       WinOJ - Windows Online Judge
+echo       NoldOJ - Windows Online Judge
 echo ==========================================
 echo.
 
@@ -48,7 +48,7 @@ if exist "backend\sandbox\sandbox_runner.cpp" (
         echo [!!] sandbox_runner.exe missing - using legacy mode
     )
 )
-title WinOJ
+title NoldOJ
 cd backend
 call npm ls --silent
 if !errorlevel! neq 0 (
@@ -63,9 +63,9 @@ if !errorlevel! neq 0 (
     echo [OK] Dependencies installed
 )
 cd ..
-title WinOJ
+title NoldOJ
 echo.
-echo [..] Starting WinOJ server...
+echo [..] Starting NoldOJ server...
 echo [..] Logs: log\server.log
 echo.
 
@@ -74,3 +74,4 @@ start "" http://localhost:3000
 node backend\src\server.js > "log\server.log" 2>&1
 
 pause
+

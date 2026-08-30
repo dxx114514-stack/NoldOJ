@@ -1,4 +1,4 @@
-name: Sync to Gitee
+﻿name: Sync to Gitee
 
 on:
   push:
@@ -38,7 +38,8 @@ jobs:
           ssh-keyscan gitee.com >> ~/.ssh/known_hosts
           
           # 添加 Gitee 远程仓库地址
-          git remote add gitee git@gitee.com:dxx114514/winoj.mimo.git
+          git remote add gitee git@gitee.com:dxx114514/NoldOJ.mimo.git
           
           # 强制推送到 Gitee 的 main 分支
           git push gitee main
+

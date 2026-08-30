@@ -1,4 +1,4 @@
-const { Resend } = require('resend');
+﻿const { Resend } = require('resend');
 const crypto = require('crypto');
 const db = require('../database/db');
 const config = require('../config/config');
@@ -43,16 +43,16 @@ async function sendCodeEmail(email, code, opts) {
 
 async function sendVerificationEmail(email, code) {
   return sendCodeEmail(email, code, {
-    subject: 'WinOJ - 邮箱验证码',
-    title: 'WinOJ 邮箱验证',
+    subject: 'NoldOJ - 邮箱验证码',
+    title: 'NoldOJ 邮箱验证',
     hint: '验证码 10 分钟内有效，请勿泄露给他人。'
   });
 }
 
 async function sendPasswordResetEmail(email, code) {
   return sendCodeEmail(email, code, {
-    subject: 'WinOJ - 密码重置',
-    title: 'WinOJ 密码重置',
+    subject: 'NoldOJ - 密码重置',
+    title: 'NoldOJ 密码重置',
     hint: '重置验证码 10 分钟内有效，请勿泄露给他人。'
   });
 }
@@ -97,3 +97,4 @@ function verifyCode(email, code) {
 }
 
 module.exports = { generateCode, sendVerificationEmail, sendPasswordResetEmail, saveCode, verifyCode };
+

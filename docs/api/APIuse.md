@@ -1,4 +1,4 @@
-# WinOJ API 接口文档
+﻿# NoldOJ API 接口文档
 
 所有接口前缀为 `/api/v1`。响应格式统一为 JSON。
 
@@ -1135,3 +1135,4 @@ fi
 | 语言管理 | `/pages/languages.html` | 动态语言配置 |
 | 登录 | `/pages/login.html` | 用户登录 |
 | 注册 | `/pages/register.html` | 用户注册 |
+
