@@ -2,7 +2,7 @@
 info:
   title: NoldOJ API
   description: |
-    Windows 在线评测系统 API。支持多语言代码评测、三层安全沙箱执行（Sandboxie 文件/网络隔离 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查等功能。
+    Windows 在线评测系统 API。支持多语言代码评测、三层安全沙箱执行（低完整性级别 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查等功能。
 
     ## 认证
     大部分接口需携带 JWT Token：`Authorization: Bearer <access_token>`
@@ -1412,7 +1412,7 @@ paths:
       tags: [提交]
       summary: 提交代码
       description: |
-        代码在三层隔离环境中编译与执行：Sandboxie（文件/网络隔离）+ Job Object（CPU/内存/进程数限制）+ 受限令牌/AppContainer（权限隔离）。
+        代码在三层隔离环境中编译与执行：低完整性级别（强制 workDir 标记为 LOW IL，禁止向高完整性对象写入）+ Job Object（CPU/内存/进程数限制 + KILL_ON_JOB_CLOSE 进程树清理）+ 受限令牌/AppContainer（权限隔离，剥离高危特权、禁用特权组，可选 AppContainer 文件系统/网络隔离）。文件IO题目模式（`problem_type = file_io`）强制 workDir 降为 LOW IL，保证进程可自由读写文件。
       security:
         - bearerAuth: []
       requestBody:
@@ -1678,7 +1678,7 @@ paths:
       tags: [IDE]
       summary: 运行代码
       description: |
-        运行环境与提交评测相同，三层隔离（Sandboxie + Job Object + 受限令牌/AppContainer）。
+        运行环境与提交评测相同，三层隔离（低完整性级别 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。workDir 强制 LOW IL，Job Object 兜底资源限制与进程树清理，受限令牌剥离高危特权，可选 AppContainer 文件系统/网络隔离（失败自动回退）。
       requestBody:
         required: true
         content:

@@ -388,7 +388,7 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需管理员权限。编号自动回收。
 
-**安全隔离**：用户代码在三层隔离环境中执行（Sandboxie 文件/网络隔离 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。编译与运行阶段均可选通过 Sandboxie 沙盒包装，Job Object 兜底 CPU/内存/进程数限制。
+**安全隔离**：用户代码在三层隔离环境中执行（低完整性级别 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。编译与运行阶段均强制 workDir 标记为 LOW 完整性（no-write-up），禁止向高完整性对象写入；Job Object 兜底 CPU/内存/进程数限制与 KILL_ON_JOB_CLOSE 进程树清理；受限令牌剥离高危特权并禁用特权组；可选 AppContainer 文件系统/网络隔离（需管理员权限，失败自动回退）。文件IO题目模式（`problem_type = file_io`）强制 workDir 降为 LOW IL，保证进程可自由读写文件。
 
 ---
 
@@ -501,7 +501,7 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 状态流转：`pending` → `compiling` → `running` → `accepted`/`compile_error`/`runtime_error`
 
-**安全隔离**：运行环境与提交评测相同，三层隔离（Sandboxie + Job Object + 受限令牌/AppContainer）。
+**安全隔离**：运行环境与提交评测相同，三层隔离（低完整性级别 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。workDir 强制 LOW IL，Job Object 兜底资源限制与进程树清理，受限令牌剥离高危特权，可选 AppContainer 文件系统/网络隔离（失败自动回退）。
 
 ---
 

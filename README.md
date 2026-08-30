@@ -11,7 +11,12 @@
 > - **权限降级**：`CreateRestrictedToken` 剥离 `SeDebugPrivilege`、`SeImpersonatePrivilege` 等高危特权
 > - **资源限制**：内存上限、CPU 时间限制、进程数限制
 > - **数据隔离**：每次判题使用独立临时目录，判题结束后暴力删除；SQLite 启用 WAL 模式防止锁死
-> - **三层安全架构（Sandboxie + Job Object + 受限令牌/AppContainer）**：编译与运行阶段均可选通过 Sandboxie-Classic 沙盒隔离，与 Job Object 资源限制、受限令牌/ AppContainer 权限隔离叠加。Sandboxie 提供文件系统重定向与网络阻断，Job Object 兜底 CPU/内存/进程数限制
+> - **三层安全架构（低完整性级别 + Job Object + 受限令牌/AppContainer）**：
+>   - **低完整性级别**：强制 workDir 标记为 LOW 完整性，禁止向高完整性对象写入
+>   - **Job Object**：进程树隔离、CPU/内存/进程数限制、KILL_ON_JOB_CLOSE 兜底清理
+>   - **受限令牌**：`CreateRestrictedToken` 剥离 `SeDebugPrivilege`、`SeImpersonatePrivilege` 等高危特权，禁用 Administrators 等特权组
+>   - **AppContainer（可选）**：以管理员/服务运行时尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）
+> - **文件IO题目模式**：`problem_type = file_io` 时强制 workDir 降为 LOW 完整性，保证进程可自由读写文件
 >
 > 编译沙箱运行器（需要 MinGW）：
 > ```bat
@@ -26,7 +31,7 @@
 
 ### 评测核心
 - **多语言支持**：C、C++、Python 3、Java、JavaScript，可通过管理面板动态添加/禁用
-- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），CPU/内存/进程数受限，每次判题使用独立临时目录；受限令牌（禁用 Administrators 等特权组 + 剥离 SeDebug/SeImpersonate 等高危特权）在普通用户下即可生效；以管理员/服务运行时额外尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn）；所有沙箱诊断消息追加写入 `log/sandbox.log`（亦可设 `NoldOJ_ROOT` 指定项目根）
+- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），CPU/内存/进程数受限，每次判题使用独立临时目录；受限令牌（禁用 Administrators 等特权组 + 剥离 SeDebug/SeImpersonate 等高危特权）在普通用户下即可生效；以管理员/服务运行时额外尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）；**低完整性级别**：强制 workDir 标记为 LOW 完整性，禁止向高完整性对象写入；**文件IO题目模式**（`problem_type = file_io`）强制 workDir 降为 LOW IL，保证进程可自由读写文件；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn）；所有沙箱诊断消息追加写入 `log/sandbox.log`（亦可设 `NoldOJ_ROOT` 指定项目根）
 - **内存检测**：每个测试点和 IDE 运行均记录峰值内存使用量
 - **多种比较模式**：严格文本比较、宽松文本比较、浮点数容差比较、Special Judge
 - **自定义计分脚本**：支持变量、算术运算、位运算、逻辑运算、条件分支（支持括号）、min/max/abs 函数
@@ -245,7 +250,7 @@
 
 输入
 ```batch
-git clone https://github.com/dxx114514-stack/NoldOJ.mimo.git
+git clone https://github.com/dxx114514-stack/NoldOJ.git
 ```
 完成后运行`start.bat`
 
@@ -363,7 +368,7 @@ CORS_RESTRICTED=true
 > - `captcha.txt` — 验证码开关，缺失时默认开启
 > - `jwt.txt` — JWT 密钥，缺失时首次启动自动生成强随机密钥
 > - `judge.txt` — 判题并发，缺失时按 CPU 核数自动确定
-> - `sandboxie.txt` — Sandboxie 隔离开关、路径配置、模板克隆。默认开启；未安装 Sandboxie 时自动回退 Job Object
+> - `sandboxie.txt` — **已废弃**：原 Sandboxie 配置，现保留为兼容占位，不再使用。新架构使用低完整性级别 + Job Object + 受限令牌，无需配置 Sandboxie 路径
 
 ### 核心配置
 
@@ -441,7 +446,13 @@ NoldOJ/
 - 新增 Markdown 增强：`@[office](URL)` Office 文档内嵌 / `@[echarts](JSON)` ECharts 图表 / `@[mermaid]...@[/mermaid]` 流程图渲染
 - 新增 AI 提示（AI Hint）：学生对题目失败 2 次后可获取方向性算法提示，60 秒冷却
 - 新增 AI 测试数据生成：教师可在管理面板一键生成题目测试用例（正常 + 边界），自动写入磁盘
-- 新增 Sandboxie-Classic 三层安全隔离：编译/运行均通过 Sandboxie 沙盒包装，模板克隆 + 路径白名单 + AutoDelete，自动检测 Start.exe + SbieSvc 服务，未安装时静默回退
+- **移除 Sandboxie，改用低完整性级别 + Job Object + 受限令牌三层架构**：
+  - 强制 workDir 标记为 LOW 完整性（no-write-up），禁止向高完整性对象写入
+  - Job Object 进程树隔离 + CPU/内存/进程数限制 + KILL_ON_JOB_CLOSE
+  - 受限令牌剥离高危特权 + 禁用特权组
+  - 可选 AppContainer 文件系统/网络隔离（需管理员权限）
+- 新增**文件IO题目模式**（`problem_type = file_io`）：强制 workDir 降为 LOW IL，保证进程可自由读写文件
+- 新增 `--file-io` 参数传递给 sandbox_runner.exe
 
 ### v1.8.0
 - 数据库引擎从 sql.js 更换为 Node 内置 node:sqlite（原生同步直写，零依赖，性能与可靠性大幅提升）
@@ -586,4 +597,5 @@ A: 默认在 `backend/data/NoldOJ.db`，SQLite 格式，由 Node 内置 node:sql
 ## 许可证
 
 MIT
+
 
