@@ -80,6 +80,7 @@
           </select>
         </div>
         <textarea id="pDesc" rows="3" placeholder="题目描述（支持 Markdown 和 KaTeX 公式）" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl mb-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
+        <textarea id="pBg" rows="2" placeholder="题目背景（选填，支持 Markdown）" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl mb-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
         <textarea id="pInput" rows="2" placeholder="输入格式" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl mb-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
         <textarea id="pOutput" rows="2" placeholder="输出格式" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl mb-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
         <textarea id="pHint" rows="2" placeholder="提示/说明（支持 Markdown）" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl mb-2 text-left focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:bg-gray-800 dark:text-white"></textarea>
@@ -1000,6 +1001,7 @@
         document.getElementById('pCompare').value = p.compare_mode || 'text_strict';
         document.getElementById('pSubtask').value = p.subtask_mode || 'simple';
         document.getElementById('pDesc').value = p.description || '';
+        document.getElementById('pBg').value = p.background || '';
         document.getElementById('pInput').value = p.input_desc || '';
         document.getElementById('pOutput').value = p.output_desc || '';
         document.getElementById('pHint').value = p.hint || '';
@@ -1080,6 +1082,7 @@
       const data = {
         title: document.getElementById('pTitle').value,
         description: document.getElementById('pDesc').value,
+        background: document.getElementById('pBg').value,
         input_desc: document.getElementById('pInput').value,
         output_desc: document.getElementById('pOutput').value,
         hint: document.getElementById('pHint').value,

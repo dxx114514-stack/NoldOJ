@@ -81,7 +81,7 @@ if (!aiEnabled(config.ai.hint)) {
 
   const sub = lastSubmission(req.user.id, problemId);
   const userMsg = `题目标题: ${problem.title}
-题目描述:
+${problem.background ? `题目背景:\n${problem.background}\n\n` : ''}题目描述:
 ${problem.description}
 
 输入格式:

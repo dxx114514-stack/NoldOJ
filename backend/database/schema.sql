@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS problems (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT DEFAULT '',
+  background TEXT DEFAULT '',
   input_desc TEXT DEFAULT '',
   output_desc TEXT DEFAULT '',
   hint TEXT DEFAULT '',

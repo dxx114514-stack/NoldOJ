@@ -69,6 +69,7 @@
                 <a href="/pages/submit.html?id=${p.id}" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition whitespace-nowrap">提交</a>
               </div>
             </div>
+                        ${p.background ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">题目背景</h3>${renderMarkdown(p.background)}</div>` : ''}
             <div class="mb-6">
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">题目描述</h3>
               ${renderMarkdown(p.description)}
@@ -225,6 +226,7 @@
       if (!currentProblem) return;
       const p = currentProblem;
       let md = `# ${p.title}\n\n`;
+      if (p.background) md += `## 题目背景\n\n${p.background}\n\n`;
       if (p.description) md += p.description + '\n\n';
       if (p.input_desc) md += `## 输入格式\n\n${p.input_desc}\n\n`;
       if (p.output_desc) md += `## 输出格式\n\n${p.output_desc}\n\n`;
