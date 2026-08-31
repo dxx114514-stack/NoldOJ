@@ -249,6 +249,10 @@ git clone https://github.com/dxx114514-stack/NoldOJ.git
 ```
 完成后运行`start.bat`
 
+**首次启动时自动迁移 problems/ 目录**：
+- 若根目录存在 `problems/` 且 `backend/data/problems/` 不存在，`start.bat` 会自动将其移动到 `backend/data/problems/`
+- 迁移成功后，测试数据与数据库同级（`backend/data/`），便于整体备份
+
 ### 更新与卸载
 
 - **更新**：
