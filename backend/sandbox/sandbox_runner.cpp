@@ -62,9 +62,14 @@
 // ── 沙箱诊断日志：追加写入 <项目根>/log/sandbox.log ────────
 // 路径由本 exe 位置推导（backend/sandbox/… → 上两级即项目根），
 // 与调用方 cwd 无关，保证无论从哪启动都能写入固定日志文件。
+// 优先使用 OJ_LOG_DIR 环境变量（时间戳文件夹），其次 WINOJ_ROOT，最后按 exe 位置推导。
 // 仅写文件；设 WINOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr（D-L13）。
 static std::string sandboxLogPath() {
-    // 优先使用 WINOJ_ROOT 环境变量（与 cwd 无关）
+    // 优先使用 OJ_LOG_DIR 环境变量（时间戳文件夹，由 start.bat/st.bat 设置）
+    const char* logDir = getenv("OJ_LOG_DIR");
+    if (logDir && logDir[0])
+        return std::string(logDir) + "\\sandbox.log";
+    // 其次使用 WINOJ_ROOT 环境变量（与 cwd 无关）
     const char* root = getenv("WINOJ_ROOT");
     if (root && root[0])
         return std::string(root) + "\\log\\sandbox.log";
