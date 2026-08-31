@@ -9,6 +9,6 @@ set "LOG_DIR=log\!LOG_TS!"
 if not exist "!LOG_DIR!" mkdir "!LOG_DIR!"
 set "OJ_LOG_DIR=!LOG_DIR!"
 
-start "" /B "cloudflared.exe" tunnel run NoldOJ > "!LOG_DIR!\tunnel.log" 2>&1
+start "" /B "cloudflared.exe" tunnel run noldoj > "!LOG_DIR!\tunnel.log" 2>&1
 
 start "" /B "start.bat"
