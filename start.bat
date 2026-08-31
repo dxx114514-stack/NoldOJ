@@ -42,10 +42,6 @@ if exist "problems" (
         )
     ) else (
         echo [..] backend/data/problems/ already exists, skipping migration
-        REM Optional: merge contents if needed
-        if exist "problems" (
-            echo [!!] Root problems/ exists but target also exists. Manual merge may be needed.
-        )
     )
 )
 
@@ -60,14 +56,14 @@ if !errorlevel! neq 0 (
 for /f "tokens=*" %%i in ('node -v') do set NODE_VER=%%i
 echo [OK] Node.js: %NODE_VER%
 
-REM == Sandbox compile (?????,??? sandbox_runner.cpp ??) ======
+REM == Sandbox compile ======
 if exist "backend\sandbox\sandbox_runner.cpp" (
     where g++ >nul 2>&1
     if !errorlevel! equ 0 (
-        echo [..] Building sandbox_runner.exe - Job Object security + AppContainer...
+        echo [..] Building sandbox_runner.exe...
         g++ -O2 -static -o "backend\sandbox\sandbox_runner.exe" "backend\sandbox\sandbox_runner.cpp" -lpsapi -luserenv 2>nul
         if exist "backend\sandbox\sandbox_runner.exe" (
-            echo [OK] sandbox_runner.exe rebuilt - Job Object isolation active
+            echo [OK] sandbox_runner.exe rebuilt
         ) else (
             echo [!!] sandbox_runner.exe build failed - using legacy mode
         )
@@ -76,17 +72,16 @@ if exist "backend\sandbox\sandbox_runner.cpp" (
     )
 ) else (
     if exist "backend\sandbox\sandbox_runner.exe" (
-        echo [OK] sandbox_runner.exe kept - Job Object isolation active
+        echo [OK] sandbox_runner.exe kept
     ) else (
         echo [!!] sandbox_runner.exe missing - using legacy mode
     )
 )
-title NoldOJ
+
 cd backend
 call npm ls --silent
 if !errorlevel! neq 0 (
     echo [..] Installing dependencies...
-
     call npm install
     if !errorlevel! neq 0 (
         echo [FAIL] Failed to install dependencies
@@ -96,9 +91,9 @@ if !errorlevel! neq 0 (
     echo [OK] Dependencies installed
 )
 cd ..
+
 REM == Generate timestamp for log folder ======
-set "LOG_TS=%date:~0,4%%date:~5,2%%date:~8,2%_%time:~0,2%%time:~3,2%%time:~6,2%"
-set "LOG_TS=!LOG_TS: =0!"
+for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "LOG_TS=%%a"
 set "FALLBACK_LOG_DIR=log\!LOG_TS!"
 if defined OJ_LOG_DIR (set "LOG_DIR=!OJ_LOG_DIR!") else (set "LOG_DIR=!FALLBACK_LOG_DIR!")
 if not exist "!LOG_DIR!" mkdir "!LOG_DIR!"
@@ -115,4 +110,3 @@ start "" http://localhost:3000
 node backend\src\server.js > "!LOG_DIR!\server.log" 2>&1
 
 pause
-
