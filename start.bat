@@ -97,13 +97,10 @@ if !errorlevel! neq 0 (
 )
 cd ..
 REM == Generate timestamp for log folder ======
-if defined OJ_LOG_DIR (
-    set "LOG_DIR=%OJ_LOG_DIR%"
-) else (
-    set "LOG_TS=%date:~0,4%-%date:~5,2%-%date:~8,2%_%time:~0,2%-%time:~3,2%-%time:~6,2%"
-    set "LOG_TS=!LOG_TS: =0!"
-    set "LOG_DIR=log\!LOG_TS!"
-)
+set "LOG_TS=%date:~0,4%%date:~5,2%%date:~8,2%_%time:~0,2%%time:~3,2%%time:~6,2%"
+set "LOG_TS=!LOG_TS: =0!"
+set "FALLBACK_LOG_DIR=log\!LOG_TS!"
+if defined OJ_LOG_DIR (set "LOG_DIR=!OJ_LOG_DIR!") else (set "LOG_DIR=!FALLBACK_LOG_DIR!")
 if not exist "!LOG_DIR!" mkdir "!LOG_DIR!"
 echo [OK] Log folder: !LOG_DIR!
 
