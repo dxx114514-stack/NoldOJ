@@ -121,6 +121,7 @@ async function initDB() {
   if (!probCols.includes('difficulty')) sqlDb.exec("ALTER TABLE problems ADD COLUMN difficulty INTEGER DEFAULT 0");
   // 隐藏功能: 后台可设为隐藏，公开列表/详情对非授权用户不可见
   if (!probCols.includes('is_hidden')) sqlDb.exec("ALTER TABLE problems ADD COLUMN is_hidden INTEGER DEFAULT 0");
+  if (!probCols.includes('background')) sqlDb.exec("ALTER TABLE problems ADD COLUMN background TEXT DEFAULT ''");
 
   const artCols = tableCols('articles');
   if (!artCols.includes('provider')) sqlDb.exec("ALTER TABLE articles ADD COLUMN provider TEXT DEFAULT ''");

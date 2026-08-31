@@ -251,7 +251,7 @@ router.get('/:id', optionalAuth, (req, res) => {
 });
 
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode, difficulty, is_hidden } = req.body;
+  const { title, description, background, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, sample_input, sample_output, subtask_mode, difficulty, is_hidden } = req.body;
   if (!title) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'Title is required.' });
   }
@@ -269,10 +269,11 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'samples 必须为 [{input,output,note}] 数组。' });
   }
   const first = samples && samples[0] ? samples[0] : null;
-  db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO problems (id, title, description, background, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     newId,
     title,
     description || '',
+    background || '',
     input_desc || '',
     output_desc || '',
     hint || '',
@@ -307,7 +308,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot edit a problem that is part of a contest.' });
   }
 
-  const fields = ['title', 'description', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode', 'difficulty', 'is_hidden'];
+  const fields = ['title', 'description', 'background', 'input_desc', 'output_desc', 'hint', 'time_limit', 'memory_limit', 'problem_type', 'compare_mode', 'real_number_tolerance', 'spj_code', 'allowed_languages', 'is_public', 'provider', 'sample_input', 'sample_output', 'subtask_mode', 'difficulty', 'is_hidden'];
   // 防御纵深：列名仅允许合法标识符，杜绝任何注入 SQL SET 子句的可能
   for (const field of fields) {
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
@@ -1110,6 +1111,7 @@ router.get('/:id/export', requireAuth, requireRole('teacher'), (req, res) => {
     problem: {
       title: problem.title,
       description: problem.description,
+      background: problem.background || '',
       input_desc: problem.input_desc,
       output_desc: problem.output_desc,
       hint: problem.hint,
@@ -1245,10 +1247,11 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
     }
     const p = bundle.problem;
     const newId = db.findNextId('problems');
-    db.prepare(`INSERT INTO problems (id, title, description, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, scoring_script, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    db.prepare(`INSERT INTO problems (id, title, description, background, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, scoring_script, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       newId,
       p.title,
       p.description || '',
+      p.background || '',
       p.input_desc || '',
       p.output_desc || '',
       p.hint || '',
