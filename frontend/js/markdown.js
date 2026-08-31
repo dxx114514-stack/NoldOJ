@@ -57,7 +57,9 @@ function renderMarkdown(text) {
         return stash('<pre class="oj-mermaid my-4 text-center">' + escapeHtml(body.trim()) + '</pre>');
       })
       .replace(/\$\$\n?([\s\S]*?)\n?\$\$/g, (_, m) => `<div class="katex-display my-4 text-center">\\[${escapeHtml(m.trim())}\\]</div>`)
+      .replace(/\\\[(\s*[\s\S]+?\s*)\\\]/g, (_, m) => `<div class="katex-display my-4 text-center">\\[${escapeHtml(m.trim())}\\]</div>`)
       .replace(/\$(.+?)\$/g, (_, m) => `\\(${escapeHtml(m)}\\)`)
+      .replace(/\\\((.+?)\\\)/g, (_, m) => `\\(${escapeHtml(m)}\\)`)
       .replace(/@\[bilibili\]\((BV[a-zA-Z0-9]+)\)/g, (_, bv) => `<div class="my-4"><iframe src="https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bv)}&autoplay=0" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" class="w-full aspect-video rounded-lg"></iframe></div>`)
       .replace(/@\[url\]\(([^)]+)\)/g, (_, url) => `<div class="my-4"><iframe src="${escapeHtml(fixUrl(url))}" class="w-full min-h-[500px] rounded-lg border border-gray-200 dark:border-gray-600"></iframe></div>`)
       .replace(/@\[audio\]\(([^)]+)\)/g, (_, url) => `<div class="my-3"><audio controls class="w-full" src="${escapeHtml(fixUrl(url))}"></audio></div>`)
