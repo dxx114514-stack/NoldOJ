@@ -243,6 +243,9 @@ cd NoldOJ
 start.bat</code></pre>
         </div>
         <p>启动后浏览器访问 <code>http://localhost:3000</code>。首次启动会自动初始化数据库、编译沙箱运行器并生成默认配置。</p>
+        <div class="notice info">
+          <b>首次启动自动迁移：</b>若根目录存在 <code>problems/</code> 且 <code>backend/data/problems/</code> 不存在，<code>start.bat</code> 会自动将其移动到 <code>backend/data/problems/</code>（与数据库同级），便于整体备份。
+        </div>
       </div>
       <div class="notice danger">
         <b>管理员账号：</b><code>admin</code>，初始密码<b>随机生成</b>，首次启动时在控制台日志中显示一次（仅此一次）<br>
