@@ -100,22 +100,22 @@ REM == Generate timestamp for log folder ======
 if defined OJ_LOG_DIR (
     set "LOG_DIR=%OJ_LOG_DIR%"
 ) else (
-    for /f "tokens=2 delims==" %%a in ('wmic os get localdatetime /value 2^>nul') do set "dt=%%a"
-    set "LOG_TS=%dt:~0,4%-%dt:~4,2%-%dt:~6,2%_%dt:~8,2%-%dt:~10,2%-%dt:~12,2%"
-    set "LOG_DIR=log\%LOG_TS%"
+    set "LOG_TS=%date:~0,4%-%date:~5,2%-%date:~8,2%_%time:~0,2%-%time:~3,2%-%time:~6,2%"
+    set "LOG_TS=!LOG_TS: =0!"
+    set "LOG_DIR=log\!LOG_TS!"
 )
-if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
-echo [OK] Log folder: %LOG_DIR%
+if not exist "!LOG_DIR!" mkdir "!LOG_DIR!"
+echo [OK] Log folder: !LOG_DIR!
 
 title NoldOJ
 echo.
 echo [..] Starting NoldOJ server...
-echo [..] Logs: %LOG_DIR%\server.log
+echo [..] Logs: !LOG_DIR!\server.log
 echo.
 
 start "" http://localhost:3000
 
-node backend\src\server.js > "%LOG_DIR%\server.log" 2>&1
+node backend\src\server.js > "!LOG_DIR!\server.log" 2>&1
 
 pause
 
