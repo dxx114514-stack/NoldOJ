@@ -1,5 +1,5 @@
 // sandbox_runner.cpp
-// WinOJ 安全沙箱运行器 — 基于 Windows Job Object + 受限令牌 + AppContainer
+// NoldOJ 安全沙箱运行器 — 基于 Windows Job Object + 受限令牌 + 低完整性级别 + AppContainer
 //
 // 安全特性:
 //   1. CREATE_SUSPENDED 创建进程，绑定 Job 后再 ResumeThread，杜绝竞态逃逸
@@ -9,7 +9,8 @@
 //   5. CreateRestrictedToken — 剥离 SeDebugPrivilege / SeImpersonatePrivilege 等高危特权
 //   6. 内存限制 — Job Object process_memory_limit + 轮询双重保障
 //   7. CPU 时间限制 — Job Object per-job user time limit + 轮询
-//   8. AppContainer — 文件系统 + 网络 隔离（详见下）
+//   8. 低完整性级别 — 禁止向高完整性对象写入
+//   9. AppContainer — 文件系统 + 网络 隔离（详见下）
 //
 // ── AppContainer 文件系统隔离 ──────────────────────────────
 // 以 AppContainer 令牌创建子进程后，子进程的访问检查只认"包 SID"，
@@ -38,10 +39,8 @@
 //
 // 编译: g++ -O2 -static -o sandbox_runner.exe sandbox_runner.cpp -lpsapi -luserenv
 // 用法: sandbox_runner.exe <time_limit_ms> <memory_limit_mb> <max_processes> <meta_file> <exe> [args...]
-//       sandbox_runner.exe --sandbox <boxName> <time_limit_ms> <memory_limit_mb> <max_processes> <meta_file> <exe> [args...]
 // stdout/stderr: 子进程的直接透传
 // meta_file: 评测结束后写入 JSON 元数据
-// --sandbox: 使用 Sandboxie 隔离（Start.exe /box:<boxName> /wait），Job Object 嵌套其内
 
 #define WINVER 0x0602
 #define _WIN32_WINNT 0x0602
@@ -63,9 +62,14 @@
 // ── 沙箱诊断日志：追加写入 <项目根>/log/sandbox.log ────────
 // 路径由本 exe 位置推导（backend/sandbox/… → 上两级即项目根），
 // 与调用方 cwd 无关，保证无论从哪启动都能写入固定日志文件。
+// 优先使用 OJ_LOG_DIR 环境变量（时间戳文件夹），其次 WINOJ_ROOT，最后按 exe 位置推导。
 // 仅写文件；设 WINOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr（D-L13）。
 static std::string sandboxLogPath() {
-    // 优先使用 WINOJ_ROOT 环境变量（与 cwd 无关）
+    // 优先使用 OJ_LOG_DIR 环境变量（时间戳文件夹，由 start.bat/st.bat 设置）
+    const char* logDir = getenv("OJ_LOG_DIR");
+    if (logDir && logDir[0])
+        return std::string(logDir) + "\\sandbox.log";
+    // 其次使用 WINOJ_ROOT 环境变量（与 cwd 无关）
     const char* root = getenv("WINOJ_ROOT");
     if (root && root[0])
         return std::string(root) + "\\log\\sandbox.log";
@@ -812,16 +816,16 @@ int main(int argc, char* argv[]) {
     if (argc == 2 && strcmp(argv[1], "--make-container") == 0)
         return containerHelperMain();
 
-    // 解析 --sandbox <boxName> 参数（Sandboxie 隔离模式）
-    std::string sandboxBox;
+    // 解析 --file-io 参数（文件IO题目模式：强制 workDir 降为 Low IL）
+    bool fileIoMode = false;
     int argOffset = 1;
-    if (argc >= 3 && strcmp(argv[1], "--sandbox") == 0) {
-        sandboxBox = argv[2];
-        argOffset = 3;
+    if (argc >= 2 && strcmp(argv[1], "--file-io") == 0) {
+        fileIoMode = true;
+        argOffset = 2;
     }
 
     if (argc - argOffset < 5) {
-        fprintf(stderr, "Usage: sandbox_runner.exe [--sandbox <boxName>] <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]\n");
+        fprintf(stderr, "Usage: sandbox_runner.exe [--file-io] <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]\n");
         return 1;
     }
 
@@ -836,46 +840,6 @@ int main(int argc, char* argv[]) {
     for (int i = argOffset + 4; i < argc; i++) {
         if (i > argOffset + 4) cmdLine += " ";
         cmdLine += quoteCmdArg(argv[i]);
-    }
-
-    // Sandboxie 隔离模式：用 Start.exe /box:<boxName> /wait 包装命令
-    // Job Object 仍然嵌套在 Sandboxie 内部，两层叠加
-    if (!sandboxBox.empty()) {
-        // 查找 Start.exe：优先 sandbox_runner.exe 同级 sandboxie/ 目录，再试标准安装路径
-        std::string startExe = "Start.exe";  // fallback: 依赖 PATH
-        {
-            char selfPath[MAX_PATH];
-            if (GetModuleFileNameA(NULL, selfPath, MAX_PATH)) {
-                // 同级 sandboxie/Start.exe（安装根/sandboxie/Start.exe）
-                char* lastSlash = strrchr(selfPath, '\\');
-                if (lastSlash) {
-                    *lastSlash = '\0';
-                    char* prevSlash = strrchr(selfPath, '\\');
-                    if (prevSlash) {
-                        *prevSlash = '\0';
-                        std::string candidate = std::string(selfPath) + "\\sandboxie\\Start.exe";
-                        if (GetFileAttributesA(candidate.c_str()) != INVALID_FILE_ATTRIBUTES)
-                            startExe = candidate;
-                    }
-                }
-            }
-            // 回退：标准安装路径
-            if (startExe == "Start.exe") {
-                const char* paths[] = {
-                    "C:\\Program Files\\Sandboxie\\Start.exe",
-                    "C:\\Program Files (x86)\\Sandboxie\\Start.exe"
-                };
-                for (const char* p : paths) {
-                    if (GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES) {
-                        startExe = p;
-                        break;
-                    }
-                }
-            }
-        }
-        std::string sbieCmd = "\"" + startExe + "\" /box:" + sandboxBox + " /wait " + cmdLine;
-        sandboxLog("Sandboxie mode: box=%s, cmd=%s", sandboxBox.c_str(), sbieCmd.c_str());
-        cmdLine = sbieCmd;
     }
     std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
     cmdBuf.push_back('\0');
@@ -1038,11 +1002,15 @@ int main(int argc, char* argv[]) {
         if (env && env[0] == '1') noRelabel = true;
     }
     bool workDirRelabeled = false;
-    if (lowIl && execMode != 2 && !useAppContainer && !noRelabel) {
-        std::wstring workDirW = dirNameW(utf8ToWide(metaFile));
-        setLowLabelRecursive(workDirW.c_str());
-        workDirRelabeled = true;
-        sandboxLogW(L"workdir relabeled to LOW integrity: %ls", workDirW.c_str());
+    // 文件IO模式或常规Low IL路径：强制 workDir 降为 LOW
+    // 文件IO模式下即使使用 AppContainer 也强制降标签，确保进程能写入工作目录
+    if ((lowIl && execMode != 2 && !useAppContainer && !noRelabel) || fileIoMode) {
+        if (!noRelabel) {
+            std::wstring workDirW = dirNameW(utf8ToWide(metaFile));
+            setLowLabelRecursive(workDirW.c_str());
+            workDirRelabeled = true;
+            sandboxLogW(L"workdir relabeled to LOW integrity: %ls", workDirW.c_str());
+        }
     }
 
     // 4. 绑定到 Job Object (进程仍挂起)
