@@ -11,11 +11,6 @@ echo.
 
 cd /d "%~dp0"
 
-if not exist "log" mkdir log
-if exist "log\server.log" del /q "log\server.log"
-for %%f in (log\*) do del /q "%%f" 2>nul
-echo [OK] Log directory cleared.
-
 REM == Auto git pull (if git is available) ======
 where git >nul 2>&1
 if !errorlevel! equ 0 (
