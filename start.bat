@@ -16,10 +16,23 @@ if exist "log\server.log" del /q "log\server.log"
 for %%f in (log\*) do del /q "%%f" 2>nul
 echo [OK] Log directory cleared.
 
-if not exist "log" mkdir log
-if exist "log\server.log" del /q "log\server.log"
-for %%f in (log\*) do del /q "%%f" 2>nul
-echo [OK] Log directory cleared.
+REM == Auto git pull (if git is available) ======
+where git >nul 2>&1
+if !errorlevel! equ 0 (
+    if exist ".git" (
+        echo [..] Checking for updates (git pull)...
+        git pull --ff-only 2>nul
+        if !errorlevel! equ 0 (
+            echo [OK] Up to date.
+        ) else (
+            echo [!!] git pull failed or has conflicts, using current version.
+        )
+    ) else (
+        echo [..] Not a git repository, skipping update check.
+    )
+) else (
+    echo [..] Git not found, skipping update check.
+)
 
 REM == Auto-migrate problems/ to backend/data/problems/ ======
 if exist "problems" (
