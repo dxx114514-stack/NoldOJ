@@ -15,7 +15,7 @@ REM == Auto git pull (if git is available) ======
 where git >nul 2>&1
 if !errorlevel! equ 0 (
     if exist ".git" (
-        echo [..] Checking for updates (git pull)...
+        echo [..] Checking for updates (git pull)
         git pull --ff-only 2>nul
         if !errorlevel! equ 0 (
             echo [OK] Up to date.
@@ -32,7 +32,7 @@ if !errorlevel! equ 0 (
 REM == Auto-migrate problems/ to backend/data/problems/ ======
 if exist "problems" (
     if not exist "backend\data\problems" (
-        echo [..] Migrating problems/ to backend/data/problems/...
+        echo [..] Migrating problems/ to backend/data/problems
         if not exist "backend\data" mkdir "backend\data"
         move "problems" "backend\data\problems" >nul 2>&1
         if !errorlevel! equ 0 (
@@ -60,7 +60,7 @@ REM == Sandbox compile ======
 if exist "backend\sandbox\sandbox_runner.cpp" (
     where g++ >nul 2>&1
     if !errorlevel! equ 0 (
-        echo [..] Building sandbox_runner.exe...
+        echo [..] Building sandbox_runner.exe
         g++ -O2 -static -o "backend\sandbox\sandbox_runner.exe" "backend\sandbox\sandbox_runner.cpp" -lpsapi -luserenv 2>nul
         if exist "backend\sandbox\sandbox_runner.exe" (
             echo [OK] sandbox_runner.exe rebuilt
@@ -81,7 +81,7 @@ if exist "backend\sandbox\sandbox_runner.cpp" (
 cd backend
 call npm ls --silent
 if !errorlevel! neq 0 (
-    echo [..] Installing dependencies...
+    echo [..] Installing dependencies
     call npm install
     if !errorlevel! neq 0 (
         echo [FAIL] Failed to install dependencies
