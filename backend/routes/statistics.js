@@ -79,4 +79,18 @@ router.get('/me/stats', requireAuth, (req, res) => {
   res.json(getStatsData(targetId));
 });
 
+// 提交云图：按题目统计提交次数，用于词云渲染
+router.get('/wordcloud', (req, res) => {
+  const rows = db.prepare(`
+    SELECT p.id, p.title, COUNT(s.id) as submission_count
+    FROM problems p
+    JOIN submissions s ON s.problem_id = p.id
+    WHERE p.is_public = 1 AND p.is_hidden = 0
+    GROUP BY p.id
+    ORDER BY submission_count DESC
+    LIMIT 200
+  `).all();
+  res.json(rows);
+});
+
 module.exports = router;
