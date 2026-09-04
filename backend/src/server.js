@@ -164,6 +164,10 @@ async function main() {
   });
   app.use(express.static(pagesRoot, { dotfiles: 'deny' }));
   app.get('/favicon.svg', (req, res) => res.sendFile(path.join(frontendRoot, 'favicon.svg')));
+  // 操作日志中间件：记录 admin/su 用户的操作到 OJ_LOG_DIR/admin.log
+  const { adminLogger } = require('../middleware/adminLogger');
+  app.use(adminLogger);
+  // 安全公告文件 (RFC 9116)
 
   // 安全公告文件 (RFC 9116)
   const securityContact = config.security?.contact || 'https://github.com/dxx114514-stack/NoldOJ.mimo'; 
