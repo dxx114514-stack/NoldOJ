@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>提交云图 - NoldOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script src="/js/tailwind.js"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+  <script src="/js/wordcloud2.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">☁️ 提交云图</h1>
+      <button onclick="load()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">刷新</button>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">题目名称越大，表示该题提交次数越多（热度越高）</p>
+      <div id="cloudContainer" class="flex items-center justify-center" style="min-height: 500px;">
+        <p class="text-gray-400">加载中...</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('');
+
+    const COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e','#e91e63','#00bcd4','#8bc34a','#ff5722','#607d8b','#795548','#4caf50','#2196f3','#ff9800','#673ab7','#009688','#cddc39'];
+
+    function load() {
+      apiCall('GET', '/statistics/wordcloud').then(data => {
+        if (!data || data.length === 0) {
+          document.getElementById('cloudContainer').innerHTML = '<p class="text-gray-400">暂无提交数据</p>';
+          return;
+        }
+        const maxCount = Math.max(...data.map(d => d.submission_count));
+        const minCount = Math.min(...data.map(d => d.submission_count));
+        const range = maxCount - minCount || 1;
+
+        const list = data.map(d => {
+          const weight = Math.round(((d.submission_count - minCount) / range) * 80 + 20);
+          const color = COLORS[Math.abs(hashCode(d.title)) % COLORS.length];
+          return [d.title, weight, d.id, color];
+        });
+
+        const container = document.getElementById('cloudContainer');
+        container.innerHTML = '';
+        const canvas = document.createElement('canvas');
+        canvas.width = container.offsetWidth || 900;
+        canvas.height = 500;
+        container.appendChild(canvas);
+
+        WordCloud(canvas, {
+          list: list.map(item => [item[0], item[1]]),
+          gridSize: 6,
+          weightFactor: 1.2,
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          fontWeight: 'bold',
+          color: function(word, weight) {
+            const item = list.find(i => i[0] === word);
+            return item ? item[3] : COLORS[0];
+          },
+          rotateRatio: 0.1,
+          backgroundColor: 'transparent',
+          click: function(item) {
+            const title = item[0];
+            const found = list.find(i => i[0] === title);
+            if (found) window.location.href = '/pages/problem.html?id=' + found[2];
+          },
+          hover: function(item, dimension, event) {
+            canvas.style.cursor = item ? 'pointer' : 'default';
+          }
+        });
+      }).catch(err => {
+        document.getElementById('cloudContainer').innerHTML = '<p class="text-red-500">加载失败: ' + escapeHtml(err.message) + '</p>';
+      });
+    }
+
+    function hashCode(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return hash;
+    }
+
+    load();
+  </script>
+</body>
+</html>
