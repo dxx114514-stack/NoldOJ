@@ -92,4 +92,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { requireAuth, optionalAuth, requireRole, ONLINE_TTL_MS };
+module.exports = { requireAuth, optionalAuth, requireRole };
