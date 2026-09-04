@@ -3,16 +3,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { ROLE_HIERARCHY } = require('../utils/roles');
 
-const onlineUsers = new Map();
-
-// 在线用户有效窗口
-const ONLINE_TTL_MS = 5 * 60 * 1000;
-
-// 定时清理过期在线用户，防止 Map 无限增长（每 5 分钟，配合 getOnlineUsers 的惰性清理）
-// R9-22: unref 使定时器不阻止进程退出（npm test 等短命进程不会被吊住）
-setInterval(() => {
-  getOnlineUsers();
-}, ONLINE_TTL_MS).unref();
+// onlineUsers Map and timer removed - no longer tracking online users
 
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -60,9 +51,6 @@ function optionalAuth(req, res, next) {
       req.user = null;
     } else {
       req.user = user || null;
-      if (user) {
-        onlineUsers.set(user.id, { username: user.username, nickname: user.nickname, role: user.role, lastActive: Date.now() });
-      }
     }
   } catch {
     req.user = null;
@@ -104,4 +92,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { requireAuth, optionalAuth, requireRole, getOnlineUsers, removeOnlineUser, ONLINE_TTL_MS };
+module.exports = { requireAuth, optionalAuth, requireRole, ONLINE_TTL_MS };
