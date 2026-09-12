@@ -16,7 +16,7 @@ info:
 
     ## 角色层级
     user < teacher < admin < su
-  version: 1.6.0
+  version: 2.0.0
   contact:
     name: NoldOJ
   license:
@@ -1412,7 +1412,7 @@ paths:
       tags: [提交]
       summary: 提交代码
       description: |
-        代码在三层隔离环境中编译与执行：低完整性级别（强制 workDir 标记为 LOW IL，禁止向高完整性对象写入）+ Job Object（CPU/内存/进程数限制 + KILL_ON_JOB_CLOSE 进程树清理）+ 受限令牌/AppContainer（权限隔离，剥离高危特权、禁用特权组，可选 AppContainer 文件系统/网络隔离）。文件IO题目模式（`problem_type = file_io`）强制 workDir 降为 LOW IL，保证进程可自由读写文件。
+        代码在三层隔离环境中编译与执行：低完整性级别（Low IL）+ Job Object（CPU/内存/进程数限制）+ 受限令牌/AppContainer（权限隔离）。
       security:
         - bearerAuth: []
       requestBody:
@@ -1432,6 +1432,9 @@ paths:
                   maxLength: 131072
                 answer_data:
                   type: string
+                contest_id:
+                  type: integer
+                  description: 比赛 ID（从比赛页面提交时传入，自动纳入比赛排行）
       responses:
         '201':
           description: 提交成功
@@ -1549,7 +1552,7 @@ paths:
     post:
       tags: [IDE]
       summary: AI 代码安全审查
-      description: 调用 AI 服务审查代码安全性，无需登录
+      description: 调用 AI 服务审查代码安全性
       requestBody:
         required: true
         content:
@@ -1678,7 +1681,7 @@ paths:
       tags: [IDE]
       summary: 运行代码
       description: |
-        运行环境与提交评测相同，三层隔离（低完整性级别 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。workDir 强制 LOW IL，Job Object 兜底资源限制与进程树清理，受限令牌剥离高危特权，可选 AppContainer 文件系统/网络隔离（失败自动回退）。
+        运行环境与提交评测相同，三层隔离（低完整性级别 + Job Object + 受限令牌/AppContainer）。
       requestBody:
         required: true
         content:
@@ -1908,16 +1911,6 @@ paths:
       responses:
         '200':
           description: 排行榜
-
-  /users/online:
-    get:
-      tags: [用户]
-      summary: 在线用户列表
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: 在线用户
 
   /users/sudo-login:
     post:
