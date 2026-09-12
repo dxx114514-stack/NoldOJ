@@ -4,7 +4,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const config = require('../config/config');
-const { requireAuth, requireRole, optionalAuth, getOnlineUsers, removeOnlineUser, ONLINE_TTL_MS } = require('../middleware/auth');
+const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { sanitizeLog, sanitizeText } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
 const { isValidRole, canManage, isAdminOrSu } = require('../utils/roles');
@@ -19,11 +19,6 @@ function audit(operator, action, target) {
   const t = target ? `${sanitizeLog(target.username)}(id=${target.id})` : 'n/a';
   console.log(`[AUDIT] ${sanitizeLog(action)}: operator=${sanitizeLog(operator.username)}(id=${operator.id}) -> target=${t} at ${new Date().toISOString()}`);
 }
-
-router.get('/online', requireAuth, requireRole('admin'), (req, res) => {
-  const users = getOnlineUsers(ONLINE_TTL_MS);
-  res.json({ total: users.length, users });
-});
 
 // R12-3: 注册开关查询/热切换 (仅超管)。写在 /:id 之前避免被通配路由吞掉
 router.get('/register-enabled', requireAuth, requireRole('su'), (req, res) => {
