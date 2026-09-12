@@ -300,12 +300,12 @@
           <li>峰值内存检测，每个测试点精确计时</li>
         </ul>
       </div>
-      <div class="card reveal">
+<div class="card reveal">
         <div class="ico i-cyan"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg></div>
         <h3>安全沙箱</h3>
         <ul>
           <li>Job Object 进程树隔离，杜绝逃逸</li>
-          <li>受限令牌剥离高危特权</li>
+          <li>低完整性级别 + 受限令牌剥离高危特权</li>
           <li>AppContainer 文件系统 + 网络隔离</li>
           <li>普通用户运行自动降级，拒绝裸奔</li>
         </ul>
@@ -435,9 +435,9 @@
           <div class="n">03</div>
           <div><h4>禁止脱离</h4><p>禁用 BREAKAWAY，子进程无法脱离沙箱。</p></div>
         </div>
-        <div class="sec-item">
+<div class="sec-item">
           <div class="n">04</div>
-          <div><h4>权限降级</h4><p>受限令牌剥离 SeDebug / SeImpersonate 等高危特权。</p></div>
+          <div><h4>权限降级</h4><p>低完整性级别 + 受限令牌剥离 SeDebug / SeImpersonate 等高危特权。</p></div>
         </div>
         <div class="sec-item">
           <div class="n">05</div>

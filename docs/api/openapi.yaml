@@ -2,7 +2,7 @@
 info:
   title: NoldOJ API
   description: |
-    Windows 在线评测系统 API。支持多语言代码评测、三层安全沙箱执行（Sandboxie 文件/网络隔离 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查等功能。
+    Windows 在线评测系统 API。支持多语言代码评测、三层安全沙箱执行（低完整性级别 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）、自定义计分脚本、比赛管理、文章系统、Rating 机制、AI 代码安全审查等功能。
 
     ## 认证
     大部分接口需携带 JWT Token：`Authorization: Bearer <access_token>`
@@ -16,7 +16,7 @@ info:
 
     ## 角色层级
     user < teacher < admin < su
-  version: 1.6.0
+  version: 2.0.0
   contact:
     name: NoldOJ
   license:
@@ -1412,7 +1412,7 @@ paths:
       tags: [提交]
       summary: 提交代码
       description: |
-        代码在三层隔离环境中编译与执行：Sandboxie（文件/网络隔离）+ Job Object（CPU/内存/进程数限制）+ 受限令牌/AppContainer（权限隔离）。
+        代码在三层隔离环境中编译与执行：低完整性级别（Low IL）+ Job Object（CPU/内存/进程数限制）+ 受限令牌/AppContainer（权限隔离）。
       security:
         - bearerAuth: []
       requestBody:
@@ -1432,6 +1432,9 @@ paths:
                   maxLength: 131072
                 answer_data:
                   type: string
+                contest_id:
+                  type: integer
+                  description: 比赛 ID（从比赛页面提交时传入，自动纳入比赛排行）
       responses:
         '201':
           description: 提交成功
@@ -1549,7 +1552,7 @@ paths:
     post:
       tags: [IDE]
       summary: AI 代码安全审查
-      description: 调用 AI 服务审查代码安全性，无需登录
+      description: 调用 AI 服务审查代码安全性
       requestBody:
         required: true
         content:
@@ -1678,7 +1681,7 @@ paths:
       tags: [IDE]
       summary: 运行代码
       description: |
-        运行环境与提交评测相同，三层隔离（Sandboxie + Job Object + 受限令牌/AppContainer）。
+        运行环境与提交评测相同，三层隔离（低完整性级别 + Job Object + 受限令牌/AppContainer）。
       requestBody:
         required: true
         content:

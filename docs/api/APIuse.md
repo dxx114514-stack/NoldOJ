@@ -365,6 +365,8 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 **提交锁**：有未完成提交（pending_review/pending/running/compiling/judging）时禁止再次提交，返回 429。超级管理员和特权用户（`submit_lock_exempt`）豁免。
 
+**比赛提交**：从比赛页面提交时传入 `contest_id` 参数，提交将自动纳入该比赛排行。系统会自动检查比赛状态、题目归属，并自动加入比赛（如未加入）。
+
 **提交流程：**
 1. 创建提交记录，状态为 `pending_review`
 2. 立即返回 `submission_id`
@@ -388,7 +390,7 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 需管理员权限。编号自动回收。
 
-**安全隔离**：用户代码在三层隔离环境中执行（Sandboxie 文件/网络隔离 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。编译与运行阶段均可选通过 Sandboxie 沙盒包装，Job Object 兜底 CPU/内存/进程数限制。
+**安全隔离**：用户代码在三层隔离环境中执行（低完整性级别 + Job Object 资源限制 + 受限令牌/AppContainer 权限隔离）。编译与运行阶段均在受控环境中执行，Job Object 兜底 CPU/内存/进程数限制。
 
 ---
 

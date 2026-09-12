@@ -11,7 +11,7 @@
 > - **权限降级**：`CreateRestrictedToken` 剥离 `SeDebugPrivilege`、`SeImpersonatePrivilege` 等高危特权
 > - **资源限制**：内存上限、CPU 时间限制、进程数限制
 > - **数据隔离**：每次判题使用独立临时目录，判题结束后暴力删除；SQLite 启用 WAL 模式防止锁死
-> - **三层安全架构（Sandboxie + Job Object + 受限令牌/AppContainer）**：编译与运行阶段均可选通过 Sandboxie-Classic 沙盒隔离，与 Job Object 资源限制、受限令牌/ AppContainer 权限隔离叠加。Sandboxie 提供文件系统重定向与网络阻断，Job Object 兜底 CPU/内存/进程数限制
+> - **三层安全架构（低完整性级别 + Job Object + 受限令牌/AppContainer）**：低完整性级别强制 workDir 标记为 LOW IL，禁止向高完整性对象写入；Job Object 兜底 CPU/内存/进程数限制；受限令牌剥离高危特权、禁用 Administrators 等特权组；以管理员/服务运行时额外尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）
 >
 > 编译沙箱运行器（需要 MinGW）：
 > ```bat
@@ -26,7 +26,7 @@
 
 ### 评测核心
 - **多语言支持**：C、C++、Python 3、Java、JavaScript，可通过管理面板动态添加/禁用
-- **安全沙箱**：基于 Windows Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），CPU/内存/进程数受限，每次判题使用独立临时目录；受限令牌（禁用 Administrators 等特权组 + 剥离 SeDebug/SeImpersonate 等高危特权）在普通用户下即可生效；以管理员/服务运行时额外尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn）；所有沙箱诊断消息追加写入 `log/sandbox.log`（亦可设 `NoldOJ_ROOT` 指定项目根）
+- **安全沙箱**：基于 Windows 原生 Job Object 的进程隔离（CREATE_SUSPENDED + KILL_ON_JOB_CLOSE + 禁用 Breakaway），CPU/内存/进程数受限，每次判题使用独立临时目录；低完整性级别（Low IL）强制 workDir 降级，禁止向高完整性对象写入；受限令牌（禁用 Administrators 等特权组 + 剥离 SeDebug/SeImpersonate 等高危特权）在普通用户下即可生效；以管理员/服务运行时额外尝试 AppContainer 文件系统+网络隔离（容器令牌在独立子进程构建，API 崩溃时自动安全回退到受限令牌，不影响输出捕获）；未编译 sandbox_runner.exe 时自动回退到传统模式（spawn）；所有沙箱诊断消息追加写入 `log/sandbox.log`（亦可设 `NoldOJ_ROOT` 指定项目根）
 - **内存检测**：每个测试点和 IDE 运行均记录峰值内存使用量
 - **多种比较模式**：严格文本比较、宽松文本比较、浮点数容差比较、Special Judge
 - **自定义计分脚本**：支持变量、算术运算、位运算、逻辑运算、条件分支（支持括号）、min/max/abs 函数
@@ -430,6 +430,18 @@ NoldOJ/
 | **超级管理员** | 最高权限 | 所有权限 + 修改角色、重置密码、免密登录、管理语言、设置 Rating、自删除、设置图床限额 |
 
 ## 更新日志
+
+### v2.0.0
+- **重大重构**：移除 Sandboxie 依赖，改用原生三层安全架构（低完整性级别 + Job Object + 受限令牌/AppContainer）
+- 新增题目详情页左右分栏布局：左栏题目内容，右栏统计/信息/操作
+- 新增比赛上下文支持：从比赛进入题目页显示比赛信息和"返回比赛"按钮
+- 新增比赛提交自动关联：比赛中提交自动纳入比赛排行（通过 contest_id 参数）
+- 新增 statistics/wordcloud 接口返回 accepted_count 字段
+- 新增题目页"复制为 Markdown"按钮
+- 移除在线用户列表功能（admin.html、auth.js、users.js 完整清理）
+- 修复 api.js 401 错误处理：仅在账号被封禁时清除 token
+- 修复删除题目 Internal Server Error（数据库 DELETE 操作添加 try-catch）
+- 移除 Sandboxie 配置文件（config/sandboxie.txt 已废弃）
 
 ### v1.9.0
 - 新增隐私开关：成就/数据看板/收藏三个独立开关，开启后对其它普通用户隐藏（admin/su 始终可见），个人资料页可编辑，他人入口自动置灰
