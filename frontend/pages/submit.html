@@ -56,6 +56,7 @@
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('id');
     const vcId = params.get('vc');
+    const contestId = params.get('contest_id');
     let editor;
     let problemData = null;
 
@@ -197,12 +198,18 @@
       try {
         saveCurrentTab();
         const files = fileTabs.map(f => ({ filename: f.filename, content: f.content }));
-        const data = await apiCall('POST', '/submissions', {
+        const submitData = {
           problem_id: parseInt(pid) || 0,
           language: document.getElementById('language').value,
-          files: files,
-          ...(vcId ? { virtual_contest_id: parseInt(vcId) } : {})
-        });
+          files: files
+        };
+        // Include contest context if present
+        if (vcId) {
+          submitData.virtual_contest_id = parseInt(vcId);
+        } else if (contestId) {
+          submitData.contest_id = parseInt(contestId);
+        }
+        const data = await apiCall('POST', '/submissions', submitData);
         window.location.href = `/pages/submission.html?id=${data.submission_id}`;
       } catch (err) {
         showError('error', err.message || '提交失败');
