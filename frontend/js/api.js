@@ -140,7 +140,7 @@ async function apiCall(method, path, body = null) {
   }
   let data;
   try { data = await res.json(); } catch { data = {}; }
-  if (res.status === 401 && data.reason === 'ERR_UNAUTHORIZED') {
+if (res.status === 401 && data.reason === 'ERR_UNAUTHORIZED') {
     try {
       const newToken = await refreshAccessToken();
       headers['Authorization'] = `Bearer ${newToken}`;
@@ -150,16 +150,18 @@ async function apiCall(method, path, body = null) {
       if (path !== '/users/me') refreshUser().catch(() => {});
       return retryData;
     } catch (e) {
+      // 401 after token refresh failure:
+      // - If account is banned, clear token and redirect to login
+      // - Otherwise, just throw the error (keep user logged in, UI handles it)
       if (e && e.status === 403 && e.message === '账号已被封禁') {
         clearToken();
         if (window.location.pathname !== '/pages/login.html') window.location.href = '/pages/login.html';
         throw e;
       }
-      if (e && e.status !== undefined && e.status !== 401) throw e;
+      // Just throw the error - don't clear token or redirect
+      // This prevents su/admin from being logged out when accessing admin routes
+      throw e;
     }
-    clearToken();
-    if (window.location.pathname !== '/pages/login.html') window.location.href = '/pages/login.html';
-    throw data;
   }
   if (res.status === 403 && data.reason === 'ERR_FORBIDDEN') {
     clearToken();

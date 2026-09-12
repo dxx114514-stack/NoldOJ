@@ -365,18 +365,23 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (inContest) {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot delete a problem that is part of a contest.' });
   }
-  db.prepare('DELETE FROM test_cases WHERE problem_id = ?').run(problem.id);
-  db.prepare('DELETE FROM test_groups WHERE problem_id = ?').run(problem.id);
-  db.prepare('DELETE FROM problem_samples WHERE problem_id = ?').run(problem.id);
-  db.prepare('DELETE FROM problems WHERE id = ?').run(problem.id);
-  // R11-?: 同步清理磁盘 testdata 目录，避免删题后残留孤儿目录
-  const problemDir = path.join(config.problemsDir, String(problem.id));
   try {
-    if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
+    db.prepare('DELETE FROM test_cases WHERE problem_id = ?').run(problem.id);
+    db.prepare('DELETE FROM test_groups WHERE problem_id = ?').run(problem.id);
+    db.prepare('DELETE FROM problem_samples WHERE problem_id = ?').run(problem.id);
+    db.prepare('DELETE FROM problems WHERE id = ?').run(problem.id);
+    // R11-?: 同步清理磁盘 testdata 目录，避免删题后残留孤儿目录
+    const problemDir = path.join(config.problemsDir, String(problem.id));
+    try {
+      if (fs.existsSync(problemDir)) fs.rmSync(problemDir, { recursive: true, force: true });
+    } catch (e) {
+      console.error(`Failed to remove problem testdata dir for ${problem.id}:`, sanitizeLog(String(e.message || e)));
+    }
+    res.json({ message: 'Problem deleted.' });
   } catch (e) {
-    console.error(`Failed to remove problem testdata dir for ${problem.id}:`, sanitizeLog(String(e.message || e)));
+    console.error(`Failed to delete problem ${problem.id}:`, sanitizeLog(String(e.message || e)));
+    res.status(500).json({ code: 1, reason: 'ERR_INTERNAL', message: 'Failed to delete problem.' });
   }
-  res.json({ message: 'Problem deleted.' });
 });
 
 // 题目重编号（admin/su）：将题目 id 改到指定的空位置。
