@@ -1909,16 +1909,6 @@ paths:
         '200':
           description: 排行榜
 
-  /users/online:
-    get:
-      tags: [用户]
-      summary: 在线用户列表
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: 在线用户
-
   /users/sudo-login:
     post:
       tags: [用户]

@@ -3,7 +3,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { ROLE_HIERARCHY } = require('../utils/roles');
 
-// onlineUsers Map and timer removed - no longer tracking online users
+// JWT authentication middleware
 
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -27,7 +27,6 @@ function requireAuth(req, res, next) {
       }
     }
     req.user = user;
-    onlineUsers.set(user.id, { username: user.username, nickname: user.nickname, role: user.role, lastActive: Date.now() });
     next();
   } catch (err) {
     return res.status(401).json({ code: 5, reason: 'ERR_UNAUTHORIZED', message: 'Invalid or expired token.' });
@@ -56,23 +55,6 @@ function optionalAuth(req, res, next) {
     req.user = null;
   }
   next();
-}
-
-function getOnlineUsers(timeoutMs = ONLINE_TTL_MS) {
-  const now = Date.now();
-  const result = [];
-  for (const [id, info] of onlineUsers) {
-    if (now - info.lastActive < timeoutMs) {
-      result.push({ id, ...info, lastActive: info.lastActive });
-    } else {
-      onlineUsers.delete(id);
-    }
-  }
-  return result;
-}
-
-function removeOnlineUser(userId) {
-  onlineUsers.delete(userId);
 }
 
 function requireRole(...roles) {

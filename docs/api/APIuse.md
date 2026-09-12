@@ -511,10 +511,6 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 无需认证。按 Rating 降序排列。
 
-### GET /users/online — 在线用户列表
-
-需管理员权限。返回 5 分钟内活跃用户。
-
 ### GET /users — 用户列表
 
 需管理员权限。返回 Rating 和 provider 字段。
