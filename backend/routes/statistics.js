@@ -82,7 +82,9 @@ router.get('/me/stats', requireAuth, (req, res) => {
 // 提交云图：按题目统计提交次数，用于词云渲染
 router.get('/wordcloud', (req, res) => {
   const rows = db.prepare(`
-    SELECT p.id, p.title, COUNT(s.id) as submission_count
+    SELECT p.id, p.title, 
+           COUNT(s.id) as submission_count,
+           SUM(CASE WHEN s.status = 'accepted' THEN 1 ELSE 0 END) as accepted_count
     FROM problems p
     JOIN submissions s ON s.problem_id = p.id
     WHERE p.is_public = 1 AND p.is_hidden = 0

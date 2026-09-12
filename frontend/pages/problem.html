@@ -13,112 +13,250 @@
   <script src="/js/api.js"></script>
   <script src="/js/purify.min.js"></script>
   <script src="/js/markdown.js"></script>
+  <style>
+    .sidebar-card { @apply bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-5; }
+    .sidebar-label { @apply text-sm text-gray-500 dark:text-gray-400; }
+    .sidebar-value { @apply text-sm font-medium text-gray-900 dark:text-white text-right; }
+    .sidebar-row { @apply flex items-center justify-between py-2; }
+    .stat-box { @apply text-center; }
+    .stat-number { @apply text-2xl font-bold text-gray-900 dark:text-white; }
+    .stat-label { @apply text-xs text-gray-500 dark:text-gray-400 mt-1; }
+  </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
-  <div class="max-w-4xl mx-auto px-4 py-8">
-    <div id="content" class="text-center py-12 text-gray-400 dark:text-gray-500 dark:text-gray-400">加载中...</div>
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <div id="content" class="text-center py-12 text-gray-400 dark:text-gray-500">加载中...</div>
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('problems');
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('id');
     let currentProblem = null;
+
     async function loadProblem() {
       if (!pid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定题目 ID</p>'; return; }
       try {
         const p = await apiCall('GET', `/problems/${pid}`);
         currentProblem = p;
         document.title = `${p.title} - NoldOJ`;
+
+        // Load tags
         let tagsHtml = '';
-        let categoriesHtml = '';
         try {
           const tags = await apiCall('GET', `/tags/problem/${p.id}`);
           if (tags.length > 0) {
             tagsHtml = tags.map(t => `<span class="px-3 py-1 text-xs rounded-full" style="background-color: ${escapeHtml(t.color)}20; color: ${escapeHtml(t.color)}">${escapeHtml(t.name)}</span>`).join('');
           }
         } catch {}
+
+        // Load categories
+        let categoriesHtml = '';
         if (p.categories && p.categories.length > 0) {
           categoriesHtml = p.categories.map(c => `<span class="px-3 py-1 text-xs rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">${escapeHtml(c.name)}</span>`).join('');
         }
 
+        // Load statistics
+        let statsHtml = `<div class="stat-box"><div class="stat-number">-</div><div class="stat-label">通过数量</div></div>
+                          <div class="stat-box"><div class="stat-number">-</div><div class="stat-label">提交次数</div></div>`;
+        try {
+          const stats = await apiCall('GET', `/statistics/wordcloud`);
+          const problemStats = stats.find(s => s.id === p.id);
+          if (problemStats) {
+            statsHtml = `<div class="stat-box"><div class="stat-number">${problemStats.accepted_count || 0}</div><div class="stat-label">通过数量</div></div>
+                          <div class="stat-box"><div class="stat-number">${problemStats.submission_count || 0}</div><div class="stat-label">提交次数</div></div>`;
+          }
+        } catch {}
+
+        // Problem type label
+        const typeLabel = p.problem_type === 'traditional' ? '传统题' : 
+                          p.problem_type === 'interactive' ? '交互题' : 
+                          p.problem_type === 'communication' ? '通信题' :
+                          p.problem_type === 'submit_answer' ? '提交答案' : 
+                          p.problem_type === 'file_io' ? '文件IO' : p.problem_type;
+
+        // Compare mode label
+        const compareLabel = p.compare_mode === 'text_strict' ? '严格比对' :
+                             p.compare_mode === 'text_relaxed' ? '宽松比对' :
+                             p.compare_mode === 'real_number' ? '浮点容差' :
+                             p.compare_mode === 'spj' ? 'Special Judge' : p.compare_mode || '严格比对';
+
+        // IO mode
+        const ioMode = p.problem_type === 'file_io' ? '文件IO' : '标准IO';
+
+        // Build main content
         document.getElementById('content').innerHTML = `
-          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-8">
-            <div class="flex items-start justify-between mb-6">
-              <div>
-                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">${escapeHtml(p.title)}</h1>
-                <div class="flex flex-wrap gap-2 mt-3">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left: Problem Content -->
+            <div class="lg:col-span-2 space-y-6">
+              <!-- Header -->
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+                <div class="flex items-start justify-between mb-4">
+                  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">#${p.id}、${escapeHtml(p.title)}</h1>
+                  <div class="flex items-center space-x-2 flex-shrink-0 ml-4">
+                    <button onclick="copyProblemMarkdown(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="复制为 Markdown">
+                      📋 复制为 Markdown
+                    </button>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
                   ${categoriesHtml}
                   ${tagsHtml}
-                  <span class="px-3 py-1 text-xs rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">${p.problem_type === 'traditional' ? '传统题' : p.problem_type === 'interactive' ? '交互题' : p.problem_type === 'submit_answer' ? '提交答案' : p.problem_type}</span>
-                  <span class="px-3 py-1 text-xs rounded-full bg-gray-100 text-gray-600 dark:text-gray-400 dark:text-gray-500">时限: ${p.time_limit}ms</span>
-                  <span class="px-3 py-1 text-xs rounded-full bg-gray-100 text-gray-600 dark:text-gray-400 dark:text-gray-500">内存: ${p.memory_limit}MB</span>
-                  ${p.provider ? `<span class="px-3 py-1 text-xs rounded-full bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">提供者: ${escapeHtml(p.provider)}</span>` : ''}
                 </div>
               </div>
-              <div class="flex items-center space-x-2">
-                <button id="favBtn" onclick="toggleFavorite(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="收藏本题">
-                  ☆ 收藏
-                </button>
-                <button onclick="copyProblemMarkdown(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="复制为 Markdown">
-                  📋 复制 Markdown
-                </button>
-                <button id="hintBtn" onclick="getAiHint(this)" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition hidden" title="失败 2 次后可获取 AI 思路提示">
-                  💡 AI 思路提示
-                </button>
-                <a href="/pages/submit.html?id=${p.id}" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition whitespace-nowrap">提交</a>
+
+              <!-- Background (if exists) -->
+              ${p.background ? `
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">题目背景</h3>
+                <div class="prose prose-gray dark:prose-invert max-w-none">${renderMarkdown(p.background)}</div>
+              </div>
+              ` : ''}
+
+              <!-- Description -->
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">题目描述</h3>
+                <div class="prose prose-gray dark:prose-invert max-w-none">${renderMarkdown(p.description)}</div>
+              </div>
+
+              <!-- Input Format -->
+              ${p.input_desc ? `
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">输入格式</h3>
+                <div class="prose prose-gray dark:prose-invert max-w-none">${renderMarkdown(p.input_desc)}</div>
+              </div>
+              ` : ''}
+
+              <!-- Output Format -->
+              ${p.output_desc ? `
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">输出格式</h3>
+                <div class="prose prose-gray dark:prose-invert max-w-none">${renderMarkdown(p.output_desc)}</div>
+              </div>
+              ` : ''}
+
+              <!-- Samples -->
+              ${(function(){
+                const samples = Array.isArray(p.samples) && p.samples.length > 0
+                  ? p.samples
+                  : ((p.sample_input || p.sample_output) ? [{ input: p.sample_input || '', output: p.sample_output || '', note: '' }] : []);
+                if (samples.length === 0) return '';
+                return `
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">输入输出样例${samples.length > 1 ? `<span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">共 ${samples.length} 组</span>` : ''}</h3>
+                ${samples.map((s, idx) => {
+                  const sid = 'sample-' + p.id + '-' + idx;
+                  const multi = samples.length > 1;
+                  return `
+                  <div class="${multi ? 'mb-5 pb-5 border-b border-gray-100 dark:border-gray-700 last:border-0 last:mb-0 last:pb-0' : ''}">
+                    ${multi || s.note ? `<div class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">${multi ? `样例 #${idx + 1}` : '样例'}${s.note ? `<span class="font-normal text-gray-500 dark:text-gray-400 ml-2">${escapeHtml(s.note)}</span>` : ''}</div>` : ''}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      ${s.input ? `<div>
+                        <div class="flex items-center justify-between mb-1">
+                          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输入</span>
+                          <button onclick="copySample(this, '${sid}-in')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
+                        </div>
+                        <pre id="${sid}-in" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(s.input)}</pre>
+                      </div>` : ''}
+                      ${s.output ? `<div>
+                        <div class="flex items-center justify-between mb-1">
+                          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输出</span>
+                          <button onclick="copySample(this, '${sid}-out')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
+                        </div>
+                        <pre id="${sid}-out" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(s.output)}</pre>
+                      </div>` : ''}
+                    </div>
+                  </div>`;
+                }).join('')}
+              </div>`;
+              })()}
+
+              <!-- Hint -->
+              ${p.hint ? `
+              <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">提示</h3>
+                <div class="prose prose-gray dark:prose-invert max-w-none">${renderMarkdown(p.hint)}</div>
+              </div>
+              ` : ''}
+            </div>
+
+            <!-- Right: Sidebar -->
+            <div class="lg:col-span-1 space-y-4">
+              <!-- Statistics -->
+              <div class="sidebar-card">
+                <div class="grid grid-cols-2 gap-4">
+                  ${statsHtml}
+                </div>
+              </div>
+
+              <!-- Problem Info -->
+              <div class="sidebar-card">
+                <h3 class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-3">题目信息</h3>
+                <div class="space-y-1">
+                  <div class="sidebar-row">
+                    <span class="sidebar-label">👤 题目提供者</span>
+                    <span class="sidebar-value">${p.provider ? escapeHtml(p.provider) : '<span class="text-gray-400">-</span>'}</span>
+                  </div>
+                  <div class="sidebar-row">
+                    <span class="sidebar-label">📅 发布时间</span>
+                    <span class="sidebar-value">${new Date(p.created_at).toLocaleDateString('zh-CN')}</span>
+                  </div>
+                  <div class="sidebar-row">
+                    <span class="sidebar-label">⏱️ 时间限制</span>
+                    <span class="sidebar-value">${p.time_limit} ms</span>
+                  </div>
+                  <div class="sidebar-row">
+                    <span class="sidebar-label">💾 内存限制</span>
+                    <span class="sidebar-value">${p.memory_limit} MB</span>
+                  </div>
+                  <div class="sidebar-row">
+                    <span class="sidebar-label">🔀 比对方式</span>
+                    <span class="sidebar-value">${compareLabel}</span>
+                  </div>
+                  <div class="sidebar-row">
+                    <span class="sidebar-label">📂 IO方式</span>
+                    <span class="sidebar-value">${ioMode}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tags -->
+              ${(tagsHtml || categoriesHtml) ? `
+              <div class="sidebar-card">
+                <h3 class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-3">题目标签</h3>
+                <div class="flex flex-wrap gap-2">
+                  ${categoriesHtml}
+                  ${tagsHtml}
+                </div>
+              </div>
+              ` : ''}
+
+              <!-- Actions -->
+              <div class="sidebar-card">
+                <h3 class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-3">操作</h3>
+                <div class="space-y-3">
+                  <div class="flex gap-2">
+                    <button id="favBtn" onclick="toggleFavorite(this)" class="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+                      ☆ 收藏
+                    </button>
+                    <button id="hintBtn" onclick="getAiHint(this)" class="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition hidden">
+                      💡 AI 提示
+                    </button>
+                  </div>
+                  <a href="/pages/submit.html?id=${p.id}" class="block w-full px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition text-center">📝 提交代码</a>
+                  <a href="/pages/submissions.html?problem_id=${p.id}" class="block w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition text-center">📊 数据统计</a>
+                </div>
               </div>
             </div>
-                        ${p.background ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">题目背景</h3>${renderMarkdown(p.background)}</div>` : ''}
-            <div class="mb-6">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">题目描述</h3>
-              ${renderMarkdown(p.description)}
-            </div>
-            ${p.input_desc ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">输入格式</h3>${renderMarkdown(p.input_desc)}</div>` : ''}
-            ${p.output_desc ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">输出格式</h3>${renderMarkdown(p.output_desc)}</div>` : ''}
-            ${(function(){
-              const samples = Array.isArray(p.samples) && p.samples.length > 0
-                ? p.samples
-                : ((p.sample_input || p.sample_output) ? [{ input: p.sample_input || '', output: p.sample_output || '', note: '' }] : []);
-              if (samples.length === 0) return '';
-              return `
-            <div class="mb-6">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">输入输出样例${samples.length > 1 ? `<span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">共 ${samples.length} 组</span>` : ''}</h3>
-              ${samples.map((s, idx) => {
-                const sid = 'sample-' + p.id + '-' + idx;
-                const multi = samples.length > 1;
-                return `
-                <div class="${multi ? 'mb-5 pb-5 border-b border-gray-100 dark:border-gray-700 last:border-0 last:mb-0 last:pb-0' : ''}">
-                  ${multi || s.note ? `<div class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">${multi ? `样例 #${idx + 1}` : '样例'}${s.note ? `<span class="font-normal text-gray-500 dark:text-gray-400 ml-2">${escapeHtml(s.note)}</span>` : ''}</div>` : ''}
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    ${s.input ? `<div>
-                      <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输入</span>
-                        <button onclick="copySample(this, '${sid}-in')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
-                      </div>
-                      <pre id="${sid}-in" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(s.input)}</pre>
-                    </div>` : ''}
-                    ${s.output ? `<div>
-                      <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">输出</span>
-                        <button onclick="copySample(this, '${sid}-out')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">复制</button>
-                      </div>
-                      <pre id="${sid}-out" class="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap">${escapeHtml(s.output)}</pre>
-                    </div>` : ''}
-                  </div>
-                </div>`;
-              }).join('')}
-            </div>`;
-            })()}
-            ${p.hint ? `<div class="mb-6"><h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">提示</h3>${renderMarkdown(p.hint)}</div>` : ''}
-            <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
-              测试点: ${p.test_cases_count || 0}
-            </div>
           </div>
+
+          <!-- Solutions Section -->
           <div id="solutions"></div>
-          <div id="discussionsSection" class="mt-6">
+
+          <!-- Discussions Section -->
+          <div id="discussionsSection" class="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">💬 讨论</h3>
+              <h3 class="text-lg font-bold text-gray-900 dark:text-white">💬 讨论</h3>
               <a href="/pages/discussion-edit.html?problem_id=${p.id}" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">+ 发帖</a>
             </div>
             <div id="discussionsList" class="space-y-3">加载中...</div>
@@ -126,13 +264,14 @@
           </div>
         `;
 
+        // Load solutions
         try {
           const sols = await apiCall('GET', `/problems/${pid}/solutions`);
           if (sols.length > 0) {
             const solHtml = sols.map(s => `
               <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mt-4">
                 <div class="flex items-center justify-between mb-3">
-                  <h3 class="text-lg font-semibold text-gray-900 dark:text-white">📝 题解: ${escapeHtml(s.article_title || '未命名')}</h3>
+                  <h3 class="text-lg font-bold text-gray-900 dark:text-white">📝 题解: ${escapeHtml(s.article_title || '未命名')}</h3>
                   <a href="/pages/article.html?id=${s.article_id}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">查看完整文章</a>
                 </div>
                 <div id="sol-${s.id}">${renderMarkdown((s.article_content || '').slice(0, 500))}${(s.article_content || '').length > 500 ? '...' : ''}</div>
@@ -142,15 +281,17 @@
             sols.forEach(s => renderMathDefaults(document.getElementById(`sol-${s.id}`)));
           }
         } catch {}
+
         renderMathDefaults(document.getElementById('content'));
-        // 加载讨论列表
         loadDiscussions(1);
       } catch (err) {
         document.getElementById('content').innerHTML = `<p class="text-red-500 text-center">${escapeHtml(err.message) || '加载题目失败'}</p>`;
       }
     }
+
     loadProblem();
-    // 收藏按钮：初始化状态 + 切换
+
+    // Favorite
     let favorited = false;
     async function initFavorite() {
       if (!getToken()) return;
@@ -166,11 +307,9 @@
         btn.classList.toggle('dark:text-yellow-300', favorited);
       } catch {}
     }
+
     async function toggleFavorite(btn) {
-      if (!getToken()) {
-        window.location.href = '/pages/login.html';
-        return;
-      }
+      if (!getToken()) { window.location.href = '/pages/login.html'; return; }
       try {
         if (favorited) {
           await apiCall('DELETE', `/favorites/${pid}`);
@@ -185,21 +324,19 @@
         btn.classList.toggle('text-yellow-700', favorited);
         btn.classList.toggle('dark:bg-yellow-900/30', favorited);
         btn.classList.toggle('dark:text-yellow-300', favorited);
-      } catch (err) {
-        alert(err.message || '操作失败');
-      }
+      } catch (err) { alert(err.message || '操作失败'); }
     }
+
     initFavorite();
-    // AI 思路提示按钮：登录用户可见（后端按失败次数门槛控制）
+
+    // AI Hint button
     if (getToken()) {
       const hintBtn = document.getElementById('hintBtn');
       if (hintBtn) hintBtn.classList.remove('hidden');
     }
+
     async function getAiHint(btn) {
-      if (!getToken()) {
-        window.location.href = '/pages/login.html';
-        return;
-      }
+      if (!getToken()) { window.location.href = '/pages/login.html'; return; }
       const orig = btn.innerHTML;
       btn.disabled = true;
       btn.innerHTML = '生成中...';
@@ -214,6 +351,7 @@
         alert(err.message || '获取提示失败');
       }
     }
+
     function copySample(btn, preId) {
       const text = document.getElementById(preId).textContent;
       navigator.clipboard.writeText(text).then(() => {
@@ -222,6 +360,7 @@
         setTimeout(() => btn.textContent = orig, 1500);
       });
     }
+
     function copyProblemMarkdown(btn) {
       if (!currentProblem) return;
       const p = currentProblem;
@@ -248,7 +387,8 @@
         setTimeout(() => btn.textContent = orig, 1500);
       });
     }
-    // 功能8：讨论列表加载
+
+    // Discussions
     let discussionPage = 1;
     async function loadDiscussions(page) {
       discussionPage = page;
@@ -263,7 +403,7 @@
           return;
         }
         listEl.innerHTML = data.discussions.map(d => `
-          <a href="/pages/discussion.html?id=${d.id}" class="block bg-white dark:bg-gray-800 rounded-xl border ${d.is_official ? 'border-yellow-400 dark:border-yellow-600 shadow-sm' : 'border-gray-100 dark:border-gray-700'} p-4 hover:shadow-md transition">
+          <a href="/pages/discussion.html?id=${d.id}" class="block bg-gray-50 dark:bg-gray-700 rounded-xl border ${d.is_official ? 'border-yellow-400 dark:border-yellow-600' : 'border-gray-200 dark:border-gray-600'} p-4 hover:shadow-md transition">
             <div class="flex items-start justify-between">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap mb-1">
@@ -272,7 +412,7 @@
                   ${d.locked ? '<span class="px-1.5 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">已锁定</span>' : ''}
                   <h4 class="font-semibold text-gray-900 dark:text-white truncate">${escapeHtml(d.title)}</h4>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">by ${escapeHtml(d.nickname || d.username)} · ${new Date(d.created_at).toLocaleString()}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">by ${escapeHtml(d.nickname || d.username)} · ${new Date(d.created_at).toLocaleString()}</p>
               </div>
               <span class="text-xs text-gray-400 ml-2 whitespace-nowrap">${d.reply_count} 回复</span>
             </div>
@@ -291,4 +431,3 @@
   </script>
 </body>
 </html>
-
