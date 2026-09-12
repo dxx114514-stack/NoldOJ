@@ -110,7 +110,7 @@ function defaultFilename(language) {
 }
 
 router.post('/', requireAuth, rateLimit, async (req, res) => {
-  const { problem_id, language, source_code, code, answer_data, files, virtual_contest_id } = req.body;
+  const { problem_id, language, source_code, code, answer_data, files, virtual_contest_id, contest_id } = req.body;
 
   if (!problem_id) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problem_id is required.' });
@@ -132,6 +132,7 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
   }
 
   // 功能9：虚拟比赛提交校验
+  let effectiveVirtualContestId = virtual_contest_id || null;
   if (virtual_contest_id) {
     const vc = db.prepare('SELECT * FROM virtual_contests WHERE id = ?').get(virtual_contest_id);
     if (!vc) {
@@ -147,6 +148,49 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
     const inContest = db.prepare('SELECT 1 FROM contest_problems WHERE contest_id = ? AND problem_id = ?').get(vc.contest_id, problem_id);
     if (!inContest) {
       return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '此题目不在该虚拟比赛中。' });
+    }
+  }
+
+  // 直接比赛提交校验（非虚拟比赛）
+  if (contest_id && !virtual_contest_id) {
+    const contest = db.prepare('SELECT * FROM contests WHERE id = ?').get(contest_id);
+    if (!contest) {
+      return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Contest not found.' });
+    }
+    // 检查比赛是否正在进行
+    const now = Date.now();
+    const startTime = new Date(contest.start_time).getTime();
+    const endTime = new Date(contest.end_time).getTime();
+    if (now < startTime) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '比赛尚未开始。' });
+    }
+    if (now > endTime) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '比赛已结束。' });
+    }
+    // 检查题目是否在比赛中
+    const inContest = db.prepare('SELECT 1 FROM contest_problems WHERE contest_id = ? AND problem_id = ?').get(contest_id, problem_id);
+    if (!inContest) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '此题目不在该比赛中。' });
+    }
+    // 检查用户是否已加入比赛
+    const participant = db.prepare('SELECT id FROM contest_participants WHERE contest_id = ? AND user_id = ?').get(contest_id, req.user.id);
+    if (!participant) {
+      // 自动加入比赛
+      db.prepare('INSERT INTO contest_participants (contest_id, user_id) VALUES (?, ?)').run(contest_id, req.user.id);
+    }
+    // 查找或创建该用户在此比赛的虚拟参赛记录，用于关联提交
+    let vc = db.prepare('SELECT id FROM virtual_contests WHERE contest_id = ? AND user_id = ?').get(contest_id, req.user.id);
+    if (!vc) {
+      // 创建虚拟参赛记录（比赛进行中创建的视为实时参赛）
+      const result = db.prepare('INSERT INTO virtual_contests (contest_id, user_id, start_time, end_time, status) VALUES (?, ?, datetime(?, \'unixepoch\'), datetime(?, \'unixepoch\'), ?)').run(
+        contest_id, req.user.id,
+        Math.floor(startTime / 1000),
+        Math.floor(endTime / 1000),
+        'active'
+      );
+      effectiveVirtualContestId = result.lastInsertRowid;
+    } else {
+      effectiveVirtualContestId = vc.id;
     }
   }
 
@@ -193,7 +237,7 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
 
   const newId = db.findNextId('submissions');
   db.prepare('INSERT INTO submissions (id, user_id, problem_id, language, source_code, answer_data, status, virtual_contest_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
-    newId, req.user.id, problem_id, language, mainCode, answer_data || '', 'pending_review', virtual_contest_id || null
+    newId, req.user.id, problem_id, language, mainCode, answer_data || '', 'pending_review', effectiveVirtualContestId
   );
 
   // 写入多文件记录

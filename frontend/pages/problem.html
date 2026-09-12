@@ -32,7 +32,9 @@
     document.getElementById('nav').innerHTML = renderNav('problems');
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('id');
+    const contestId = params.get('contest_id');
     let currentProblem = null;
+    let currentContest = null;
 
     async function loadProblem() {
       if (!pid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定题目 ID</p>'; return; }
@@ -40,6 +42,14 @@
         const p = await apiCall('GET', `/problems/${pid}`);
         currentProblem = p;
         document.title = `${p.title} - NoldOJ`;
+
+        // Load contest info if contest_id is present
+        if (contestId) {
+          try {
+            const c = await apiCall('GET', `/contests/${contestId}`);
+            currentContest = c;
+          } catch {}
+        }
 
         // Load tags
         let tagsHtml = '';
@@ -99,7 +109,13 @@
                     </button>
                   </div>
                 </div>
-                <div class="flex flex-wrap gap-2">
+                ${currentContest ? `
+                <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                  <span>比赛:</span>
+                  <a href="/pages/contest.html?id=${currentContest.id}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">${escapeHtml(currentContest.title)}</a>
+                </div>
+                ` : ''}
+                <div class="flex flex-wrap gap-2 mt-2">
                   ${categoriesHtml}
                   ${tagsHtml}
                 </div>
@@ -243,8 +259,11 @@
                       💡 AI 提示
                     </button>
                   </div>
-                  <a href="/pages/submit.html?id=${p.id}" class="block w-full px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition text-center">📝 提交代码</a>
-                  <a href="/pages/submissions.html?problem_id=${p.id}" class="block w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition text-center">📊 数据统计</a>
+                  <a href="/pages/submit.html?id=${p.id}${contestId ? '&contest_id=' + contestId : ''}" class="block w-full px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition text-center">📝 提交代码</a>
+                  <a href="/pages/submissions.html?problem_id=${p.id}${contestId ? '&contest_id=' + contestId : ''}" class="block w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition text-center">📊 数据统计</a>
+                  ${contestId ? `
+                  <a href="/pages/contest.html?id=${contestId}" class="block w-full px-4 py-2 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition text-center">← 返回比赛</a>
+                  ` : ''}
                 </div>
               </div>
             </div>
