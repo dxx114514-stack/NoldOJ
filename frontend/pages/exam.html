@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>试卷 - NoldOJ</title>
+  <script src="/js/tailwind.js"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <link rel="stylesheet" href="/js/katex/katex.min.css">
+  <script src="/js/katex/katex.min.js"></script>
+  <script src="/js/katex/auto-render.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/purify.min.js"></script>
+  <script src="/js/markdown.js"></script>
+  <style>
+    .question-card { @apply bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6; }
+    .option-label { @apply flex items-center gap-3 p-3 rounded-xl cursor-pointer transition border-2 border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500; }
+    .option-label.selected { @apply border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30; }
+    .option-label input { @apply w-4 h-4 text-indigo-600; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div id="content" class="text-center py-12 text-gray-400">加载中...</div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('exams');
+    const params = new URLSearchParams(window.location.search);
+    const eid = params.get('id');
+    let currentExam = null;
+    let answers = {};
+    let timer = null;
+    let timeLeft = 0;
+
+    async function loadExam() {
+      if (!eid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定试卷 ID</p>'; return; }
+      try {
+        const e = await apiCall('GET', `/exams/${eid}`);
+        currentExam = e;
+        document.title = `${e.title} - NoldOJ`;
+
+        // 如果已提交且有成绩，显示结果
+        if (e.user_submission && e.user_submission.status === 'graded') {
+          showResult(e.user_submission);
+          return;
+        }
+
+        // 显示答题界面
+        renderExam(e);
+      } catch (err) {
+        document.getElementById('content').innerHTML = `<p class="text-red-500">${escapeHtml(err.message) || '加载失败'}</p>`;
+      }
+    }
+
+    function renderExam(e) {
+      const questions = e.questions || [];
+      let html = `
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-6">
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">${escapeHtml(e.title)}</h1>
+          <p class="text-gray-500 dark:text-gray-400">${escapeHtml(e.description || '')}</p>
+          <div class="flex items-center gap-4 mt-4 text-sm text-gray-500 dark:text-gray-400">
+            <span>📊 ${questions.length} 题</span>
+            <span>💯 总分 ${e.total_score}</span>
+            ${e.time_limit ? `<span>⏱️ ${e.time_limit} 分钟</span>` : ''}
+            ${e.pass_score ? `<span>✅ 及格 ${e.pass_score} 分</span>` : ''}
+          </div>
+          ${e.time_limit ? '<div id="timer" class="mt-4 text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400"></div>' : ''}
+        </div>
+      `;
+
+      questions.forEach((q, i) => {
+        const options = JSON.parse(q.options || '[]');
+        html += `
+          <div class="question-card mb-4" id="q-${q.id}">
+            <div class="flex items-start gap-3 mb-4">
+              <span class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">${i + 1}</span>
+              <div class="flex-1">
+                <div class="font-medium text-gray-900 dark:text-white">${escapeHtml(q.title)}</div>
+                <div class="text-xs text-gray-400 mt-1">
+                  ${q.question_type === 'choice' ? '选择题' : q.question_type === 'true_false' ? '判断题' : q.question_type === 'fill_blank' ? '填空题' : '大题'}
+                  · ${q.score} 分
+                  ${q.is_subjective ? '· 主观题' : '· 客观题'}
+                </div>
+              </div>
+            </div>
+        `;
+
+        if (q.question_type === 'choice') {
+          html += '<div class="space-y-2">';
+          options.forEach((opt, oi) => {
+            const letter = String.fromCharCode(65 + oi);
+            html += `
+              <label class="option-label" id="opt-${q.id}-${letter}">
+                <input type="radio" name="q-${q.id}" value="${letter}" onchange="setAnswer(${q.id}, '${letter}')">
+                <span class="font-medium">${letter}.</span>
+                <span>${escapeHtml(opt)}</span>
+              </label>
+            `;
+          });
+          html += '</div>';
+        } else if (q.question_type === 'true_false') {
+          html += `
+            <div class="space-y-2">
+              <label class="option-label" id="opt-${q.id}-true">
+                <input type="radio" name="q-${q.id}" value="true" onchange="setAnswer(${q.id}, 'true')">
+                <span class="font-medium">✓</span>
+                <span>正确</span>
+              </label>
+              <label class="option-label" id="opt-${q.id}-false">
+                <input type="radio" name="q-${q.id}" value="false" onchange="setAnswer(${q.id}, 'false')">
+                <span class="font-medium">✗</span>
+                <span>错误</span>
+              </label>
+            </div>
+          `;
+        } else if (q.question_type === 'fill_blank') {
+          html += `
+            <input type="text" id="ans-${q.id}" placeholder="请输入答案"
+              class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-700 dark:text-white"
+              oninput="setAnswer(${q.id}, this.value)">
+          `;
+        } else if (q.question_type === 'long_answer') {
+          html += `
+            <textarea id="ans-${q.id}" placeholder="请输入你的回答..." rows="6"
+              class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-700 dark:text-white resize-y"
+              oninput="setAnswer(${q.id}, this.value)"></textarea>
+          `;
+        }
+
+        html += '</div>';
+      });
+
+      html += `
+        <div class="mt-6 flex justify-end">
+          <button onclick="submitExam()" class="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">
+            提交试卷
+          </button>
+        </div>
+      `;
+
+      document.getElementById('content').innerHTML = html;
+
+      // 启动计时器
+      if (e.time_limit && e.time_limit > 0) {
+        timeLeft = e.time_limit * 60;
+        updateTimer();
+        timer = setInterval(() => {
+          timeLeft--;
+          updateTimer();
+          if (timeLeft <= 0) {
+            clearInterval(timer);
+            alert('时间到！自动提交试卷。');
+            submitExam();
+          }
+        }, 1000);
+      }
+
+      renderMathDefaults(document.getElementById('content'));
+    }
+
+    function updateTimer() {
+      const el = document.getElementById('timer');
+      if (!el) return;
+      const min = Math.floor(timeLeft / 60);
+      const sec = timeLeft % 60;
+      el.textContent = `⏱️ 剩余时间: ${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+      if (timeLeft < 300) el.classList.add('text-red-500');
+    }
+
+    function setAnswer(qid, value) {
+      answers[qid] = value;
+    }
+
+    async function submitExam() {
+      if (timer) clearInterval(timer);
+      const user = getUser();
+      if (!user) { window.location.href = '/pages/login.html'; return; }
+
+      const answerArray = Object.entries(answers).map(([question_id, answer]) => ({
+        question_id: parseInt(question_id),
+        answer
+      }));
+
+      if (answerArray.length === 0) {
+        if (!confirm('你还没有作答，确定要提交吗？')) return;
+      }
+
+      try {
+        const result = await apiCall('POST', `/exams/${eid}/submit`, { answers: answerArray });
+        alert(`提交成功！\n得分: ${result.total_score} / ${result.max_score}${result.has_subjective ? '\n含有主观题，等待批改...' : ''}`);
+        window.location.reload();
+      } catch (err) {
+        alert(err.message || '提交失败');
+        if (timer) {
+          // 重新启动计时器
+          timer = setInterval(() => {
+            timeLeft--;
+            updateTimer();
+            if (timeLeft <= 0) {
+              clearInterval(timer);
+              submitExam();
+            }
+          }, 1000);
+        }
+      }
+    }
+
+    function showResult(submission) {
+      document.getElementById('content').innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-6">
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">${escapeHtml(currentExam.title)}</h1>
+          <div class="flex items-center gap-6 mt-4">
+            <div class="text-center">
+              <div class="text-3xl font-bold ${submission.total_score >= currentExam.pass_score ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">${submission.total_score}</div>
+              <div class="text-sm text-gray-500">得分</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-gray-600 dark:text-gray-400">${submission.max_score || currentExam.total_score}</div>
+              <div class="text-sm text-gray-500">满分</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold ${submission.total_score >= currentExam.pass_score ? 'text-green-600' : 'text-red-600'}">${submission.total_score >= currentExam.pass_score ? '✓ 通过' : '✗ 未通过'}</div>
+              <div class="text-sm text-gray-500">及格线 ${currentExam.pass_score}</div>
+            </div>
+          </div>
+          <div class="mt-4 text-sm text-gray-500">
+            提交时间: ${new Date(submission.submitted_at).toLocaleString('zh-CN')}
+            ${submission.graded_at ? ` · 批改时间: ${new Date(submission.graded_at).toLocaleString('zh-CN')}` : ''}
+            ${submission.status === 'grading' ? '<span class="text-yellow-600 dark:text-yellow-400 ml-2">⏳ 等待批改</span>' : ''}
+          </div>
+          ${currentExam.show_answer || (getUser() && ['teacher','admin','su'].includes(getUser().role)) ? `
+          <div class="mt-4">
+            <a href="/pages/exam-grading.html?id=${currentExam.id}&sid=${submission.id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">查看详细答案 →</a>
+          </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    loadExam();
+  </script>
+</body>
+</html>

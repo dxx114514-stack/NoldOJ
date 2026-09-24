@@ -670,6 +670,15 @@ build.bat</code></pre>
       <h2 class="sec-title"><span class="n">6</span>更新日志</h2>
       <p class="sec-desc">版本演进记录。</p>
       <div class="card changelog">
+        <div class="ver"><b>v2.1.0</b>
+          <ul>
+            <li><b>新增试卷系统</b>：支持选择题、判断题、填空题（客观/主观）、大题四种题型</li>
+            <li>试卷 CRUD：教师可创建/编辑/删除试卷，配置时间限制、及格分、最大尝试次数等</li>
+            <li>智能评分：客观题自动评分，主观题支持 AI 评分（Ollama）和教师手动批改</li>
+            <li>试卷提交：学生可作答并提交，支持时间限制和多次尝试</li>
+            <li>前端页面：试卷列表、答题界面、结果展示、教师批改界面</li>
+          </ul>
+        </div>
         <div class="ver"><b>v2.0.0</b>
           <ul>
             <li><b>重大重构</b>：移除 Sandboxie 依赖，改用原生三层安全架构（低完整性级别 + Job Object + 受限令牌/AppContainer）</li>

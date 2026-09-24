@@ -417,3 +417,84 @@ CREATE TABLE IF NOT EXISTS user_achievements (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
 );
+
+-- ═══════════════════════════════════════════════════════
+-- 试卷系统
+-- ═══════════════════════════════════════════════════════
+
+-- 试卷/考试
+CREATE TABLE IF NOT EXISTS exams (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  time_limit INTEGER DEFAULT 0,  -- 时间限制（分钟），0=不限时
+  total_score REAL DEFAULT 0,    -- 总分（自动计算）
+  pass_score REAL DEFAULT 0,     -- 及格分
+  max_attempts INTEGER DEFAULT 1, -- 最大尝试次数，0=不限
+  show_answer INTEGER DEFAULT 0, -- 提交后是否显示答案
+  is_public INTEGER DEFAULT 1,
+  is_hidden INTEGER DEFAULT 0,
+  allow_ai_grading INTEGER DEFAULT 1, -- 是否允许 AI 评分主观题
+  creator_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (creator_id) REFERENCES users(id)
+);
+
+-- 试卷题目
+CREATE TABLE IF NOT EXISTS exam_questions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  exam_id INTEGER NOT NULL,
+  question_type TEXT NOT NULL CHECK(question_type IN ('choice','true_false','fill_blank','long_answer')),
+  title TEXT NOT NULL,           -- 题目内容
+  options TEXT DEFAULT '[]',     -- 选项（选择题/判断题用），JSON 数组
+  correct_answer TEXT DEFAULT '', -- 正确答案（客观题）
+  score REAL DEFAULT 0,          -- 该题分值
+  sort_order INTEGER DEFAULT 0,
+  is_subjective INTEGER DEFAULT 0, -- 填空题：0=客观题，1=主观题
+  ai_grading_prompt TEXT DEFAULT '', -- AI 评分提示词（可选）
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
+);
+
+-- 试卷提交记录
+CREATE TABLE IF NOT EXISTS exam_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  exam_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  status TEXT DEFAULT 'submitted' CHECK(status IN ('submitted','grading','graded')),
+  total_score REAL DEFAULT 0,
+  max_score REAL DEFAULT 0,
+  ai_graded INTEGER DEFAULT 0,   -- 是否有 AI 评分
+  human_graded INTEGER DEFAULT 0, -- 是否有人工评分
+  submitted_at TEXT DEFAULT (datetime('now')),
+  graded_at TEXT,
+  graded_by INTEGER,
+  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (graded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- 试卷答题记录
+CREATE TABLE IF NOT EXISTS exam_answers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL,
+  question_id INTEGER NOT NULL,
+  answer TEXT DEFAULT '',         -- 用户答案
+  score REAL DEFAULT 0,          -- 得分
+  max_score REAL DEFAULT 0,      -- 满分
+  is_correct INTEGER DEFAULT 0,  -- 客观题是否正确
+  is_subjective INTEGER DEFAULT 0, -- 是否主观题
+  grading_status TEXT DEFAULT 'pending' CHECK(grading_status IN ('pending','ai_graded','human_graded')),
+  ai_comment TEXT DEFAULT '',    -- AI 评语
+  human_comment TEXT DEFAULT '', -- 人工评语
+  graded_at TEXT,
+  FOREIGN KEY (submission_id) REFERENCES exam_submissions(id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES exam_questions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_exams_creator ON exams(creator_id);
+CREATE INDEX IF NOT EXISTS idx_exam_questions_exam ON exam_questions(exam_id);
+CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam ON exam_submissions(exam_id);
+CREATE INDEX IF NOT EXISTS idx_exam_submissions_user ON exam_submissions(user_id);
+CREATE INDEX IF NOT EXISTS idx_exam_answers_submission ON exam_answers(submission_id);
