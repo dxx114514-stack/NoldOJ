@@ -212,6 +212,7 @@ async function main() {
   const statisticRoutes = require('../routes/statistics');
   const aiHintRoutes = require('../routes/aiHint');
   const statusRoutes = require('../routes/status');
+  const examRoutes = require('../routes/exams');
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/problems', problemRoutes);
@@ -234,6 +235,7 @@ async function main() {
   app.use('/api/v1/statistics', statisticRoutes);
   app.use('/api/v1/problems', aiHintRoutes);
   app.use('/api/v1/system', statusRoutes);
+  app.use('/api/v1/exams', examRoutes);
 
   const routeList = [
     ['/api/v1/auth', '认证'],
@@ -256,6 +258,7 @@ async function main() {
     ['/api/v1/achievements', '成就'],
     ['/api/v1/statistics', '个人数据看板'],
     ['/api/v1/system', '系统状态'],
+    ['/api/v1/exams', '试卷'],
   ];
   logInfo('ROUTER', `Registered ${routeList.length} route groups:`);
   for (const [path, name] of routeList) {

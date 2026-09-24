@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>编辑试卷 - NoldOJ</title>
+  <script src="/js/tailwind.js"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+  <style>
+    .question-block { @apply bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4; }
+    .option-row { @apply flex items-center gap-2 mb-2; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6" id="pageTitle">创建试卷</h1>
+    <div id="form" class="space-y-6">
+      <!-- 基本信息 -->
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">基本信息</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">试卷标题 *</label>
+            <input id="f-title" type="text" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">描述</label>
+            <textarea id="f-desc" rows="2" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white resize-y"></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">时间限制（分钟，0=不限时）</label>
+            <input id="f-time" type="number" value="0" min="0" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">及格分</label>
+            <input id="f-pass" type="number" value="0" min="0" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">最大尝试次数（0=不限）</label>
+            <input id="f-attempts" type="number" value="1" min="0" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+          </div>
+          <div class="flex items-center gap-6">
+            <label class="flex items-center gap-2"><input id="f-public" type="checkbox" checked class="w-4 h-4 text-indigo-600 rounded"><span class="text-sm text-gray-700 dark:text-gray-300">公开</span></label>
+            <label class="flex items-center gap-2"><input id="f-hidden" type="checkbox" class="w-4 h-4 text-indigo-600 rounded"><span class="text-sm text-gray-700 dark:text-gray-300">隐藏</span></label>
+            <label class="flex items-center gap-2"><input id="f-showanswer" type="checkbox" class="w-4 h-4 text-indigo-600 rounded"><span class="text-sm text-gray-700 dark:text-gray-300">提交后显示答案</span></label>
+            <label class="flex items-center gap-2"><input id="f-ai" type="checkbox" checked class="w-4 h-4 text-indigo-600 rounded"><span class="text-sm text-gray-700 dark:text-gray-300">AI 评分</span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 题目列表 -->
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white">题目列表</h2>
+          <button onclick="addQuestion()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-xl hover:bg-indigo-700">+ 添加题目</button>
+        </div>
+        <div id="questionsContainer" class="space-y-4"></div>
+      </div>
+
+      <!-- 提交按钮 -->
+      <div class="flex justify-end gap-4">
+        <a href="/pages/exams.html" class="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700">取消</a>
+        <button onclick="saveExam()" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">保存试卷</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('exams');
+    const user = getUser();
+    if (!user || !['teacher','admin','su'].includes(user.role)) {
+      document.getElementById('form').innerHTML = '<p class="text-center text-gray-500 py-12">需要教师权限</p>';
+      throw new Error('Unauthorized');
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get('id');
+    let questions = [];
+    let questionIdCounter = 0;
+
+    if (editId) {
+      document.getElementById('pageTitle').textContent = '编辑试卷';
+      loadExamForEdit();
+    }
+
+    async function loadExamForEdit() {
+      try {
+        const data = await apiCall('GET', `/exams/${editId}?show_answers=true`);
+        document.getElementById('f-title').value = data.title || '';
+        document.getElementById('f-desc').value = data.description || '';
+        document.getElementById('f-time').value = data.time_limit || 0;
+        document.getElementById('f-pass').value = data.pass_score || 0;
+        document.getElementById('f-attempts').value = data.max_attempts || 1;
+        document.getElementById('f-public').checked = data.is_public === 1;
+        document.getElementById('f-hidden').checked = data.is_hidden === 1;
+        document.getElementById('f-showanswer').checked = data.show_answer === 1;
+        document.getElementById('f-ai').checked = data.allow_ai_grading === 1;
+
+        questions = (data.questions || []).map(q => ({
+          _id: ++questionIdCounter,
+          question_type: q.question_type,
+          title: q.title,
+          options: JSON.parse(q.options || '[]'),
+          correct_answer: q.correct_answer || '',
+          score: q.score || 0,
+          is_subjective: q.is_subjective || 0,
+          ai_grading_prompt: q.ai_grading_prompt || ''
+        }));
+        renderQuestions();
+      } catch (err) {
+        alert(err.message || '加载失败');
+      }
+    }
+
+    function addQuestion(type) {
+      const t = type || 'choice';
+      questions.push({
+        _id: ++questionIdCounter,
+        question_type: t,
+        title: '',
+        options: t === 'choice' ? ['', '', '', ''] : t === 'true_false' ? [] : [],
+        correct_answer: '',
+        score: 5,
+        is_subjective: 0,
+        ai_grading_prompt: ''
+      });
+      renderQuestions();
+    }
+
+    function removeQuestion(id) {
+      questions = questions.filter(q => q._id !== id);
+      renderQuestions();
+    }
+
+    function renderQuestions() {
+      const container = document.getElementById('questionsContainer');
+      if (questions.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-center py-6">点击上方"添加题目"按钮开始</p>';
+        return;
+      }
+
+      container.innerHTML = questions.map((q, i) => {
+        const typeLabel = q.question_type === 'choice' ? '选择题' : q.question_type === 'true_false' ? '判断题' : q.question_type === 'fill_blank' ? '填空题' : '大题';
+        let optionsHtml = '';
+
+        if (q.question_type === 'choice') {
+          optionsHtml = `
+            <div class="mt-3">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">选项</label>
+              <div id="opts-${q._id}" class="space-y-2">
+                ${q.options.map((opt, oi) => `
+                  <div class="option-row">
+                    <span class="w-6 text-center font-medium text-gray-500">${String.fromCharCode(65 + oi)}</span>
+                    <input value="${escapeHtml(opt)}" onchange="updateOption(${q._id}, ${oi}, this.value)"
+                      class="flex-1 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white">
+                    <button onclick="removeOption(${q._id}, ${oi})" class="text-red-400 hover:text-red-600 text-sm">✕</button>
+                  </div>
+                `).join('')}
+              </div>
+              <button onclick="addOption(${q._id})" class="mt-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ 添加选项</button>
+            </div>
+          `;
+        } else if (q.question_type === 'true_false') {
+          optionsHtml = `<p class="text-sm text-gray-400 mt-2">判断题：学生选择"正确"或"错误"</p>`;
+        } else if (q.question_type === 'fill_blank') {
+          optionsHtml = `
+            <div class="mt-3 flex items-center gap-4">
+              <label class="flex items-center gap-2">
+                <input type="checkbox" ${q.is_subjective ? 'checked' : ''} onchange="questions[${i}].is_subjective = this.checked ? 1 : 0; renderQuestions()"
+                class="w-4 h-4 text-indigo-600 rounded">
+                <span class="text-sm text-gray-700 dark:text-gray-300">主观题（需人工/AI 评分）</span>
+              </label>
+            </div>
+          `;
+        } else {
+          optionsHtml = `<p class="text-sm text-gray-400 mt-2">大题 = 单条长横线答案，必为主观题</p>`;
+        }
+
+        return `
+          <div class="question-block" id="qblock-${q._id}">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <span class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">${i + 1}</span>
+                <select onchange="changeType(${q._id}, this.value)"
+                  class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white">
+                  <option value="choice" ${q.question_type==='choice'?'selected':''}>选择题</option>
+                  <option value="true_false" ${q.question_type==='true_false'?'selected':''}>判断题</option>
+                  <option value="fill_blank" ${q.question_type==='fill_blank'?'selected':''}>填空题</option>
+                  <option value="long_answer" ${q.question_type==='long_answer'?'selected':''}>大题</option>
+                </select>
+                <input type="number" value="${q.score}" min="0" onchange="questions[${i}].score = Number(this.value)"
+                  class="w-20 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white text-center">
+                <span class="text-sm text-gray-500">分</span>
+              </div>
+              <button onclick="removeQuestion(${q._id})" class="text-red-400 hover:text-red-600 text-sm font-medium">删除</button>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">题目内容 *</label>
+              <textarea onchange="questions[${i}].title = this.value" rows="2"
+                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm">${escapeHtml(q.title)}</textarea>
+            </div>
+
+            ${optionsHtml}
+
+            <div class="mt-3">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">${q.question_type === 'long_answer' || (q.question_type === 'fill_blank' && q.is_subjective) ? '参考答案（可选）' : '正确答案 *'}</label>
+              <input value="${escapeHtml(q.correct_answer)}" onchange="questions[${i}].correct_answer = this.value"
+                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm"
+                placeholder="${q.question_type === 'choice' ? '输入 A/B/C/D' : q.question_type === 'true_false' ? '输入 true 或 false' : '输入答案'}">
+            </div>
+
+            ${(q.question_type === 'long_answer' || (q.question_type === 'fill_blank' && q.is_subjective)) ? `
+            <div class="mt-3">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">AI 评分提示词（可选）</label>
+              <textarea onchange="questions[${i}].ai_grading_prompt = this.value" rows="2"
+                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm"
+                placeholder="留空使用默认提示词"></textarea>
+            </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function changeType(id, type) {
+      const q = questions.find(q => q._id === id);
+      if (!q) return;
+      q.question_type = type;
+      if (type === 'choice' && (!q.options || q.options.length < 2)) q.options = ['', '', '', ''];
+      if (type === 'true_false') { q.options = []; q.correct_answer = ''; }
+      if (type === 'long_answer') { q.is_subjective = 1; q.options = []; }
+      if (type === 'fill_blank') { q.options = []; }
+      renderQuestions();
+    }
+
+    function addOption(qid) {
+      const q = questions.find(q => q._id === qid);
+      if (q) { q.options.push(''); renderQuestions(); }
+    }
+
+    function removeOption(qid, idx) {
+      const q = questions.find(q => q._id === qid);
+      if (q) { q.options.splice(idx, 1); renderQuestions(); }
+    }
+
+    function updateOption(qid, idx, value) {
+      const q = questions.find(q => q._id === qid);
+      if (q) q.options[idx] = value;
+    }
+
+    async function saveExam() {
+      const title = document.getElementById('f-title').value.trim();
+      if (!title) { alert('请输入试卷标题'); return; }
+
+      if (questions.length === 0) { alert('请至少添加一道题目'); return; }
+
+      const payload = {
+        title,
+        description: document.getElementById('f-desc').value.trim(),
+        time_limit: parseInt(document.getElementById('f-time').value) || 0,
+        pass_score: parseInt(document.getElementById('f-pass').value) || 0,
+        max_attempts: parseInt(document.getElementById('f-attempts').value) || 1,
+        show_answer: document.getElementById('f-showanswer').checked,
+        is_public: document.getElementById('f-public').checked,
+        is_hidden: document.getElementById('f-hidden').checked,
+        allow_ai_grading: document.getElementById('f-ai').checked,
+        questions: questions.map((q, i) => ({
+          question_type: q.question_type,
+          title: q.title,
+          options: q.options,
+          correct_answer: q.correct_answer,
+          score: q.score,
+          sort_order: i,
+          is_subjective: q.is_subjective,
+          ai_grading_prompt: q.ai_grading_prompt
+        }))
+      };
+
+      try {
+        if (editId) {
+          await apiCall('PUT', `/exams/${editId}`, payload);
+        } else {
+          await apiCall('POST', '/exams', payload);
+        }
+        window.location.href = '/pages/exams.html';
+      } catch (err) {
+        alert(err.message || '保存失败');
+      }
+    }
+
+    renderQuestions();
+  </script>
+</body>
+</html>
