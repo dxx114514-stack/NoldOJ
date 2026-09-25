@@ -438,8 +438,9 @@ NoldOJ/
 - 试卷提交：学生可作答并提交，支持时间限制和多次尝试
 - 题面支持 Markdown + KaTeX 公式（与题目描述一致的渲染管线：renderMarkdown + DOMPurify + renderMathDefaults）
 - 试卷编辑页题面实时 Markdown 预览
-- 修复 `prose` 类失效：打包的 `tailwind.js` 不含 typography 插件，`prose`/`prose-sm`/`prose-gray`/`dark:prose-invert` 全为空操作；新增预构建 `css/prose.css` 并在 7 个使用 `prose` 的页面引入
+- 修复 `prose` 类失效：打包的 `tailwind.js` 不含 typography 插件，`prose`/`prose-sm`/`prose-gray`/`dark:prose-invert` 全为空操作；新增预构建 `css/prose.css` 并在 12 个页面引入（7 个页面直接使用 `prose` 类，另 5 个页面公告详情/文章详情/比赛详情/个人资料/管理面板经 `renderMarkdown` 输出的 `prose` 包裹容器间接使用）
 - 修复 `@apply` 失效：Play CDN 仅处理 `style[type="text/tailwindcss"]`，`problem.html`/`exam.html`/`exam-edit.html` 三处普通 `<style>` 内的 `@apply` 规则原本不生效（侧栏卡片、答题卡片无底色/圆角/内边距）
+- 移除死文件 `frontend/css/app.css`：全仓库 0 引用，且其 `!important` 暗色覆盖会与 Tailwind `dark:` 变体体系冲突
 - 前端页面：试卷列表、答题界面、结果展示、教师批改界面
 - 导航栏新增"试卷"入口
 

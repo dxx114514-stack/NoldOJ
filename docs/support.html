@@ -678,8 +678,9 @@ build.bat</code></pre>
             <li>试卷提交：学生可作答并提交，支持时间限制和多次尝试</li>
             <li>题面支持 Markdown + KaTeX 公式渲染</li>
             <li>试卷编辑页题面实时 Markdown 预览</li>
-            <li>修复 <code>prose</code> 类失效：新增预构建 <code>css/prose.css</code>（typography），7 个页面引入</li>
+            <li>修复 <code>prose</code> 类失效：新增预构建 <code>css/prose.css</code>（typography），12 个页面引入（7 个直接使用 <code>prose</code> 类，另 5 个经 <code>renderMarkdown</code> 输出的 <code>prose</code> 包裹容器间接使用：公告详情/文章详情/比赛详情/个人资料/管理面板）</li>
             <li>修复 <code>@apply</code> 失效：3 个页面的 <code>&lt;style&gt;</code> 改为 <code>type="text/tailwindcss"</code></li>
+            <li>移除死文件 <code>frontend/css/app.css</code>：全仓库 0 引用，其 <code>!important</code> 暗色覆盖会与 Tailwind <code>dark:</code> 变体冲突</li>
             <li>前端页面：试卷列表、答题界面、结果展示、教师批改界面</li>
           </ul>
         </div>
