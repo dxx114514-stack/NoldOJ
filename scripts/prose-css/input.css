@@ -1,0 +1,28 @@
+/* NoldOJ prose (Markdown 排版) styles
+ *
+ * 为什么存在这个文件：
+ *   frontend/js/tailwind.js 是 Tailwind Play CDN 的打包版，其中**不含** @tailwindcss/typography 插件，
+ *   因此页面上的 prose / prose-sm / prose-gray / dark:prose-invert 类此前全部是空操作（不产生任何样式）。
+ *   这里用官方 @tailwindcss/typography 预先构建出纯 CSS，静态引入，无需改动 tailwind.js。
+ *
+ * 重新生成 frontend/css/prose.css：
+ *   1. 在仓库根目录执行（node_modules/ 已在 .gitignore）：
+ *        npm i --no-save tailwindcss@3.4.17 @tailwindcss/typography@0.5.20
+ *   2. 构建（不要加 --minify，否则本文件头部的出处注释会被剥离）：
+ *        npx tailwindcss -c scripts/prose-css/tailwind.config.js ^
+ *                        -i scripts/prose-css/input.css ^
+ *                        -o frontend/css/prose.css
+ *   3. 构建完成后可删除仓库根目录的 node_modules/。
+ *
+ * 注意：若页面新增了本文件 content.raw 未覆盖的 prose 变体（如 prose-lg、prose-indigo），
+ *       必须同步加进 tailwind.config.js 的 content.raw，否则新变体不会被生成。
+ *
+ * 样式表顺序要求：本文件必须在 <script src="/js/tailwind.js"> **之前**引入，
+ *   这样 Play CDN 生成的工具类样式表位于其后，同特异性时工具类（如 text-gray-600）能覆盖 prose。
+ */
+
+@tailwind components;
+
+/* 页面普遍写作 `prose ... max-w-none`，而 .prose{max-width:65ch} 与 .max-w-none 特异性相同；
+   这里抬高特异性，保证无论样式表顺序如何 max-w-none 都生效。 */
+.prose.max-w-none { max-width: none; }
