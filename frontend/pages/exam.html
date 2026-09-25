@@ -59,7 +59,7 @@
       let html = `
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-6">
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">${escapeHtml(e.title)}</h1>
-          <p class="text-gray-500 dark:text-gray-400">${escapeHtml(e.description || '')}</p>
+          <p class="text-gray-500 dark:text-gray-400 prose dark:prose-invert max-w-none prose-sm">${renderMarkdown(e.description || '')}</p>
           <div class="flex items-center gap-4 mt-4 text-sm text-gray-500 dark:text-gray-400">
             <span>📊 ${questions.length} 题</span>
             <span>💯 总分 ${e.total_score}</span>
@@ -77,7 +77,7 @@
             <div class="flex items-start gap-3 mb-4">
               <span class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">${i + 1}</span>
               <div class="flex-1">
-                <div class="font-medium text-gray-900 dark:text-white">${escapeHtml(q.title)}</div>
+                <div class="font-medium text-gray-900 dark:text-white prose dark:prose-invert max-w-none prose-sm">${renderMarkdown(q.title)}</div>
                 <div class="text-xs text-gray-400 mt-1">
                   ${q.question_type === 'choice' ? '选择题' : q.question_type === 'true_false' ? '判断题' : q.question_type === 'fill_blank' ? '填空题' : '大题'}
                   · ${q.score} 分

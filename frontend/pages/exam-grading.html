@@ -8,7 +8,11 @@
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
   <script src="/js/api.js"></script>
+  <script src="/js/purify.min.js"></script>
   <script src="/js/markdown.js"></script>
+  <link rel="stylesheet" href="/js/katex/katex.min.css">
+  <script src="/js/katex/katex.min.js"></script>
+  <script src="/js/katex/auto-render.min.js"></script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
   <div id="nav"></div>
@@ -68,7 +72,7 @@
             <div class="flex items-start gap-3 mb-4">
               <span class="flex-shrink-0 w-8 h-8 rounded-full ${isCorrect ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center font-bold text-sm">${i + 1}</span>
               <div class="flex-1">
-                <div class="font-medium text-gray-900 dark:text-white">${escapeHtml(a.question_title)}</div>
+                <div class="font-medium text-gray-900 dark:text-white prose dark:prose-invert max-w-none prose-sm">${renderMarkdown(a.question_title)}</div>
                 <div class="text-xs text-gray-400 mt-1">
                   ${a.question_type === 'choice' ? '选择题' : a.question_type === 'true_false' ? '判断题' : a.question_type === 'fill_blank' ? '填空题' : '大题'}
                   · ${a.max_score} 分
@@ -140,6 +144,7 @@
       }
 
       document.getElementById('content').innerHTML = html;
+      renderMathDefaults(document.getElementById('content'));
     }
 
     async function aiGrade() {
