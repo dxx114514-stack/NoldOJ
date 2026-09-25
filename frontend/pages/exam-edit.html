@@ -8,6 +8,11 @@
   <script src="/js/tailwind.js"></script>
   <script>tailwind.config={darkMode:'class'}</script>
   <script src="/js/api.js"></script>
+  <script src="/js/purify.min.js"></script>
+  <script src="/js/markdown.js"></script>
+  <link rel="stylesheet" href="/js/katex/katex.min.css">
+  <script src="/js/katex/katex.min.js"></script>
+  <script src="/js/katex/auto-render.min.js"></script>
   <style>
     .question-block { @apply bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-4; }
     .option-row { @apply flex items-center gap-2 mb-2; }
@@ -198,9 +203,12 @@
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">题目内容 *</label>
-              <textarea onchange="questions[${i}].title = this.value" rows="2"
-                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm">${escapeHtml(q.title)}</textarea>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">题目内容 * <span class="text-xs font-normal text-gray-400">（支持 Markdown 与 KaTeX 公式）</span></label>
+              <textarea oninput="previewQuestion(${q._id}, this.value)" rows="3"
+                placeholder="支持 Markdown：**加粗**、\`代码\`、- 列表、\$公式\$"
+                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm font-mono">${escapeHtml(q.title)}</textarea>
+              <div class="mt-1 text-xs text-gray-400">预览：</div>
+              <div id="tprev-${q._id}" class="mt-1 px-4 py-2 border border-dashed border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900/40 text-sm text-gray-700 dark:text-gray-300 min-h-[2rem] prose dark:prose-invert max-w-none"></div>
             </div>
 
             ${optionsHtml}
@@ -223,6 +231,8 @@
           </div>
         `;
       }).join('');
+
+      questions.forEach(q => { if (q.title) previewQuestion(q._id, q.title); });
     }
 
     function changeType(id, type) {
@@ -234,6 +244,15 @@
       if (type === 'long_answer') { q.is_subjective = 1; q.options = []; }
       if (type === 'fill_blank') { q.options = []; }
       renderQuestions();
+    }
+
+    function previewQuestion(id, value) {
+      const q = questions.find(x => x._id === id);
+      if (q) q.title = value;
+      const el = document.getElementById('tprev-' + id);
+      if (!el) return;
+      el.innerHTML = renderMarkdown(value) || '<span class="text-gray-400">（题面预览）</span>';
+      try { renderMathDefaults(el); } catch (e) {}
     }
 
     function addOption(qid) {
