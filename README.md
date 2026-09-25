@@ -437,6 +437,9 @@ NoldOJ/
 - 智能评分：客观题自动评分，主观题支持 AI 评分（Ollama）和教师手动批改
 - 试卷提交：学生可作答并提交，支持时间限制和多次尝试
 - 题面支持 Markdown + KaTeX 公式（与题目描述一致的渲染管线：renderMarkdown + DOMPurify + renderMathDefaults）
+- 试卷编辑页题面实时 Markdown 预览
+- 修复 `prose` 类失效：打包的 `tailwind.js` 不含 typography 插件，`prose`/`prose-sm`/`prose-gray`/`dark:prose-invert` 全为空操作；新增预构建 `css/prose.css` 并在 7 个使用 `prose` 的页面引入
+- 修复 `@apply` 失效：Play CDN 仅处理 `style[type="text/tailwindcss"]`，`problem.html`/`exam.html`/`exam-edit.html` 三处普通 `<style>` 内的 `@apply` 规则原本不生效（侧栏卡片、答题卡片无底色/圆角/内边距）
 - 前端页面：试卷列表、答题界面、结果展示、教师批改界面
 - 导航栏新增"试卷"入口
 
