@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   email TEXT DEFAULT '',
@@ -16,6 +16,9 @@
   preferred_language TEXT DEFAULT '',
   force_logout_at TEXT DEFAULT '',
   submit_lock_exempt INTEGER DEFAULT 0,
+  email_verified INTEGER DEFAULT 0,
+  max_file_size INTEGER DEFAULT 0,
+  max_storage INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -111,6 +114,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   compile_output TEXT DEFAULT '',
   JudgerDetail TEXT DEFAULT '{}',
   first_accepted INTEGER DEFAULT 0,
+  virtual_contest_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
@@ -388,6 +392,47 @@ CREATE INDEX IF NOT EXISTS idx_discussions_contest ON discussions(contest_id);
 CREATE INDEX IF NOT EXISTS idx_discussions_pinned ON discussions(pinned);
 CREATE INDEX IF NOT EXISTS idx_discussion_replies_discussion ON discussion_replies(discussion_id);
 
+-- 功能9：虚拟比赛
+CREATE TABLE IF NOT EXISTS virtual_contests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  contest_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  status TEXT DEFAULT 'running',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (contest_id) REFERENCES contests(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE(contest_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_virtual_contests_user ON virtual_contests(user_id);
+
+-- 功能10：代码查重任务表
+CREATE TABLE IF NOT EXISTS plagiarism_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  problem_id INTEGER NOT NULL,
+  status TEXT DEFAULT 'pending',
+  total_pairs INTEGER DEFAULT 0,
+  checked_pairs INTEGER DEFAULT 0,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  finished_at TEXT,
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS plagiarism_pairs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL,
+  user_a INTEGER NOT NULL,
+  user_b INTEGER NOT NULL,
+  sub_a_id INTEGER NOT NULL,
+  sub_b_id INTEGER NOT NULL,
+  similarity REAL NOT NULL,
+  level TEXT DEFAULT 'low',
+  FOREIGN KEY (task_id) REFERENCES plagiarism_tasks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_plagiarism_pairs_task ON plagiarism_pairs(task_id);
+
 -- 题目收藏（个人收藏夹）
 CREATE TABLE IF NOT EXISTS user_favorites (
   user_id INTEGER NOT NULL,
@@ -438,7 +483,7 @@ CREATE TABLE IF NOT EXISTS exams (
   creator_id INTEGER NOT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (creator_id) REFERENCES users(id)
+  FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- 试卷题目

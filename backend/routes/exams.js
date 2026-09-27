@@ -280,7 +280,6 @@ router.post('/:id/submit', requireAuth, (req, res) => {
 
     if (!isSubjective) {
       // 客观题自动评分
-      allObjective = false;
       const userAnswer = String(a.answer || '').trim().toLowerCase();
       const correctAnswer = String(question.correct_answer || '').trim().toLowerCase();
 
@@ -300,6 +299,7 @@ router.post('/:id/submit', requireAuth, (req, res) => {
     } else {
       // 主观题：等待评分
       hasSubjective = true;
+      allObjective = false;
       gradingStatus = 'pending';
     }
 
@@ -333,7 +333,12 @@ router.get('/:id/submission/:sid', requireAuth, (req, res) => {
   if (!submission) {
     // 检查是否是教师+查看他人提交
     if (req.user && ['teacher', 'admin', 'su'].includes(req.user.role)) {
-      const sub = db.prepare('SELECT * FROM exam_submissions WHERE id = ?').get(req.params.sid);
+      const sub = db.prepare(`
+        SELECT es.*, e.title as exam_title, e.show_answer, e.total_score as exam_total_score
+        FROM exam_submissions es
+        JOIN exams e ON e.id = es.exam_id
+        WHERE es.id = ?
+      `).get(req.params.sid);
       if (!sub) {
         return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Submission not found.' });
       }
@@ -450,7 +455,9 @@ router.post('/:id/ai-grade/:sid', requireAuth, requireRole('teacher'), async (re
 
   // 检查 AI 是否启用
   const config = require('../config/config');
-  if (!config.ai || !config.ai.enabled) {
+  const { aiEnabled, aiChat } = require('../services/aiClient');
+  const aiCfg = config.ai?.hint || config.ai?.security;
+  if (!aiEnabled(aiCfg)) {
     return res.status(503).json({ code: 5, reason: 'ERR_AI_UNAVAILABLE', message: 'AI 服务未启用。' });
   }
 
@@ -466,9 +473,6 @@ router.post('/:id/ai-grade/:sid', requireAuth, requireRole('teacher'), async (re
     return res.status(400).json({ code: 1, reason: 'ERR_NO_PENDING', message: '没有待评分的主观题。' });
   }
 
-  // 调用 AI 评分
-  const { callAI } = require('../services/ai');
-
   for (const answer of pendingAnswers) {
     try {
       const prompt = answer.ai_grading_prompt ||
@@ -482,7 +486,7 @@ router.post('/:id/ai-grade/:sid', requireAuth, requireRole('teacher'), async (re
 请给出评分（0-${answer.max_score}）和简短评语。
 格式：{"score": 分数, "comment": "评语"}`;
 
-      const aiResult = await callAI(prompt);
+      const aiResult = await aiChat('你是一位严格的计算机与算法试卷批改教师。请按照要求客观公正评判。', prompt, { cfg: aiCfg });
       let score = 0;
       let comment = '';
 

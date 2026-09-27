@@ -10,13 +10,15 @@
 function buildUpdates(fields, options = {}) {
   const set = [];
   const values = [];
+  const activeFields = [];
   for (const f of fields) {
     if (f.value === undefined) continue;
     set.push(`${f.key} = ?`);
     values.push(f.transform ? f.transform(f.value) : f.value);
+    activeFields.push(f.key);
   }
   if (options.touchUpdatedAt) set.push("updated_at = datetime('now')");
-  return { clause: set.join(', '), set, values, count: set.length };
+  return { clause: set.join(', '), set, values, count: set.length, fields: activeFields };
 }
 
 module.exports = { buildUpdates };

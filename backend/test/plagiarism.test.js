@@ -165,6 +165,12 @@ print(add(1, 2))
   console.log('\n--- 集成测试：插入测试数据 ---');
   const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
+  // 确保 problem_id = 1 存在，避免外键约束失败
+  const probExist = db.prepare('SELECT id FROM problems WHERE id = 1').get();
+  if (!probExist) {
+    db.prepare('INSERT INTO problems (id, title, is_public) VALUES (?, ?, ?)').run(1, '查重测试题目', 1);
+  }
+
   // 创建 4 个测试用户（A、B、B2、C），覆盖 high / medium / low 三个等级
   const bcrypt = require('bcryptjs');
   const testUsers = [

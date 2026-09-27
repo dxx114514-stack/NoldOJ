@@ -330,6 +330,11 @@ router.delete('/:id', requireAuth, requireRole('su'), (req, res) => {
   db.prepare('DELETE FROM problem_sets WHERE creator_id = ?').run(target.id); // items/progress 级联
   db.prepare('UPDATE problems SET created_by = NULL WHERE created_by = ?').run(target.id);
   db.prepare('UPDATE contests SET created_by = NULL WHERE created_by = ?').run(target.id);
+  // 清理试卷系统关联数据（exams.creator_id 无 CASCADE 且为 NOT NULL）
+  db.prepare('DELETE FROM exam_answers WHERE submission_id IN (SELECT id FROM exam_submissions WHERE exam_id IN (SELECT id FROM exams WHERE creator_id = ?) OR user_id = ?)').run(target.id, target.id);
+  db.prepare('DELETE FROM exam_submissions WHERE exam_id IN (SELECT id FROM exams WHERE creator_id = ?) OR user_id = ?').run(target.id, target.id);
+  db.prepare('DELETE FROM exam_questions WHERE exam_id IN (SELECT id FROM exams WHERE creator_id = ?)').run(target.id);
+  db.prepare('DELETE FROM exams WHERE creator_id = ?').run(target.id);
   db.prepare('DELETE FROM submissions WHERE user_id = ?').run(target.id); // submission_details 级联
   // R9-20: 删用户时清理其上传到磁盘的文件（uploaded_files 是 SET NULL，只删行会留孤儿文件）
   const uploadDir = path.join(__dirname, '../../data/uploads');

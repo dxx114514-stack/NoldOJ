@@ -42,8 +42,8 @@
         currentExam = e;
         document.title = `${e.title} - NoldOJ`;
 
-        // 如果已提交且有成绩，显示结果
-        if (e.user_submission && e.user_submission.status === 'graded') {
+        // 如果已提交（已批改或待批改），显示结果状态
+        if (e.user_submission && (e.user_submission.status === 'graded' || e.user_submission.status === 'grading')) {
           showResult(e.user_submission);
           return;
         }

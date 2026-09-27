@@ -118,7 +118,7 @@ function renderMarkdown(text) {
     try { cfg = JSON.parse(raw); } catch (e) { cfg = null; }
     if (!cfg) { failNode(el, '图表配置解析失败'); return; }
     ensureLib(
-      'https://cdn.jsdelivr.net/npm/echarts@5.15.0/dist/echarts.min.js',
+      '/js/echarts.min.js',
       function () { return typeof window.echarts !== 'undefined'; },
       function () {
         if (typeof window.echarts === 'undefined') { failNode(el, '图表库加载失败(检查网络或广告拦截)'); return; }
@@ -149,9 +149,19 @@ function renderMarkdown(text) {
         try {
           window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
           var id = 'oj-mmd-' + Math.random().toString(36).slice(2, 9);
-          window.mermaid.render(id, src, function (svg) {
-            el.outerHTML = '<div class="oj-mermaid-svg my-4 overflow-x-auto">' + svg + '</div>';
-          });
+          var p = window.mermaid.render(id, src);
+          if (p && typeof p.then === 'function') {
+            p.then(function (result) {
+              el.outerHTML = '<div class="oj-mermaid-svg my-4 overflow-x-auto">' + (result.svg || result) + '</div>';
+            }).catch(function (e) {
+              el.className = 'my-3 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 text-sm overflow-x-auto text-left text-gray-700 dark:text-gray-300';
+              el.textContent = '[mermaid] 语法错误:\n' + String(e && e.message || e);
+            });
+          } else {
+            window.mermaid.render(id, src, function (svg) {
+              el.outerHTML = '<div class="oj-mermaid-svg my-4 overflow-x-auto">' + svg + '</div>';
+            });
+          }
         } catch (e) {
           el.className = 'my-3 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 text-sm overflow-x-auto text-left text-gray-700 dark:text-gray-300';
           el.textContent = '[mermaid] 语法错误:\n' + String(e && e.message || e);

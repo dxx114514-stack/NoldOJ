@@ -19,7 +19,7 @@ function getStatsData(uid) {
   `).all(uid, startStr);
   const calMap = new Map(calRows.map(r => [r.d, { submits: r.submits, acs: r.acs || 0 }]));
   const calendar = [];
-  for (let i = 364; i >= 0; i--) {
+  for (let i = 0; i <= 364; i++) {
     const d = new Date(calStart);
     d.setUTCDate(calStart.getUTCDate() + i);
     const key = d.toISOString().slice(0, 10);

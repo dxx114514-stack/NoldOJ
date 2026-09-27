@@ -103,12 +103,12 @@
               <div class="flex items-center gap-4">
                 <input type="number" id="score-${a.id}" min="0" max="${a.max_score}" value="${a.score || 0}"
                   class="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white"
-                  onchange="gradingScores[${a.id}] = { score: this.value }">
+                  onchange="if(!gradingScores[${a.id}]) gradingScores[${a.id}] = {}; gradingScores[${a.id}].score = this.value">
                 <span class="text-sm text-gray-500">/ ${a.max_score}</span>
               </div>
               <textarea id="comment-${a.id}" placeholder="评语（可选）" rows="2"
                 class="mt-2 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm"
-                onchange="if(!gradingScores[${a.id}]) gradingScores[${a.id}] = {}; gradingScores[${a.id}].comment = this.value"></textarea>
+                onchange="if(!gradingScores[${a.id}]) gradingScores[${a.id}] = {}; gradingScores[${a.id}].comment = this.value">${escapeHtml(a.human_comment || '')}</textarea>
             </div>
             ` : ''}
 

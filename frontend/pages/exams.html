@@ -52,7 +52,7 @@
             <div class="flex items-center gap-4 mt-3 text-xs text-gray-400 dark:text-gray-500">
               <span>📊 ${e.question_count || 0} 题</span>
               <span>📝 ${e.submission_count || 0} 次提交</span>
-              <span>⏱️ ${e.time_limit || '不限时'} 分钟</span>
+              <span>⏱️ ${e.time_limit ? e.time_limit + ' 分钟' : '不限时'}</span>
               <span>💯 总分 ${e.total_score || 0}</span>
               <span>👤 ${escapeHtml(e.creator_name || '')}</span>
               <span>${new Date(e.created_at).toLocaleDateString('zh-CN')}</span>

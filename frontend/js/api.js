@@ -1,4 +1,4 @@
-﻿(function() {
+(function() {
   const savedTheme = localStorage.getItem('NoldOJ_theme') || 'light';
   if (savedTheme === 'dark') document.documentElement.classList.add('dark');
   else document.documentElement.classList.remove('dark');
@@ -163,7 +163,7 @@ if (res.status === 401 && data.reason === 'ERR_UNAUTHORIZED') {
       throw e;
     }
   }
-  if (res.status === 403 && data.reason === 'ERR_FORBIDDEN') {
+  if (res.status === 403 && (data.reason === 'ERR_BANNED' || (data.message && data.message.includes('封禁')))) {
     clearToken();
     if (window.location.pathname !== '/pages/login.html') window.location.href = '/pages/login.html';
     throw { status: 403, message: data.message || '账号已被封禁' };

@@ -1,6 +1,6 @@
 @echo off
 chcp 65001
-cd /d "D:\你的代码仓库路径"
+cd /d "%~dp0"
 
 :: 1. 先拉取最新代码，防止冲突
 git pull origin main
