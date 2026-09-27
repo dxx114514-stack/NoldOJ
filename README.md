@@ -448,6 +448,7 @@ NoldOJ/
 - `exam.html` 试卷描述容器 `<p>` 改为 `<div>`：包裹 `renderMarkdown` 的块级输出会被浏览器拆出，导致 `<p>` 上的 class 全部失效
 - 修复 `@[url]` 内嵌网页失效：helmet CSP 的 `frame-ancestors 'none'` 会拒绝同源 iframe（与 `X-Frame-Options: SAMEORIGIN` 冲突时 CSP 优先），改为 `'self'`，第三方站点仍被拒绝
 - 新增 Markdown 交互演示页 `pages/markdown-demo.html`：基础/扩展/嵌入语法的源码与渲染结果对照 + 实时预览编辑器，配套图片 `img/demo-image.svg`
+- 试卷题目支持 Excel 导入：试卷编辑页新增「Excel 导入 / 下载模板」，前端解析 xlsx（题型/题目/选项/答案/分值/主观题列名映射，兼容无表头固定列序），输出结构与手动录入一致；解析逻辑抽到 `js/exam-import.js` 并配套 15 项单元测试；另提供站内示例文件 `/exam-sample.xlsx`（示例题目 + 「填写说明」工作表）可直接下载参考
 - 前端页面：试卷列表、答题界面、结果展示、教师批改界面
 - 导航栏新增"试卷"入口
 

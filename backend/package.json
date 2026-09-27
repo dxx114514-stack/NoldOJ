@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/scorer.test.js test/compare.test.js test/ratelimit.test.js test/plagiarism.test.js test/exams.test.js test/contests.test.js test/sandbox.test.js"
+    "test": "node --test test/scorer.test.js test/compare.test.js test/ratelimit.test.js test/plagiarism.test.js test/exams.test.js test/exam-import.test.js test/contests.test.js test/sandbox.test.js"
   },
   "dependencies": {
     "adm-zip": "^0.6.0",

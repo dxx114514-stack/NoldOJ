@@ -11,6 +11,8 @@
   <script src="/js/api.js"></script>
   <script src="/js/purify.min.js"></script>
   <script src="/js/markdown.js"></script>
+  <script src="/js/xlsx.full.min.js"></script>
+  <script src="/js/exam-import.js"></script>
   <link rel="stylesheet" href="/js/katex/katex.min.css">
   <script src="/js/katex/katex.min.js"></script>
   <script src="/js/katex/auto-render.min.js"></script>
@@ -59,9 +61,18 @@
 
       <!-- 题目列表 -->
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 class="text-lg font-bold text-gray-900 dark:text-white">题目列表</h2>
-          <button onclick="addQuestion()" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-xl hover:bg-indigo-700">+ 添加题目</button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="document.getElementById('examImportInput').click()"
+              class="px-3.5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-xl transition">Excel 导入</button>
+            <input type="file" id="examImportInput" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExamImport(this)">
+            <button onclick="downloadExamTemplate()"
+              class="px-3.5 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition">下载模板</button>
+            <a href="/exam-sample.xlsx" download="NoldOJ试卷题目示例.xlsx"
+              class="px-3.5 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition">示例文件</a>
+            <button onclick="addQuestion()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-xl transition">+ 添加题目</button>
+          </div>
         </div>
         <div id="questionsContainer" class="space-y-4"></div>
       </div>
@@ -143,7 +154,7 @@
     function renderQuestions() {
       const container = document.getElementById('questionsContainer');
       if (questions.length === 0) {
-        container.innerHTML = '<p class="text-gray-400 text-center py-6">点击上方"添加题目"按钮开始</p>';
+        container.innerHTML = '<p class="text-gray-400 text-center py-6">点击「添加题目」，或用「Excel 导入」批量导入（格式可参考「示例文件」）</p>';
         return;
       }
 
@@ -269,6 +280,50 @@
     function updateOption(qid, idx, value) {
       const q = questions.find(q => q._id === qid);
       if (q) q.options[idx] = value;
+    }
+
+    function downloadExamTemplate() {
+      try {
+        NoldExamImport.downloadTemplate();
+      } catch (err) {
+        alert(err.message || '模板下载失败');
+      }
+    }
+
+    async function handleExamImport(input) {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+
+      let res;
+      try {
+        res = await NoldExamImport.importFile(file);
+      } catch (err) {
+        alert('Excel 导入失败: ' + (err && err.message ? err.message : err));
+        return;
+      }
+
+      const errs = (res.errors || []).filter(e => e.indexOf('提示：') !== 0);
+      const notes = (res.errors || []).filter(e => e.indexOf('提示：') === 0);
+
+      if (!res.questions.length) {
+        alert('没有解析出任何题目' + (errs.length ? '：\n' + errs.slice(0, 10).join('\n') + (errs.length > 10 ? `\n… 共 ${errs.length} 条` : '') : ''));
+        return;
+      }
+
+      let msg = `解析出 ${res.questions.length} 道题目`;
+      if (questions.length) msg += `，将追加到现有 ${questions.length} 道题目之后`;
+      if (errs.length) {
+        msg += `；${errs.length} 条存在问题会被跳过：\n` + errs.slice(0, 8).join('\n') + (errs.length > 8 ? `\n… 共 ${errs.length} 条` : '');
+      }
+      if (notes.length) msg += '\n' + notes.join('\n');
+
+      if ((questions.length || errs.length) && !confirm(msg + '\n\n是否继续导入？')) return;
+
+      res.questions.forEach(q => {
+        questions.push(Object.assign({ _id: ++questionIdCounter }, q));
+      });
+      renderQuestions();
     }
 
     async function saveExam() {

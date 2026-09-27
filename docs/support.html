@@ -689,6 +689,7 @@ build.bat</code></pre>
             <li><code>exam.html</code> 试卷描述容器 <code>&lt;p&gt;</code> 改为 <code>&lt;div&gt;</code>，避免包裹块级输出导致 class 失效</li>
             <li>修复 <code>@[url]</code> 内嵌网页失效：helmet CSP 的 <code>frame-ancestors 'none'</code> 会拒绝同源 iframe（与 <code>X-Frame-Options: SAMEORIGIN</code> 冲突时 CSP 优先），改为 <code>'self'</code>，第三方站点仍被拒绝</li>
             <li>新增 Markdown 交互演示页 <code>pages/markdown-demo.html</code>：基础/扩展/嵌入语法的源码与渲染结果对照 + 实时预览编辑器，配套图片 <code>img/demo-image.svg</code></li>
+            <li>试卷题目支持 Excel 导入：试卷编辑页新增「Excel 导入 / 下载模板 / 示例文件」，前端解析 xlsx（列名映射 + 无表头固定列序），输出结构与手动录入一致；解析逻辑 <code>js/exam-import.js</code> 配套 15 项单元测试；示例文件 <code>/exam-sample.xlsx</code> 含示例题目与「填写说明」工作表</li>
             <li>前端页面：试卷列表、答题界面、结果展示、教师批改界面</li>
           </ul>
         </div>
