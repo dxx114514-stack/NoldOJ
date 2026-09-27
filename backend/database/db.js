@@ -21,7 +21,8 @@ const ALLOWED_TABLES = new Set([
   'categories', 'problem_categories', 'email_codes', 'announcements',
   'submission_files', 'problem_sets', 'problem_set_items', 'problem_set_progress',
   'discussions', 'discussion_replies', 'virtual_contests', 'plagiarism_tasks', 'plagiarism_pairs',
-  'user_favorites', 'achievements', 'user_achievements'
+  'user_favorites', 'achievements', 'user_achievements',
+  'exams', 'exam_questions', 'exam_submissions', 'exam_answers'
 ]);
 
 // 返回表中的下一个可用 ID。

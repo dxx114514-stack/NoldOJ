@@ -220,6 +220,16 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   res.json({ message: 'Exam deleted.' });
 });
 
+// 规范化答案（支持判断题 T/F、对/错、1/0、正确/错误）
+function normalizeAnswer(type, val) {
+  const s = String(val ?? '').trim().toLowerCase();
+  if (type === 'true_false') {
+    if (['true', 't', '1', '正确', '对', 'v', '√', 'yes', 'y'].includes(s)) return 'true';
+    if (['false', 'f', '0', '错误', '错', 'x', '×', 'no', 'n'].includes(s)) return 'false';
+  }
+  return s;
+}
+
 // 提交试卷
 router.post('/:id/submit', requireAuth, (req, res) => {
   const exam = db.prepare('SELECT * FROM exams WHERE id = ?').get(req.params.id);
@@ -249,76 +259,73 @@ router.post('/:id/submit', requireAuth, (req, res) => {
   const questionMap = {};
   questions.forEach(q => { questionMap[q.id] = q; });
 
-  // 创建提交记录
-  const submissionResult = db.prepare(`
-    INSERT INTO exam_submissions (exam_id, user_id, status, max_score)
-    VALUES (?, ?, 'submitted', ?)
-  `).run(exam.id, req.user.id, exam.total_score);
+  const submitTx = db.transaction(() => {
+    // 创建提交记录
+    const submissionResult = db.prepare(`
+      INSERT INTO exam_submissions (exam_id, user_id, status, max_score)
+      VALUES (?, ?, 'submitted', ?)
+    `).run(exam.id, req.user.id, exam.total_score);
 
-  const submissionId = submissionResult.lastInsertRowid;
+    const submissionId = submissionResult.lastInsertRowid;
 
-  // 处理每道题的答案
-  let totalScore = 0;
-  let hasSubjective = false;
-  let allObjective = true;
+    // 处理每道题的答案
+    let totalScore = 0;
+    let hasSubjective = false;
 
-  const answerStmt = db.prepare(`
-    INSERT INTO exam_answers (submission_id, question_id, answer, max_score, is_subjective, grading_status)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+    const answerStmt = db.prepare(`
+      INSERT INTO exam_answers (submission_id, question_id, answer, score, max_score, is_correct, is_subjective, grading_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  answers.forEach(a => {
-    const question = questionMap[a.question_id];
-    if (!question) return;
+    answers.forEach(a => {
+      const question = questionMap[a.question_id];
+      if (!question) return;
 
-    const isSubjective = question.question_type === 'long_answer' ||
-                         (question.question_type === 'fill_blank' && question.is_subjective);
+      const isSubjective = question.question_type === 'long_answer' ||
+                           (question.question_type === 'fill_blank' && question.is_subjective);
 
-    let score = 0;
-    let isCorrect = 0;
-    let gradingStatus = 'pending';
+      let score = 0;
+      let isCorrect = 0;
+      let gradingStatus = 'pending';
 
-    if (!isSubjective) {
-      // 客观题自动评分
-      const userAnswer = String(a.answer || '').trim().toLowerCase();
-      const correctAnswer = String(question.correct_answer || '').trim().toLowerCase();
+      if (!isSubjective) {
+        // 客观题自动评分（规范化对比）
+        const userAnswer = normalizeAnswer(question.question_type, a.answer);
+        const correctAnswer = normalizeAnswer(question.question_type, question.correct_answer);
 
-      if (question.question_type === 'choice' || question.question_type === 'true_false') {
-        if (userAnswer === correctAnswer) {
-          score = question.score;
-          isCorrect = 1;
+        if (question.question_type === 'choice' || question.question_type === 'true_false' || question.question_type === 'fill_blank') {
+          if (userAnswer === correctAnswer) {
+            score = question.score;
+            isCorrect = 1;
+          }
         }
-      } else if (question.question_type === 'fill_blank') {
-        // 客观填空题：精确匹配
-        if (userAnswer === correctAnswer) {
-          score = question.score;
-          isCorrect = 1;
-        }
+        gradingStatus = 'ai_graded';
+      } else {
+        // 主观题：等待评分
+        hasSubjective = true;
+        gradingStatus = 'pending';
       }
-      gradingStatus = 'ai_graded';
-    } else {
-      // 主观题：等待评分
-      hasSubjective = true;
-      allObjective = false;
-      gradingStatus = 'pending';
-    }
 
-    totalScore += score;
-    answerStmt.run(submissionId, question.id, a.answer || '', question.score, isSubjective ? 1 : 0, gradingStatus);
+      totalScore += score;
+      answerStmt.run(submissionId, question.id, a.answer || '', score, question.score, isCorrect, isSubjective ? 1 : 0, gradingStatus);
+    });
+
+    // 更新提交状态
+    const finalStatus = hasSubjective ? 'grading' : 'graded';
+    db.prepare('UPDATE exam_submissions SET total_score = ?, status = ?, ai_graded = ? WHERE id = ?')
+      .run(totalScore, finalStatus, !hasSubjective ? 1 : 0, submissionId);
+
+    return {
+      submission_id: submissionId,
+      status: finalStatus,
+      total_score: totalScore,
+      max_score: exam.total_score,
+      has_subjective: hasSubjective
+    };
   });
 
-  // 更新提交状态
-  const finalStatus = hasSubjective ? 'grading' : 'graded';
-  db.prepare('UPDATE exam_submissions SET total_score = ?, status = ?, ai_graded = ? WHERE id = ?')
-    .run(totalScore, finalStatus, !hasSubjective ? 1 : 0, submissionId);
-
-  res.status(201).json({
-    submission_id: submissionId,
-    status: finalStatus,
-    total_score: totalScore,
-    max_score: exam.total_score,
-    has_subjective: hasSubjective
-  });
+  const result = submitTx();
+  res.status(201).json(result);
 });
 
 // 获取提交详情
@@ -407,7 +414,7 @@ router.post('/:id/grade/:sid', requireAuth, requireRole('teacher'), (req, res) =
 
   let totalScore = 0;
   const updateStmt = db.prepare(`
-    UPDATE exam_answers SET score = ?, human_comment = ?, grading_status = 'human_graded', graded_at = datetime('now')
+    UPDATE exam_answers SET score = ?, is_correct = CASE WHEN ? >= max_score THEN 1 ELSE 0 END, human_comment = ?, grading_status = 'human_graded', graded_at = datetime('now')
     WHERE id = ?
   `);
 
@@ -428,8 +435,9 @@ router.post('/:id/grade/:sid', requireAuth, requireRole('teacher'), (req, res) =
     const answer = answerMap[a.answer_id];
     if (!answer || !answer.is_subjective) return;
 
-    updateStmt.run(a.score || 0, a.comment || '', a.answer_id);
-    totalScore += a.score || 0;
+    const s = Number(a.score) || 0;
+    updateStmt.run(s, s, a.comment || '', a.answer_id);
+    totalScore += s;
   });
 
   // 更新提交记录
@@ -503,9 +511,9 @@ router.post('/:id/ai-grade/:sid', requireAuth, requireRole('teacher'), async (re
       }
 
       db.prepare(`
-        UPDATE exam_answers SET score = ?, ai_comment = ?, grading_status = 'ai_graded', graded_at = datetime('now')
+        UPDATE exam_answers SET score = ?, is_correct = CASE WHEN ? >= max_score THEN 1 ELSE 0 END, ai_comment = ?, grading_status = 'ai_graded', graded_at = datetime('now')
         WHERE id = ?
-      `).run(score, comment, answer.id);
+      `).run(score, score, comment, answer.id);
     } catch (err) {
       console.error('[AI Grading] Error:', err.message);
     }

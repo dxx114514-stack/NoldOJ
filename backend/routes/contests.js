@@ -273,13 +273,34 @@ router.get('/:id/leaderboard', optionalAuth, (req, res) => {
   const problemIds = contestProblems.map(p => p.problem_id);
   const placeholders = problemIds.map(() => '?').join(',');
 
-  // 冻结期间只统计冻结时刻之前的提交
+  const toSqliteUtc = (d) => {
+    if (!d) return null;
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return null;
+    return date.toISOString().replace('T', ' ').substring(0, 19);
+  };
+
+  // 比赛时间窗口过滤：只统计比赛起止时间范围内的提交；冻结期间只统计到冻结时刻
   let timeFilter = '';
   const params = [...problemIds];
-  if (frozen) {
-    timeFilter = 'AND s.created_at <= ?';
-    params.push(freezeAt.toISOString().replace('T', ' ').substring(0, 19));
+
+  const startUtc = toSqliteUtc(contest.start_time);
+  if (startUtc) {
+    timeFilter += ' AND s.created_at >= ?';
+    params.push(startUtc);
   }
+
+  if (frozen && freezeAt) {
+    timeFilter += ' AND s.created_at <= ?';
+    params.push(toSqliteUtc(freezeAt));
+  } else if (contest.end_time) {
+    const endUtc = toSqliteUtc(contest.end_time);
+    if (endUtc) {
+      timeFilter += ' AND s.created_at <= ?';
+      params.push(endUtc);
+    }
+  }
+
   // 榜单仅统计已报名参赛的用户
   timeFilter += ' AND s.user_id IN (SELECT user_id FROM contest_participants WHERE contest_id = ?)';
   params.push(contest.id);
