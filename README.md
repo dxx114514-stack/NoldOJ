@@ -441,6 +441,13 @@ NoldOJ/
 - 修复 `prose` 类失效：打包的 `tailwind.js` 不含 typography 插件，`prose`/`prose-sm`/`prose-gray`/`dark:prose-invert` 全为空操作；新增预构建 `css/prose.css` 并在 12 个页面引入（7 个页面直接使用 `prose` 类，另 5 个页面公告详情/文章详情/比赛详情/个人资料/管理面板经 `renderMarkdown` 输出的 `prose` 包裹容器间接使用）
 - 修复 `@apply` 失效：Play CDN 仅处理 `style[type="text/tailwindcss"]`，`problem.html`/`exam.html`/`exam-edit.html` 三处普通 `<style>` 内的 `@apply` 规则原本不生效（侧栏卡片、答题卡片无底色/圆角/内边距）
 - 移除死文件 `frontend/css/app.css`：全仓库 0 引用，且其 `!important` 暗色覆盖会与 Tailwind `dark:` 变体体系冲突
+- 重写 `renderMarkdown` 解析器：补上无序/有序列表、引用、表格、围栏代码块、h4–h6 标题与真正的段落级联；行内改为单趟分词（image 先于 link、strong 先于 em），修复 `![图片](url)` 被链接规则吃掉、`$a*b*c$` 被斜体规则拆开、`$5 到 $10` 被误判为公式等缺陷
+- 修复嵌入块/公式占位符失效：`\x00` 占位符在 HTML 解析阶段被浏览器丢弃，改用私有区字符 `\uE000/\uE001`；围栏代码块与公式统一抽为占位符，不再参与行内规则与消毒流程
+- 代码块可读性：`prose` 的 `--tw-prose-pre-code` 为浅灰色，`<pre><code>` 显式指定前景色
+- 管理面板公告预览补上 KaTeX：占位文案一直声明支持公式，但该页未引入 katex 脚本
+- `exam.html` 试卷描述容器 `<p>` 改为 `<div>`：包裹 `renderMarkdown` 的块级输出会被浏览器拆出，导致 `<p>` 上的 class 全部失效
+- 修复 `@[url]` 内嵌网页失效：helmet CSP 的 `frame-ancestors 'none'` 会拒绝同源 iframe（与 `X-Frame-Options: SAMEORIGIN` 冲突时 CSP 优先），改为 `'self'`，第三方站点仍被拒绝
+- 新增 Markdown 交互演示页 `pages/markdown-demo.html`：基础/扩展/嵌入语法的源码与渲染结果对照 + 实时预览编辑器，配套图片 `img/demo-image.svg`
 - 前端页面：试卷列表、答题界面、结果展示、教师批改界面
 - 导航栏新增"试卷"入口
 

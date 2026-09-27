@@ -8,6 +8,10 @@ function renderMarkdown(text) {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+  // 属性值上下文: 额外转义反引号, 防止 attribute 中的 ` 干扰代码段规则
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/`/g, '&#96;');
+  }
   // C-3: 输出统一过 DOMPurify 清洗（白名单），无 DOMPurify 时 fail-closed 转义为纯文本
   // R11-?: DOMPurify 默认白名单不含 iframe，@[url]/@[bilibili] 生成的 iframe 会被整段剥掉
   // 导致内嵌网页无法渲染（与 CORS 无关）。显式放行 iframe 及安全属性；src 仍受限
@@ -32,51 +36,232 @@ function renderMarkdown(text) {
   }
   try {
     // ── 块级/富内容嵌入: 占位符策略 ──────────────────────────
-    // @[office]/@[echarts]/@[mermaid] 先提取为 \x00N\x00 占位符, 防止其内容被后续
-    // markdown 行内规则(-->/[x]/**等)破坏; sanitize 后回填(DOMPurify 放行 data-* 与 class)。
+    // 围栏代码块 / @[office] / @[echarts] / @[mermaid] / @[url] / 公式 先提取为 \x00N\x00
+    // 占位符, 防止其内容被后续行内规则(-- / * / [x] / $)破坏; sanitize 之后回填
+    // (DOMPurify 放行 data-* 与 class), 因此嵌入块不参与 escape 与 * 清理。
     const embeds = [];
-    function stash(html) { embeds.push(html); return '\u0000' + (embeds.length - 1) + '\u0000'; }
+    function stash(html) { embeds.push(html); return '\uE000' + (embeds.length - 1) + '\uE001'; }
 
-    let html = text
-      // Office 文档预览: 微软 Office Online 渲染, 文档 URL 需公网可访问(如图床)
-      .replace(/@\[office\]\(([^)\s]+)\)/g, (_, raw) => {
-        const url = fixUrl(raw);
-        if (!/^https:\/\//i.test(url)) return '<div class="my-3 text-sm text-gray-500 dark:text-gray-400">[office] 仅支持公网 https 文档地址</div>';
-        return stash('<div class="my-4"><iframe src="' + escapeHtml('https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(url)) + '" class="w-full rounded-lg border border-gray-200 dark:border-gray-600" height="600" loading="lazy"></iframe></div>');
-      })
-      // ECharts 图表: 参数为 JSON 配置, 解析失败降级为代码块; 渲染由文件尾部增强器完成
-      .replace(/@\[echarts\]\((.+)\)/g, (_, json) => {
-        const raw = json.trim().replace(/\)+$/, '');
-        let cfg = null;
-        try { cfg = JSON.parse(raw); } catch (e) { cfg = null; }
-        if (!cfg || typeof cfg !== 'object') return '<pre class="my-3 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 text-sm overflow-x-auto text-gray-700 dark:text-gray-300">' + escapeHtml('[echarts] JSON 配置无效:\n' + raw.slice(0, 2000)) + '</pre>';
-        return stash('<div class="my-4 oj-echarts" data-config="' + escapeHtml(JSON.stringify(cfg)) + '"><div class="oj-echarts-loading text-sm text-gray-400 dark:text-gray-500 py-16 text-center">图表加载中…</div></div>');
-      })
-      // Mermaid 图表: 块级跨行语法, 结束标记 @[/mermaid]; 内容原样转义存放, 渲染由增强器完成
-      .replace(/@\[mermaid\][ \t]*\n([\s\S]*?)\n?@\[\/mermaid\][ \t]*(?:\n|$)/g, (_, body) => {
-        return stash('<pre class="oj-mermaid my-4 text-center">' + escapeHtml(body.trim()) + '</pre>');
-      })
-      .replace(/\$\$\n?([\s\S]*?)\n?\$\$/g, (_, m) => `<div class="katex-display my-4 text-center">\\[${escapeHtml(m.trim())}\\]</div>`)
-      .replace(/\$(.+?)\$/g, (_, m) => `\\(${escapeHtml(m)}\\)`)
-      .replace(/@\[bilibili\]\((BV[a-zA-Z0-9]+)\)/g, (_, bv) => `<div class="my-4"><iframe src="https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bv)}&autoplay=0" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" class="w-full aspect-video rounded-lg"></iframe></div>`)
-      .replace(/@\[url\]\(([^)]+)\)/g, (_, url) => `<div class="my-4"><iframe src="${escapeHtml(fixUrl(url))}" class="w-full min-h-[500px] rounded-lg border border-gray-200 dark:border-gray-600"></iframe></div>`)
-      .replace(/@\[audio\]\(([^)]+)\)/g, (_, url) => `<div class="my-3"><audio controls class="w-full" src="${escapeHtml(fixUrl(url))}"></audio></div>`)
-      .replace(/@\[video\]\(([^)]+)\)/g, (_, url) => `<div class="my-4"><video controls class="w-full rounded-lg" src="${escapeHtml(fixUrl(url))}"></video></div>`)
-      .replace(/^### (.+)$/gm, (_, m) => `<h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mt-4 mb-2">${escapeHtml(m)}</h3>`)
-      .replace(/^## (.+)$/gm, (_, m) => `<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-6 mb-3">${escapeHtml(m)}</h2>`)
-      .replace(/^# (.+)$/gm, (_, m) => `<h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-6 mb-3">${escapeHtml(m)}</h1>`)
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => `<a href="${escapeHtml(fixUrl(url))}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">${escapeHtml(label)}</a>`)
-      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => `<img src="${escapeHtml(fixUrl(url))}" alt="${escapeHtml(alt)}" class="max-w-full rounded-lg my-2 border border-gray-200 dark:border-gray-700">`)
-      .replace(/\*\*(.+?)\*\*/g, (_, m) => `<strong class="text-gray-900 dark:text-gray-100 font-semibold">${escapeHtml(m)}</strong>`)
-      .replace(/\*(.+?)\*/g, (_, m) => `<em class="text-gray-800 dark:text-gray-200 italic">${escapeHtml(m)}</em>`)
-      .replace(/~~(.+?)~~/g, (_, m) => `<del class="text-gray-500 dark:text-gray-400">${escapeHtml(m)}</del>`)
-      .replace(/`([^`]+)`/g, (_, m) => `<code class="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono text-red-600 dark:text-red-400 border border-gray-200 dark:border-gray-600">${escapeHtml(m)}</code>`)
-      .replace(/\n\n/g, '</p><p class="mt-3">')
-      .replace(/\n/g, '<br>');
-    let out = sanitizeHtml(html);
-    // 回填嵌入块(sanitize 后): DOMPurify 已放行 iframe/data-*/class; 若被意外剥离则跳过
-    out = out.replace(/\u0000(\d+)\u0000/g, (_, i) => embeds[+i] !== undefined ? embeds[+i] : '');
-    return `<div class="prose prose-sm dark:prose-invert max-w-none text-left text-gray-700 dark:text-gray-200 leading-relaxed"><p>${out}</p></div>`;
+    // 行内斜体单独占位: 单趟分词阶段避免 \* 与 \*\* 互相干扰, 清理后回填
+    const italics = [];
+    function stashItalic(html) { italics.push(html); return '\uE000I' + (italics.length - 1) + '\uE001'; }
+
+    const headingCls = {
+      1: 'text-2xl font-bold text-gray-900 dark:text-gray-100 mt-6 mb-3',
+      2: 'text-xl font-bold text-gray-900 dark:text-gray-100 mt-6 mb-3',
+      3: 'text-lg font-semibold text-gray-900 dark:text-gray-100 mt-4 mb-2',
+      4: 'text-base font-semibold text-gray-900 dark:text-gray-100 mt-4 mb-2',
+      5: 'text-sm font-semibold text-gray-900 dark:text-gray-100 mt-3 mb-1',
+      6: 'text-sm font-medium text-gray-700 dark:text-gray-300 mt-3 mb-1'
+    };
+
+    let t = String(text).replace(/\r\n?/g, '\n');
+
+    // ── Stage 1: 需要整体保护的片段先抽成占位符 ──────────────
+    // 围栏代码块(内容完全原样, 不参与任何后续规则)
+    t = t.replace(/```[^\n]*\n([\s\S]*?)```/g, (_, body) => stash(
+      '<pre class="my-3 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 text-sm overflow-x-auto"><code class="text-gray-700 dark:text-gray-300">' +
+      escapeHtml(body.replace(/\n$/, '')) + '</code></pre>'));
+    // Mermaid 图表: 块级跨行语法, 结束标记 @[/mermaid]; 内容原样转义存放, 渲染由增强器完成
+    t = t.replace(/@\[mermaid\][ \t]*\n([\s\S]*?)\n?@\[\/mermaid\][ \t]*(?:\n|$)/g, (_, body) =>
+      stash('<pre class="oj-mermaid my-4 text-center">' + escapeHtml(body.trim()) + '</pre>'));
+    // Office 文档预览: 微软 Office Online 渲染, 文档 URL 需公网可访问(如图床)
+    t = t.replace(/@\[office\]\(([^)\s]+)\)/g, (_, raw) => {
+      const url = fixUrl(raw);
+      if (!/^https:\/\//i.test(url)) return stash('<div class="my-3 text-sm text-gray-500 dark:text-gray-400">[office] 仅支持公网 https 文档地址</div>');
+      return stash('<div class="my-4"><iframe src="' + escapeHtml('https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(url)) + '" class="w-full rounded-lg border border-gray-200 dark:border-gray-600" height="600" loading="lazy"></iframe></div>');
+    });
+    // ECharts 图表: 参数为 JSON 配置, 解析失败降级为代码块; 渲染由文件尾部增强器完成
+    t = t.replace(/@\[echarts\]\((.+)\)/g, (_, json) => {
+      const raw = json.trim().replace(/\)+$/, '');
+      let cfg = null;
+      try { cfg = JSON.parse(raw); } catch (e) { cfg = null; }
+      if (!cfg || typeof cfg !== 'object') return stash('<pre class="my-3 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 text-sm overflow-x-auto text-gray-700 dark:text-gray-300">' + escapeHtml('[echarts] JSON 配置无效:\n' + raw.slice(0, 2000)) + '</pre>');
+      return stash('<div class="my-4 oj-echarts" data-config="' + escapeHtml(JSON.stringify(cfg)) + '"><div class="oj-echarts-loading text-sm text-gray-400 dark:text-gray-500 py-16 text-center">图表加载中…</div></div>');
+    });
+    t = t.replace(/@\[bilibili\]\((BV[a-zA-Z0-9]+)\)/g, (_, bv) => stash('<div class="my-4"><iframe src="https://player.bilibili.com/player.html?bvid=' + encodeURIComponent(bv) + '&autoplay=0" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" class="w-full aspect-video rounded-lg"></iframe></div>'));
+    t = t.replace(/@\[url\]\(([^)]+)\)/g, (_, url) => stash('<div class="my-4"><iframe src="' + escapeHtml(fixUrl(url)) + '" class="w-full min-h-[500px] rounded-lg border border-gray-200 dark:border-gray-600"></iframe></div>'));
+    t = t.replace(/@\[audio\]\(([^)]+)\)/g, (_, url) => stash('<div class="my-3"><audio controls class="w-full" src="' + escapeHtml(fixUrl(url)) + '"></audio></div>'));
+    t = t.replace(/@\[video\]\(([^)]+)\)/g, (_, url) => stash('<div class="my-4"><video controls class="w-full rounded-lg" src="' + escapeHtml(fixUrl(url)) + '"></video></div>'));
+    // 展示公式(可跨行)必须先于行内公式, 否则 $$ 会被拆成两个 $...$
+    t = t.replace(/\$\$\n?([\s\S]*?)\n?\$\$/g, (_, m) => stash('<div class="katex-display my-4 text-center">\\[' + escapeHtml(m.trim().replace(/\s+/g, ' ')) + '\\]</div>'));
+    // 行内公式: 内容两端不能是空白, 避免 "$5 and $10" 被误判; 抽出后 $ 内的 * _ 不再参与行内规则
+    t = t.replace(/\$([^\s$](?:[^$]*[^\s$])?)\$/g, (_, m) => stash('\\(' + escapeHtml(m) + '\\)'));
+
+    // ── Stage 2: 行内分词(单趟, 每个 token 只处理一次) ────────
+    // image 必须先于 link, 否则 ![alt](url) 会先被 link 规则吃掉变成 !<a>
+    // 正则字面量写在函数体内: 每次调用新建带 g 的对象, 否则递归调用会互相污染 lastIndex
+    function inline(raw) {
+      const re = /!\[([^\]]*)\]\(([^)]*)\)|\[([^\]]+)\]\(([^)]+)\)|\*\*([\s\S]+?)\*\*|~~([\s\S]+?)~~|\*([^*\n]+)\*|`([^`]+)`|<\/?[a-zA-Z][^<>]*>/g;
+      let out = '', buf = '', pos = 0, m;
+      while ((m = re.exec(raw)) !== null) {
+        buf += raw.slice(pos, m.index);
+        pos = re.lastIndex;
+        out += escapeHtml(buf);
+        buf = '';
+        if (m[1] !== undefined) {
+          out += '<img src="' + escapeAttr(fixUrl(m[2])) + '" alt="' + escapeAttr(m[1]) + '" class="max-w-full rounded-lg my-2 border border-gray-200 dark:border-gray-700">';
+        } else if (m[3] !== undefined) {
+          out += '<a href="' + escapeAttr(fixUrl(m[4])) + '" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline">' + escapeHtml(m[3]) + '</a>';
+        } else if (m[5] !== undefined) {
+          out += '<strong class="text-gray-900 dark:text-gray-100 font-semibold">' + inline(m[5]) + '</strong>';
+        } else if (m[6] !== undefined) {
+          out += '<del class="text-gray-500 dark:text-gray-400">' + inline(m[6]) + '</del>';
+        } else if (m[7] !== undefined) {
+          out += stashItalic('<em class="text-gray-800 dark:text-gray-200 italic">' + inline(m[7]) + '</em>');
+        } else if (m[8] !== undefined) {
+          out += '<code class="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono text-red-600 dark:text-red-400 border border-gray-200 dark:border-gray-600">' + escapeHtml(m[8]) + '</code>';
+        } else {
+          // 原样透传 HTML 标签, 安全性仍由末尾 DOMPurify 白名单兜底
+          out += m[0];
+        }
+      }
+      return out + escapeHtml(buf + raw.slice(pos));
+    }
+
+    function isBareBlock(s) { return /^\uE000\d+\uE001$/.test(s); }
+    function isTableSep(s) {
+      const c = String(s).trim();
+      return c.indexOf('|') >= 0 && c.indexOf('-') >= 0 && !/[^\t :|-]/.test(c);
+    }
+    function isHr(s) {
+      return /^[ \t]{0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/.test(s);
+    }
+    function startsBlock(s) {
+      return /^#{1,6}(?:[ \t].*)?$/.test(s) ||
+        /^[ \t]*(?:```|~~~)/.test(s) ||
+        /^[ \t]*>/.test(s) ||
+        isHr(s) ||
+        /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+\S/.test(s) ||
+        (/^\|.*\|[ \t]*$/.test(s) && isTableSep(s)) ||
+        isBareBlock(s.trim());
+    }
+
+    // ── Stage 3: 块级解析 ────────────────────────────────────
+    function parseBlocks(lines) {
+      let out = '', i = 0, first = true;
+      function push(h) {
+        out += (first ? '<p>' : '<p class="mt-3">') + h + '</p>';
+        first = false;
+      }
+      while (i < lines.length) {
+        const line = lines[i];
+        if (!line.trim()) { i++; continue; }
+
+        // 未闭合的围栏(闭合的已在 Stage 1 抽走)
+        const fence = /^[ \t]*(```|~~~)/.exec(line);
+        if (fence) {
+          const marker = fence[1];
+          const lang = line.slice(fence[0].length).trim();
+          const buf = [];
+          i++;
+          while (i < lines.length && lines[i].trim().indexOf(marker) !== 0) { buf.push(lines[i]); i++; }
+          if (i < lines.length) i++;
+          out += '<pre class="my-3 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 text-sm overflow-x-auto"><code class="' +
+            (lang ? 'language-' + escapeAttr(lang) + ' ' : '') + 'text-gray-700 dark:text-gray-300">' +
+            escapeHtml(buf.join('\n')) + '</code></pre>';
+          first = false;
+          continue;
+        }
+
+        // 独占一行的嵌入块/公式占位符 → 块级元素
+        if (isBareBlock(line.trim())) { out += line.trim(); first = false; i++; continue; }
+
+        // ATX 标题
+        const h = /^(#{1,6})(?:[ \t]+(.*))?$/.exec(line);
+        if (h) {
+          const lvl = h[1].length;
+          const title = (h[2] || '').replace(/[ \t]+#+[ \t]*$/, '').trim();
+          out += '<h' + lvl + ' class="' + headingCls[lvl] + '">' + inline(title) + '</h' + lvl + '>';
+          first = false;
+          i++;
+          continue;
+        }
+
+        // 分隔线(必须在列表规则之前: "- - -" 会被列表规则抢走)
+        if (isHr(line)) { out += '<hr class="my-6">'; first = false; i++; continue; }
+
+        // 表格: 首行 + 分隔行 + 数据行
+        if (/^\|.*\|[ \t]*$/.test(line) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+          const splitRow = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+          const alignOf = (cell) => {
+            const l = cell.charAt(0) === ':', r = cell.charAt(cell.length - 1) === ':';
+            return l && r ? 'center' : r ? 'right' : l ? 'left' : '';
+          };
+          const head = splitRow(line);
+          const aligns = splitRow(lines[i + 1]).map(alignOf);
+          i += 2;
+          const rows = [];
+          while (i < lines.length && /^\|.*\|[ \t]*$/.test(lines[i])) { rows.push(splitRow(lines[i])); i++; }
+          const cell = (tag, txt, k) => '<' + tag + (aligns[k] ? ' style="text-align:' + aligns[k] + '"' : '') + '>' + inline(txt) + '</' + tag + '>';
+          out += '<table class="my-3 w-full text-sm border-collapse"><thead><tr>' +
+            head.map((c, k) => cell('th', c, k)).join('') + '</tr></thead><tbody>' +
+            rows.map((r) => '<tr>' + r.map((c, k) => cell('td', c, k)).join('') + '</tr>').join('') +
+            '</tbody></table>';
+          first = false;
+          continue;
+        }
+
+        // 引用(内容递归解析)
+        if (/^[ \t]*>/.test(line)) {
+          const buf = [];
+          while (i < lines.length && /^[ \t]*>/.test(lines[i])) {
+            buf.push(lines[i].replace(/^[ \t]*>[ \t]?/, ''));
+            i++;
+          }
+          out += '<blockquote>' + parseBlocks(buf) + '</blockquote>';
+          first = false;
+          continue;
+        }
+
+        // 列表(连续项 + 两空格缩进续行)
+        const li = /^[ \t]*([-*+]|\d{1,9}[.)])[ \t]+(\S.*)$/.exec(line);
+        if (li) {
+          const ordered = li[1].charAt(0) >= '0' && li[1].charAt(0) <= '9';
+          const items = [];
+          while (i < lines.length) {
+            const cur = lines[i];
+            const next = /^[ \t]*([-*+]|\d{1,9}[.)])[ \t]+(\S.*)$/.exec(cur);
+            if (next && ((next[1].charAt(0) >= '0' && next[1].charAt(0) <= '9') === ordered)) {
+              items.push(next[2]);
+              i++;
+            } else if (/^[ \t]{2,}\S/.test(cur) || (items.length && cur.trim() && !startsBlock(cur))) {
+              items[items.length - 1] += ' ' + cur.trim();
+              i++;
+            } else {
+              break;
+            }
+          }
+          // 任务列表: "- [ ] 待办" / "- [x] 已完成"
+          const renderItem = (x) => {
+            const tm = /^\[([ xX])\][ \t]+(\S.*)$/.exec(x);
+            if (tm) {
+              const checked = tm[1] === ' ' ? '' : ' checked';
+              return '<li class="list-none"><input type="checkbox" disabled' + checked +
+                ' class="mr-1.5 align-middle w-3.5 h-3.5 accent-indigo-600">' + inline(tm[2]) + '</li>';
+            }
+            return '<li>' + inline(x) + '</li>';
+          };
+          out += (ordered ? '<ol>' : '<ul>') + items.map(renderItem).join('') + (ordered ? '</ol>' : '</ul>');
+          first = false;
+          continue;
+        }
+
+        // 段落: 直到空行或下一个块级起始; 段内换行 → <br>
+        const buf = [line];
+        i++;
+        while (i < lines.length && lines[i].trim() && !startsBlock(lines[i])) { buf.push(lines[i]); i++; }
+        push(buf.map((x) => inline(x)).join('<br>'));
+      }
+      return out;
+    }
+
+    let out = parseBlocks(t.split('\n'));
+    out = sanitizeHtml(out);
+    // 回填(sanitize 后): DOMPurify 已放行 iframe/data-*/class; 若被意外剥离则跳过
+    out = out.replace(/\uE000I(\d+)\uE001/g, (_, i) => (italics[+i] !== undefined ? italics[+i] : ''));
+    out = out.replace(/\uE000(\d+)\uE001/g, (_, i) => (embeds[+i] !== undefined ? embeds[+i] : ''));
+    return `<div class="prose prose-sm dark:prose-invert max-w-none text-left text-gray-700 dark:text-gray-200 leading-relaxed">${out}</div>`;
   } catch (e) {
     return `<pre class="text-sm text-gray-700 dark:text-gray-200">${escapeHtml(text)}</pre>`;
   }

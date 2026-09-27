@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown 语法演示 - NoldOJ</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/css/prose.css">
+  <script src="/js/tailwind.js"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+  <script src="/js/purify.min.js"></script>
+  <script src="/js/markdown.js"></script>
+  <link rel="stylesheet" href="/js/katex/katex.min.css">
+  <script defer src="/js/katex/katex.min.js"></script>
+  <script defer src="/js/katex/auto-render.min.js"></script>
+  <style>
+    section[data-demo] + section[data-demo] { margin-top: 1.75rem; }
+    .demo-h { font-size: 1rem; font-weight: 600; color: #1f2937; }
+    .dark .demo-h { color: #f3f4f6; }
+    .demo-d { font-size: 0.8125rem; color: #6b7280; margin-top: 0.25rem; }
+    .dark .demo-d { color: #9ca3af; }
+    #playInput { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Markdown 语法</h1>
+      <p class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
+        题目描述、试卷题面、公告、文章、讨论等位置都使用同一条渲染管线：
+        <code class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-red-600 dark:text-red-400 text-xs border border-gray-200 dark:border-gray-700">renderMarkdown()</code>
+        → DOMPurify 白名单清洗 → KaTeX 公式渲染。下面每一条示例的右侧都是该管线的真实输出。
+      </p>
+    </div>
+
+    <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-2xl p-4 mb-8 text-sm text-indigo-900 dark:text-indigo-200 leading-relaxed">
+      <b>快速上手：</b>左侧是 Markdown 源码，右侧是它在本站的实际渲染效果。想动手试，直接用下方的实时预览编辑器。
+      支持 <b>Markdown 基础语法</b>、<b>表格 / 围栏代码块 / 任务列表</b>、<b>KaTeX 公式</b> 以及本站特有的
+      <b>多媒体嵌入语法</b>；脚本与事件属性会被自动剥离。
+    </div>
+
+    <!-- ══ 实时预览 ══ -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-8">
+      <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-1">实时预览</h2>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">左边随便改，右边立即渲染。</p>
+      <div class="grid lg:grid-cols-2 gap-4">
+        <textarea id="playInput" rows="14" spellcheck="false"
+          class="w-full px-3.5 py-3 text-xs leading-relaxed border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-900 text-emerald-200 outline-none focus:ring-2 focus:ring-indigo-500 resize-y"></textarea>
+        <div id="playOutput" class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-white dark:bg-gray-800 overflow-x-auto"></div>
+      </div>
+    </section>
+
+    <!-- ══ 基础语法 ══ -->
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mt-10 mb-1">一、基础语法</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">通用 Markdown 核心语法。</p>
+
+    <section data-demo>
+      <h3 class="demo-h">标题</h3>
+      <p class="demo-d">井号数量对应 1–6 级标题，井号后需要空格。</p>
+      <script type="text/plain" class="md-src">
+# 一级标题
+## 二级标题
+### 三级标题
+#### 四级标题
+##### 五级标题
+###### 六级标题
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">强调、删除线与行内代码</h3>
+      <p class="demo-d">加粗、斜体、删除线、行内代码可混排，行内代码里的符号不会被解析。</p>
+      <script type="text/plain" class="md-src">
+这是 **加粗**、*斜体*、~~删除线~~ 和 `行内代码` 的组合。
+
+`$x * y$` 和 `**星号**` 在反引号里原样显示。
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">段落与换行</h3>
+      <p class="demo-d">空行分段；同一段里单独换行会变成软换行（&lt;br&gt;）。</p>
+      <script type="text/plain" class="md-src">
+第一段的开头。
+
+第一段的第二行，会显示成换行。
+第二段：空行之后才是新的一段。
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">链接与图片</h3>
+      <p class="demo-d">链接新窗口打开；图片自适应宽度。危险协议（javascript: 等）会被替换。</p>
+      <script type="text/plain" class="md-src">
+[题库](/pages/problems.html) · [公告](/pages/announcements.html)
+
+![站点图标](/img/demo-image.svg)
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">引用</h3>
+      <p class="demo-d">支持多行引用，也支持嵌套引用。</p>
+      <script type="text/plain" class="md-src">
+> 这是引用的第一行。
+> 这是引用的第二行。
+>
+> > 嵌套引用：里面还能再套一层。
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">无序列表与有序列表</h3>
+      <p class="demo-d">-、*、+ 都可以做无序标记；有序列表用 1. 或 1)。缩进两格以上是续行。</p>
+      <script type="text/plain" class="md-src">
+- 无序第一项
+- 无序第二项
+  - 这是缩进的续行内容
+- 无序第三项
+
+1. 有序第一步
+2. 有序第二步
+3) 用右括号也可以
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">任务列表</h3>
+      <p class="demo-d">列表项写成 [ ] 或 [x] 就会渲染成复选框。</p>
+      <script type="text/plain" class="md-src">
+- [x] 已经完成的事项
+- [ ] 还没完成的事项
+- [x] 支持 **行内格式** 与 `代码`
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">表格</h3>
+      <p class="demo-d">第二行必须是分隔行；用 :---: / ---: / ---: 控制居中、右对齐、左对齐。</p>
+      <script type="text/plain" class="md-src">
+| 题型 | 分值 | 说明 |
+|:---|---:|:---|
+| 选择题 | 10 | 单选，自动评分 |
+| 填空题 | 5 | 精确匹配 |
+| 大题 | 20 | 人工/AI 批改 |
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">代码块</h3>
+      <p class="demo-d">用三个反引号包裹，可标注语言；块内的所有符号都原样保留。</p>
+      <script type="text/plain" class="md-src">
+```cpp
+#include <iostream>
+using namespace std;
+
+int main() {
+    int a, b;
+    cin >> a >> b;   // **这里不会变粗体** $这里也不是公式$
+    cout << a + b << endl;
+    return 0;
+}
+```
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">分隔线</h3>
+      <p class="demo-d">单独一行的 ---、*** 或 ___。</p>
+      <script type="text/plain" class="md-src">
+上面一段内容。
+
+---
+
+下面一段内容。
+      </script>
+    </section>
+
+    <!-- ══ 扩展语法 ══ -->
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mt-10 mb-1">二、扩展语法</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">NoldOJ 在标准 Markdown 之上增加的公式与嵌入能力。</p>
+
+    <section data-demo>
+      <h3 class="demo-h">行内公式（KaTeX）</h3>
+      <p class="demo-d">两个美元符号包住行内公式，公式内部的 * _ 等符号不会被当成 Markdown 强调。</p>
+      <script type="text/plain" class="md-src">
+时间复杂度是 $O(n \log n)$，递推式为 $T(n) = 2T(n/2) + O(n)$。
+这里 $a*b*c$ 保持原样，而 $5 到 $10 这种价格不会被误判成公式。
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">展示公式</h3>
+      <p class="demo-d">双美元符号独占一行时居中显示为块级公式。</p>
+      <script type="text/plain" class="md-src">
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+$$
+
+$$E = mc^2$$
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">内嵌网页 @[url]</h3>
+      <p class="demo-d">把任意 http/https 或站内相对地址嵌成 iframe，常用于嵌入题解页、外部文档。</p>
+      <script type="text/plain" class="md-src">
+@[url](/pages/index.html)
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">ECharts 图表 @[echarts]</h3>
+      <p class="demo-d">参数是一段 JSON 配置，交给本地 eCharts 渲染；JSON 非法时降级为代码块。</p>
+      <script type="text/plain" class="md-src">
+@[echarts]({"height":260,"xAxis":{"type":"category","data":["一月","二月","三月","四月"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[120,200,150,80],"itemStyle":{"color":"#6366f1"}}]})
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">Mermaid 流程图</h3>
+      <p class="demo-d">用 @[mermaid] 与 @[/mermaid] 包住流程图源码，适合写题解或判题流程说明。</p>
+      <script type="text/plain" class="md-src">
+@[mermaid]
+graph TD
+  A[读取输入] --> B{数据合法?}
+  B -- 是 --> C[运行算法]
+  B -- 否 --> D[报错退出]
+  C --> E[输出结果]
+@[/mermaid]
+      </script>
+    </section>
+
+    <section data-demo>
+      <h3 class="demo-h">原样透传的 HTML 标签</h3>
+      <p class="demo-d">常用的行内标签会被保留（仍走白名单清洗），可用于排版细节。</p>
+      <script type="text/plain" class="md-src">
+按 <kbd>Ctrl</kbd> + <kbd>S</kbd> 保存。
+
+<details>
+<summary>点开看提示</summary>
+题目的数据范围在描述的最后两行。
+</details>
+
+<mark>高亮</mark>、上标 x<sup>2</sup>、下标 H<sub>2</sub>O。
+      </script>
+    </section>
+
+    <!-- ══ 嵌入语法速查 ══ -->
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mt-10 mb-1">三、嵌入语法速查</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">统一形如 <code class="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-xs">@[类型](参数)</code>。</p>
+
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden mb-8">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="bg-gray-50 dark:bg-gray-900/40 text-xs uppercase text-gray-500 dark:text-gray-400">
+            <tr>
+              <th class="px-4 py-3 font-semibold">写法</th>
+              <th class="px-4 py-3 font-semibold">作用</th>
+            </tr>
+          </thead>
+          <tbody class="text-gray-700 dark:text-gray-300 divide-y divide-gray-100 dark:divide-gray-700">
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">@[url](地址)</td><td class="px-4 py-3">内嵌网页（http/https 或站内相对路径）</td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">@[bilibili](BV号)</td><td class="px-4 py-3">内嵌 Bilibili 视频，例如 <span class="font-mono text-xs">@[bilibili](BV1xx411c7mD)</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">@[video](地址)</td><td class="px-4 py-3">内嵌本地/远程视频播放器</td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">@[audio](地址)</td><td class="px-4 py-3">内嵌音频播放器</td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">@[office](https://...)</td><td class="px-4 py-3">预览 Office 文档（需公网可访问的 https 地址）</td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">@[echarts](JSON)</td><td class="px-4 py-3">ECharts 图表，参数为一份 JSON 配置</td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">@[mermaid] ... @[/mermaid]</td><td class="px-4 py-3">Mermaid 流程图/时序图/甘特图</td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400">$...$ / $$...$$</td><td class="px-4 py-3">KaTeX 行内公式 / 展示公式</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ 安全与限制 ══ -->
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mt-10 mb-1">四、安全与限制</h2>
+
+    <section data-demo>
+      <h3 class="demo-h">危险内容会被自动剥离</h3>
+      <p class="demo-d">输出统一经过 DOMPurify 白名单清洗：事件属性、危险协议都会被去掉（元素本身可能保留，所以右侧会出现加载失败的图片与空的内嵌框），下面是"看起来想攻击"的源码与真实结果。</p>
+      <script type="text/plain" class="md-src">
+<img src=x onerror=alert(1)>
+
+[点我](javascript:alert(1))
+
+<iframe src="javascript:alert(1)"></iframe>
+
+正常的图片 ![图](/img/demo-image.svg) 不受影响。
+      </script>
+    </section>
+
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
+      <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">暂不支持的写法</h3>
+      <ul class="text-sm text-gray-600 dark:text-gray-300 space-y-1 list-disc pl-5">
+        <li>Setext 标题（用 <code class="text-xs">===</code> / <code class="text-xs">---</code> 垫在文字下方）——<code class="text-xs">---</code> 一律按分隔线处理</li>
+        <li>自动链接 <code class="text-xs">&lt;https://example.com&gt;</code></li>
+        <li>脚注 <code class="text-xs">[^1]</code>、定义列表、<code class="text-xs">\</code> 反斜杠转义</li>
+        <li>行内 HTML 中的 <code class="text-xs">&lt;script&gt;</code>、<code class="text-xs">on*</code> 事件属性——会被 DOMPurify 整体移除</li>
+        <li>围栏代码块的语法高亮（只按纯文本保留，不引入高亮库）</li>
+      </ul>
+    </div>
+
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-8">
+      渲染实现见 <span class="font-mono">frontend/js/markdown.js</span>，排版样式来自
+      <span class="font-mono">frontend/css/prose.css</span>（Tailwind typography 预构建）。
+    </p>
+  </div>
+
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('markdown');
+
+    function renderInto(el, src) {
+      el.innerHTML = renderMarkdown(src);
+      if (typeof renderMathDefaults === 'function') renderMathDefaults(el);
+    }
+
+    function buildDemos() {
+      const secs = document.querySelectorAll('section[data-demo]');
+      for (let i = 0; i < secs.length; i++) {
+        const sec = secs[i];
+        const s = sec.querySelector('script.md-src');
+        if (!s) continue;
+        const src = s.textContent.replace(/^\n/, '').replace(/\s+$/, '');
+
+        const grid = document.createElement('div');
+        grid.className = 'grid lg:grid-cols-2 gap-4 mt-3';
+
+        // 左：源码
+        const left = document.createElement('div');
+        const lhead = document.createElement('div');
+        lhead.className = 'flex items-center justify-between mb-1.5';
+        const ltag = document.createElement('span');
+        ltag.className = 'text-xs font-semibold text-gray-400 uppercase tracking-wider';
+        ltag.textContent = 'Markdown 源码';
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'text-xs text-indigo-600 dark:text-indigo-400 hover:underline';
+        copyBtn.textContent = '复制';
+        copyBtn.onclick = function () {
+          if (navigator.clipboard) navigator.clipboard.writeText(src);
+          copyBtn.textContent = '已复制';
+          setTimeout(function () { copyBtn.textContent = '复制'; }, 1500);
+        };
+        lhead.appendChild(ltag);
+        lhead.appendChild(copyBtn);
+        const pre = document.createElement('pre');
+        pre.className = 'bg-gray-900 text-emerald-200 rounded-xl p-3.5 text-xs leading-relaxed overflow-x-auto';
+        const code = document.createElement('code');
+        code.className = 'font-mono whitespace-pre';
+        code.textContent = src;
+        pre.appendChild(code);
+        left.appendChild(lhead);
+        left.appendChild(pre);
+
+        // 右：渲染结果
+        const right = document.createElement('div');
+        const rhead = document.createElement('div');
+        rhead.className = 'mb-1.5';
+        const rtag = document.createElement('span');
+        rtag.className = 'text-xs font-semibold text-indigo-500 uppercase tracking-wider';
+        rtag.textContent = '渲染结果';
+        rhead.appendChild(rtag);
+        const box = document.createElement('div');
+        box.className = 'border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-white dark:bg-gray-800 overflow-x-auto';
+        right.appendChild(rhead);
+        right.appendChild(box);
+
+        grid.appendChild(left);
+        grid.appendChild(right);
+        sec.appendChild(grid);
+        renderInto(box, src);
+      }
+    }
+
+    const playInput = document.getElementById('playInput');
+    const playOutput = document.getElementById('playOutput');
+    playInput.value = [
+      '## 练习一下',
+      '',
+      '- [x] 支持列表和 **加粗**',
+      '- [ ] 试试公式 $e^{i\\pi} + 1 = 0$',
+      '',
+      '| 输入 | 输出 |',
+      '|---|---|',
+      '| `2 3` | `5` |',
+      '',
+      '> 改完左边，右边立刻更新。'
+    ].join('\n');
+    playInput.addEventListener('input', function () { renderInto(playOutput, playInput.value); });
+
+    if (document.readyState === 'complete') boot();
+    else window.addEventListener('load', boot);
+
+    function boot() {
+      buildDemos();
+      renderInto(playOutput, playInput.value);
+    }
+  </script>
+</body>
+</html>

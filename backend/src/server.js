@@ -111,7 +111,9 @@ async function main() {
         // 允许 https 嵌入（bilibili 视频 / @[url] 嵌入），禁止 http 明文 iframe/媒体
         frameSrc: ["'self'", "https:"],
         mediaSrc: ["'self'", "https:"],
-        frameAncestors: ["'none'"]
+        // 'self' 而非 'none'：@[url] 需要把本站页面（题解/文档）嵌进正文，
+        // 'none' 会让所有同源 iframe 被拒（Chrome 显示破图标）。第三方站点仍被拒绝。
+        frameAncestors: ["'self'"]
       }
     },
     crossOriginEmbedderPolicy: false,
