@@ -71,6 +71,8 @@
               class="px-3.5 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition">下载模板</button>
             <a href="/exam-sample.xlsx" download="NoldOJ试卷题目示例.xlsx"
               class="px-3.5 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition">示例文件</a>
+            <a href="/pages/markdown-demo.html" target="_blank" rel="noopener"
+              class="px-3.5 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition">Markdown 示例</a>
             <button onclick="addQuestion()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-xl transition">+ 添加题目</button>
           </div>
         </div>
@@ -215,7 +217,7 @@
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">题目内容 * <span class="text-xs font-normal text-gray-400">（支持 Markdown 与 KaTeX 公式）</span></label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">题目内容 * <span class="text-xs font-normal text-gray-400">（支持 Markdown 与 KaTeX 公式，<a href="/pages/markdown-demo.html" target="_blank" rel="noopener" class="text-indigo-500 hover:underline">语法示例</a>）</span></label>
               <textarea oninput="previewQuestion(${q._id}, this.value)" rows="3"
                 placeholder="支持 Markdown：**加粗**、\`代码\`、- 列表、\$公式\$"
                 class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm font-mono">${escapeHtml(q.title)}</textarea>
