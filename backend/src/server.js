@@ -170,7 +170,7 @@ async function main() {
   const { adminLogger } = require('../middleware/adminLogger');
   app.use(adminLogger);
   // 安全公告文件 (RFC 9116)
-  const securityContact = config.security?.contact || 'https://github.com/dxx114514-stack/NoldOJ.mimo'; 
+  const securityContact = config.security?.contact || 'https://github.com/dxxjudges/NoldOJ.mimo'; 
   const securityTxt = `Contact: ${securityContact}\nPreferred-Languages: zh\nCanonical: /security.txt\n`;
   app.get('/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });
   app.get('/.well-known/security.txt', (req, res) => { res.type('text/plain'); res.send(securityTxt); });

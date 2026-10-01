@@ -243,7 +243,7 @@
 
 输入
 ```batch
-git clone https://github.com/dxx114514-stack/NoldOJ.git
+git clone https://github.com/dxxjudges/NoldOJ.git
 ```
 完成后运行`start.bat`
 
