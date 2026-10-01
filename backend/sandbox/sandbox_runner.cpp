@@ -31,10 +31,10 @@
 //   - 剥离 SeDebugPrivilege / SeImpersonatePrivilege 等高危特权
 // 同用户受限令牌在普通用户下即可用 CreateProcessAsUser 启动子进程（已验证），
 // 因此不必再"裸奔"回退到纯 CreateProcessA；仅当上述路径全部失败时才退化。
-// 设环境变量 WINOJ_NO_APPCONTAINER=1 可完全禁用容器路径。
+// 设环境变量 NoldOJ_NO_APPCONTAINER=1 可完全禁用容器路径。
 //
 // 诊断日志：所有 [sandbox] 消息追加写入 <项目根>/log/sandbox.log
-//（路径取 WINOJ_ROOT，未设置时按 exe 位置推导），同时输出到 stderr。
+//（路径取 NoldOJ_ROOT，未设置时按 exe 位置推导），同时输出到 stderr。
 // 隔离粒度：每次评测派生独立的包 SID，题与题之间互不可见。
 //
 // 编译: g++ -O2 -static -o sandbox_runner.exe sandbox_runner.cpp -lpsapi -luserenv
@@ -62,15 +62,15 @@
 // ── 沙箱诊断日志：追加写入 <项目根>/log/sandbox.log ────────
 // 路径由本 exe 位置推导（backend/sandbox/… → 上两级即项目根），
 // 与调用方 cwd 无关，保证无论从哪启动都能写入固定日志文件。
-// 优先使用 OJ_LOG_DIR 环境变量（时间戳文件夹），其次 WINOJ_ROOT，最后按 exe 位置推导。
-// 仅写文件；设 WINOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr（D-L13）。
+// 优先使用 OJ_LOG_DIR 环境变量（时间戳文件夹），其次 NoldOJ_ROOT，最后按 exe 位置推导。
+// 仅写文件；设 NoldOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr（D-L13）。
 static std::string sandboxLogPath() {
     // 优先使用 OJ_LOG_DIR 环境变量（时间戳文件夹，由 start.bat/st.bat 设置）
     const char* logDir = getenv("OJ_LOG_DIR");
     if (logDir && logDir[0])
         return std::string(logDir) + "\\sandbox.log";
-    // 其次使用 WINOJ_ROOT 环境变量（与 cwd 无关）
-    const char* root = getenv("WINOJ_ROOT");
+    // 其次使用 NoldOJ_ROOT 环境变量（与 cwd 无关）
+    const char* root = getenv("NoldOJ_ROOT");
     if (root && root[0])
         return std::string(root) + "\\log\\sandbox.log";
     // 否则按 exe 位置推导：exe 位于 <root>/backend/sandbox/，上推三级即项目根
@@ -100,9 +100,9 @@ static void sandboxLogRaw(const std::string& line) {
     }
     // 诊断日志仅追加写文件，不再默认混入 stderr（D-L13：避免污染用户
     // 程序的 stderr 且被统计进输出额度）。
-    // 管理员排障时设 WINOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr。
+    // 管理员排障时设 NoldOJ_SANDBOX_VERBOSE=1 才同时输出到 stderr。
     static bool verbose = []() {
-        const char* v = getenv("WINOJ_SANDBOX_VERBOSE");
+        const char* v = getenv("NoldOJ_SANDBOX_VERBOSE");
         return v && v[0] == '1';
     }();
     if (verbose) {
@@ -864,27 +864,27 @@ int main(int argc, char* argv[]) {
     HANDLE hContainer = NULL;
     bool useAppContainer = false;
 
-    // 环境变量逃生阀：WINOJ_NO_APPCONTAINER=1 时完全跳过容器路径
+    // 环境变量逃生阀：NoldOJ_NO_APPCONTAINER=1 时完全跳过容器路径
     bool containerEnabled = true;
     {
-        const char* env = getenv("WINOJ_NO_APPCONTAINER");
+        const char* env = getenv("NoldOJ_NO_APPCONTAINER");
         if (env && env[0] == '1') containerEnabled = false;
     }
-    // 诊断开关：WINOJ_FORCE_CONTAINER=1 时即使无特权也尝试容器路径
+    // 诊断开关：NoldOJ_FORCE_CONTAINER=1 时即使无特权也尝试容器路径
     //（容器令牌在子进程构建，崩溃仍安全回退，仅用于管理员排查）
     bool forceContainer = false;
     {
-        const char* env = getenv("WINOJ_FORCE_CONTAINER");
+        const char* env = getenv("NoldOJ_FORCE_CONTAINER");
         if (env && env[0] == '1') forceContainer = true;
     }
-    // 管理员诊断开关：WINOJ_EXEC_MODE 切换子进程创建路径
+    // 管理员诊断开关：NoldOJ_EXEC_MODE 切换子进程创建路径
     //   0 = 默认（受限令牌 + Low Integrity，先尝试容器，基线）
     //   1 = 受限令牌 + 强制 Low Integrity（等价默认，保留兼容）
     //   2 = 裸进程 CreateProcessA（继承提权令牌）
     //   3 = 受限令牌 + 不带 CREATE_NO_WINDOW
     int execMode = 0;
     {
-        const char* em = getenv("WINOJ_EXEC_MODE");
+        const char* em = getenv("NoldOJ_EXEC_MODE");
         if (em && em[0]) execMode = atoi(em);
     }
 
@@ -913,11 +913,11 @@ int main(int argc, char* argv[]) {
     // C-1: 受限令牌路径默认降为 Low Integrity（普通用户部署也能获得
     // 文件系统/进程低完整性隔离，禁止写入高完整性位置、削弱对其他
     // 同用户进程的攻击面）。AppContainer 自身强制 Low/Untrusted IL，
-    // 无需额外处理。逃生阀 WINOJ_NO_LOWIL=1 显式关闭；
+    // 无需额外处理。逃生阀 NoldOJ_NO_LOWIL=1 显式关闭；
     // 诊断模式 2（裸进程）与 AppContainer 优先路径不受影响。
     bool lowIl = true;
     {
-        const char* env = getenv("WINOJ_NO_LOWIL");
+        const char* env = getenv("NoldOJ_NO_LOWIL");
         if (env && env[0] == '1') lowIl = false;
     }
     if (lowIl && execMode != 2 && hRestricted) {
@@ -965,7 +965,7 @@ int main(int argc, char* argv[]) {
 
         // C-2: 令牌路径全部失败时必须 fail-closed（写 SYSTEM_ERROR 拒绝执行），
         // 绝不回退裸 CreateProcessA（管理员/服务启动时回退 = 恶意代码提权执行）。
-        // 仅保留 WINOJ_EXEC_MODE=2 显式诊断开关（管理员手动设置）才走裸进程路径。
+        // 仅保留 NoldOJ_EXEC_MODE=2 显式诊断开关（管理员手动设置）才走裸进程路径。
         if (!ok) {
             DWORD err = GetLastError();
             sandboxLog("All sandbox token paths failed (error %lu); refusing to run without isolation", err);
@@ -995,10 +995,10 @@ int main(int argc, char* argv[]) {
     // AppContainer 路径由容器 SID 的 DACL 授权（AppContainer 令牌 IL 已为 Low，
     // 且容器有专属写权限），无需降标签；裸进程诊断（mode2）不受影响。
     // 该 workDir 为每次判题独有临时目录，运行后即被 executor 清理，无需恢复标签。
-    // 逃生阀 WINOJ_NO_RELABEL=1 跳过内部降标签（用于验证外部已打标或排查）。
+    // 逃生阀 NoldOJ_NO_RELABEL=1 跳过内部降标签（用于验证外部已打标或排查）。
     bool noRelabel = false;
     {
-        const char* env = getenv("WINOJ_NO_RELABEL");
+        const char* env = getenv("NoldOJ_NO_RELABEL");
         if (env && env[0] == '1') noRelabel = true;
     }
     bool workDirRelabeled = false;
