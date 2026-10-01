@@ -52,12 +52,6 @@ async function test(name, fn) {
   }
 }
 
-function skip_(name, reason) {
-  skip++;
-  results.push({ name, status: 'skip', reason });
-  console.log(`${C.yellow('⊘ SKIP')} ${name}  ${C.gray(reason)}`);
-}
-
 function assert(cond, msg) {
   if (!cond) throw new Error(msg || '断言失败');
 }
@@ -84,19 +78,16 @@ async function request(method, urlPath, { headers = {}, body } = {}) {
   return res;
 }
 
-async function login(username, password) {
-  const res = await request('POST', '/api/v1/auth/login', { body: { username, password } });
-  const data = await res.json();
-  return { res, data };
-}
-
 // 获取验证码：优先用 NoldOJ_CAPTCHA_DEBUG=1 时响应携带的 code 字段；
 // 兜底解析 svg 中的 <text>（兼容旧版 <text> 渲染的验证码）。
+// 服务端是否处于 debug 模式只能从响应探测（测试进程与服务进程环境变量独立）。
+let CAPTCHA_DEBUG_MODE = false;
 async function getCaptcha() {
   const r = await fetch(`${BASE}/api/v1/auth/captcha`);
   const data = await r.json();
   const { id, svg } = data;
   let code = data.code || '';
+  if (code) CAPTCHA_DEBUG_MODE = true;
   if (!code && svg) {
     const matches = [...svg.matchAll(/<text[^>]*>\s*([^<]+?)\s*<\/text>/g)];
     code = matches.map(m => m[1].trim()).join('');
@@ -199,8 +190,8 @@ async function main() {
     assert(data.svg, '未返回验证码 svg');
     assert(!/<text/i.test(data.svg), 'SVG 含 <text> 元素，答案可从 DOM 提取');
     assert(/<path/i.test(data.svg), 'SVG 未使用 <path> 轮廓渲染');
-    // 生产模式（无 NoldOJ_CAPTCHA_DEBUG）响应不得携带答案；debug 模式（测试专用）允许
-    if (process.env.NoldOJ_CAPTCHA_DEBUG !== '1') {
+    // 生产模式响应不得携带答案；服务端 debug 模式（NoldOJ_CAPTCHA_DEBUG=1，测试专用）允许
+    if (!CAPTCHA_DEBUG_MODE) {
       assert(!('code' in data), '验证码响应泄露 code 字段');
     }
   });

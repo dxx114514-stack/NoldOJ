@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { Scorer, runScoringScript } = require('../sandbox/scorer');
+const { runScoringScript } = require('../sandbox/scorer');
 
 describe('Scorer', () => {
   describe('basic assignment', () => {

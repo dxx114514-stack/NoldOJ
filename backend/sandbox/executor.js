@@ -121,8 +121,6 @@ function defaultMainFilename(language) {
 function compile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile) {
   if (!lang.compile) return { success: true, output: '' };
 
-  const actualExe = isWindows ? exeFile + '.exe' : exeFile;
-
   try {
     return _doCompile(workDir, srcFile, exeFile, lang, isWindows, isMultiFile);
   } finally {
@@ -436,7 +434,9 @@ function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimi
 function cleanupWorkDir(workDir) {
   try {
     fs.rmSync(workDir, { recursive: true, force: true, maxRetries: 3 });
-  } catch {}
+  } catch (e) {
+    console.warn(`[SANDBOX] 清理工作目录失败 ${workDir}: ${e && e.message}`);
+  }
 }
 
 // D-M13: 服务重启后回收上次崩溃遗留的孤儿进程与临时目录
@@ -479,7 +479,7 @@ function cleanupOrphanProcesses() {
     if (orphans.length > 0) {
       console.log(`[ORPHAN] Killed ${orphans.length} orphaned sandbox process(es) from previous run`);
     }
-  } catch (err) {
+  } catch {
     // 清理失败不影响启动，仅记录
   }
 }

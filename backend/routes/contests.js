@@ -48,7 +48,7 @@ router.get('/:id', optionalAuth, (req, res) => {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Contest not found.' });
   }
   const staff = !!req.user && isStaff(req.user.role);
-  let problems = [];
+  let problems;
   const hiddenFilter = staff ? '' : ' AND p.is_hidden = 0';
   if (staff) {
     problems = db.prepare(`

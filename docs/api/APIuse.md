@@ -503,7 +503,7 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 
 状态流转：`pending` → `compiling` → `running` → `accepted`/`compile_error`/`runtime_error`
 
-**安全隔离**：运行环境与提交评测相同，三层隔离（Sandboxie + Job Object + 受限令牌/AppContainer）。
+**安全隔离**：运行环境与提交评测相同，Windows 原生三层隔离（低完整性级别 + Job Object + 受限令牌/AppContainer）。
 
 ---
 

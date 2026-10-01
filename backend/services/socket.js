@@ -43,7 +43,7 @@ function initSocket(server) {
       socket.userId = user.id;
       socket.user = user;
       next();
-    } catch (err) {
+    } catch {
       next(new Error('Invalid token'));
     }
   });

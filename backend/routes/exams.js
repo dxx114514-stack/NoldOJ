@@ -286,7 +286,7 @@ router.post('/:id/submit', requireAuth, (req, res) => {
 
       let score = 0;
       let isCorrect = 0;
-      let gradingStatus = 'pending';
+      let gradingStatus;
 
       if (!isSubjective) {
         // 客观题自动评分（规范化对比）

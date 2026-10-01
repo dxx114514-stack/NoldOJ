@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../database/db');
-const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
 const { isStaff, isAdminOrSu } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
@@ -87,7 +87,6 @@ router.get('/:id', optionalAuth, (req, res) => {
     ORDER BY psi.sort_order
   `).all(req.user ? req.user.id : 0, ps.id);
 
-  const userId = req.user ? req.user.id : 0;
   let solvedCount = 0;
   const problemList = problems.map(p => {
     const solved = p.user_accepted > 0 ? 1 : 0;

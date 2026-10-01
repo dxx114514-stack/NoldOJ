@@ -1,15 +1,19 @@
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('path');
-const fs = require('fs');
+require('./_testdb')('sandbox');
 const db = require('../database/db');
 const sandbox = require('../sandbox/executor');
+const { spawnSync } = require('node:child_process');
+
+// 真实编译用例依赖 g++（MinGW）。没有编译器的环境（如未装 MinGW 的 CI 镜像）应跳过而非失败。
+const gpp = spawnSync('g++', ['--version'], { shell: process.platform === 'win32', stdio: 'ignore' });
+const SKIP_NO_GPP = gpp.status === 0 ? false : '未检测到 g++，跳过真实编译测试';
 
 describe('C++ Sandbox & Executor Real Execution', () => {
   before(async () => {
     await db.initDB();
   });
-  it('正确执行简单 C++ 程序并捕获标准输出与内存', async () => {
+  it('正确执行简单 C++ 程序并捕获标准输出与内存', { skip: SKIP_NO_GPP }, async () => {
     const code = `
       #include <iostream>
       using namespace std;
@@ -37,7 +41,7 @@ describe('C++ Sandbox & Executor Real Execution', () => {
     }
   });
 
-  it('超时死循环程序能被沙箱严格限制并中断 (TLE 拦截)', async () => {
+  it('超时死循环程序能被沙箱严格限制并中断 (TLE 拦截)', { skip: SKIP_NO_GPP }, async () => {
     const loopCode = `
       #include <iostream>
       using namespace std;
@@ -65,7 +69,7 @@ describe('C++ Sandbox & Executor Real Execution', () => {
     }
   });
 
-  it('语法错误代码编译失败并返回错误诊断', () => {
+  it('语法错误代码编译失败并返回错误诊断', { skip: SKIP_NO_GPP }, () => {
     const badCode = `
       #include <iostream>
       int main() {

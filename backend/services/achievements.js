@@ -44,7 +44,6 @@ function checkAchievements(userId, problemId, language, createdAt) {
     const langs = db.prepare(
       "SELECT DISTINCT language FROM submissions WHERE user_id = ? AND problem_id = ? AND status = 'accepted'"
     ).all(userId, problemId).map(r => r.language);
-    const target = ['cpp', 'c++', 'python3', 'python', 'java'];
     const have = new Set(langs.map(l => l.toLowerCase().replace(/\s+/g, '')));
     const hit = new Set();
     if (have.has('cpp') || have.has('c++')) hit.add('cpp');

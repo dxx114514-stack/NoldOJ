@@ -10,6 +10,8 @@ const { isStaff } = require('../utils/roles');
 const { buildUpdates } = require('../utils/db');
 const { sanitizeLog } = require('../utils/securityHelpers');
 const { createRateLimit } = require('../middleware/ratelimit');
+const config = require('../config/config');
+const { aiEnabled, aiChatJSON } = require('../services/aiClient');
 
 // R9-3: 查重任务创建限流（每分钟最多 10 次），防并发堆积耗尽 CPU
 const plagiarismRateLimit = createRateLimit({ windowMs: 60000, max: 10 });
@@ -513,7 +515,7 @@ router.post('/:id/testdata', requireAuth, requireRole('teacher'), upload.array('
     let order = db.prepare('SELECT MAX(sort_order) as m FROM test_cases WHERE problem_id = ?').get(problem.id)?.m || 0;
     let count = 0;
 
-    for (const [name, files] of Object.entries(pairs)) {
+    for (const files of Object.values(pairs)) {
       order++;
       insertTC.run(problem.id, files.in || '', files.out || '', order);
       count++;
@@ -575,7 +577,6 @@ router.post('/:id/testdata-zip', requireAuth, requireRole('teacher'), upload.sin
       }
 
       const fileName = parts[parts.length - 1];
-      const dirPath = parts.slice(0, -1).join('/');
       // 仅允许文本类数据文件，防止 zip 内藏任意二进制/脚本被写入磁盘
       const extOk = /\.(in|out|ans|txt)$/i.test(fileName) || fileName.toLowerCase() === 'script.txt' || fileName.toLowerCase() === 'require.txt';
       if (!extOk) continue;
@@ -837,7 +838,7 @@ router.delete('/:id/groups/:gid', requireAuth, requireRole('teacher'), (req, res
   const deps = db.prepare('SELECT id, dependency FROM test_groups WHERE problem_id = ? AND dependency IS NOT NULL').all(req.params.id);
   const fixDep = db.prepare('UPDATE test_groups SET dependency = ? WHERE id = ?');
   for (const d of deps) {
-    let arr = [];
+    let arr;
     try { arr = JSON.parse(d.dependency || '[]'); } catch { arr = []; }
     if (Array.isArray(arr) && arr.includes(group.id)) {
       fixDep.run(JSON.stringify(arr.filter(id => id !== group.id)), d.id);
@@ -1031,9 +1032,7 @@ router.post('/:id/ai-testdata', requireAuth, requireRole('teacher'), aiTestdataR
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
-const { aiEnabled, aiChatJSON } = require('../services/aiClient');
-const config = require('../config/config');
-if (!aiEnabled(config.ai.testdata)) {
+  if (!aiEnabled(config.ai.testdata)) {
     return res.status(503).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'AI 服务未启用，请先在 config/ai.txt 中启用。' });
   }
   const samples = Math.min(Math.max(parseInt(req.body.samples) || 3, 1), 10);

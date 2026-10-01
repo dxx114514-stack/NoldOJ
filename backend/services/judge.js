@@ -103,7 +103,7 @@ function readTestdata(filePath, problemDir) {
     }
     return fs.readFileSync(resolved, 'utf8');
   } catch (err) {
-    throw new Error('Failed to read test data: ' + err.message);
+    throw new Error('Failed to read test data: ' + err.message, { cause: err });
   }
 }
 
@@ -207,7 +207,6 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
   const langConfig = sandbox.loadLanguageConfig();
   const lang = langConfig[submission.language] || { compile: '', run: '', ext: '.txt' };
   let workDir, srcFile, exeFile, isWindows, isMultiFile = false;
-  let compiled = false;
 
   const groups = db.prepare('SELECT * FROM test_groups WHERE problem_id = ? ORDER BY id').all(problemId);
   const hasGroups = groups.length > 0;
@@ -221,7 +220,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
     for (const tc of testCases) {
       const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running');
       const detailId = detail.lastInsertRowid;
-      let expected = tc.output_data || '';
+      let expected;
       try {
         expected = tc.output_data || readTestdata(tc.output_file, problemDir);
       } catch (err) {
@@ -273,7 +272,6 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
       sandbox.cleanupWorkDir(workDir);
       return;
     }
-    compiled = true;
 
     const tcResults = [];
 
@@ -661,7 +659,9 @@ async function judgeSubmission(submissionId) {
     // 成就检查（每次评测结束触发，含非 AC，用于连续做题天数的累计）
     try {
       checkAchievements(submission.user_id, submission.problem_id, submission.language, updated.created_at || submission.created_at);
-    } catch {}
+    } catch (e) {
+      console.warn(`[JUDGE] 成就检查失败 (submission ${submissionId}): ${e && e.message}`);
+    }
 
     if (updated.status === 'compile_error' && !wasCompileError) {
       db.prepare('UPDATE users SET rating = rating + ? WHERE id = ?').run(RATING_DELTA_COMPILE_ERROR, submission.user_id);
@@ -705,9 +705,14 @@ async function judgeSubmission(submissionId) {
           `);
           for (const s of sets) upsert.run(submission.user_id, s.set_id, submission.problem_id);
         }
-      } catch {}
+      } catch (e) {
+        console.warn(`[JUDGE] 题单进度更新失败 (submission ${submissionId}): ${e && e.message}`);
+      }
     }
-  } catch {}
+  } catch (e) {
+    // 评测后处理（推送/加分/榜单/题单）失败不能吞掉：它直接表现为"判完但分数没动"
+    console.error(`[JUDGE] 评测后处理失败 (submission ${submissionId}): ${e && e.message}`);
+  }
 }
 
 const judgeQueue = [];

@@ -1,5 +1,6 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+require('./_testdb')('exams');
 const db = require('../database/db');
 
 describe('Exams System & Grading Logic', () => {
@@ -109,7 +110,7 @@ describe('Exams System & Grading Logic', () => {
       const isSubj = q.question_type === 'long_answer' || (q.question_type === 'fill_blank' && q.is_subjective);
       let s = 0;
       let isCorr = 0;
-      let gStatus = 'pending';
+      let gStatus;
 
       if (!isSubj) {
         const uAns = normalizeAnswer(q.question_type, a.answer);

@@ -1,5 +1,6 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+require('./_testdb')('contests');
 const db = require('../database/db');
 
 describe('Contests & Leaderboard Time-Filtering', () => {
@@ -61,11 +62,6 @@ describe('Contests & Leaderboard Time-Filtering', () => {
     `).run(subMidBId, userBId, problemId);
 
     // 查询未封榜状态下的排行榜（比赛起止时间范围内）
-    const toSqliteUtc = (d) => {
-      const date = new Date(d);
-      return isNaN(date.getTime()) ? null : date.toISOString().replace('T', ' ').substring(0, 19);
-    };
-
     let timeFilter = ' AND s.created_at >= ? AND s.created_at <= ?';
     const params = [problemId, startTimeStr, endTimeStr, contestId];
 

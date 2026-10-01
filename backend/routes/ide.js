@@ -29,7 +29,7 @@ router.post('/review', requireAuth, reviewRateLimit, async (req, res) => {
       banUserAndRevoke(req.user.id);
     }
     res.json(result);
-  } catch (e) {
+  } catch {
     // Fail-Closed: 审查异常时提示不可用而非放行
     res.json({ safe: false, reason: '审查服务异常，请稍后重试', threat_level: 'critical' });
   }

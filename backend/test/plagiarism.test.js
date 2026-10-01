@@ -1,6 +1,7 @@
 // 功能10 代码查重 - 端到端测试
 // 验证：算法 + API + 数据库
 // 运行：node backend/test/plagiarism.test.js
+require('./_testdb')('plagiarism');
 const db = require('../database/db');
 
 (async () => {

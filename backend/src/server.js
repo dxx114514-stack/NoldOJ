@@ -97,7 +97,7 @@ async function main() {
           "https://cdnjs.cloudflare.com",
           "https://cdn.jsdelivr.net"
         ],
-        // 覆盖 helmet 默认 script-src-attr 'none'：全站 35 个页面 229 处内联事件属性
+        // 覆盖 helmet 默认 script-src-attr 'none'：全站 41 个页面 194 处内联事件属性
         // （onsubmit/onclick 等）是既有架构，'none' 会使其全部失效（登录表单 onsubmit 被
         // 阻止 → 点击登录走原生提交并刷新页面）。脚本主体仍受 nonce + 'self' 约束，
         // 内联事件处理器仅允许调用已定义函数（R9-1 已对事件处理做 XSS 收敛）。
@@ -169,8 +169,6 @@ async function main() {
   // 操作日志中间件：记录 admin/su 用户的操作到 OJ_LOG_DIR/admin.log
   const { adminLogger } = require('../middleware/adminLogger');
   app.use(adminLogger);
-  // 安全公告文件 (RFC 9116)
-
   // 安全公告文件 (RFC 9116)
   const securityContact = config.security?.contact || 'https://github.com/dxx114514-stack/NoldOJ.mimo'; 
   const securityTxt = `Contact: ${securityContact}\nPreferred-Languages: zh\nCanonical: /security.txt\n`;
@@ -299,7 +297,7 @@ async function main() {
     });
   });
 
-  app.use((err, req, res, next) => {
+  app.use((err, req, res, _next) => {
     const reqId = res.locals.reqId || 'unknown';
     const msg = sanitizeLog(String(err.message || err));
     const stack = sanitizeLog(String(err.stack || err));
@@ -330,6 +328,19 @@ async function main() {
   logInfo('CONFIG', `JWT Access TTL: ${config.jwt.accessExpiry}, Refresh TTL: ${config.jwt.refreshExpiry}`);
   logInfo('CONFIG', `Sandbox Temp: ${config.sandbox.tempDir}`);
 
+  // ── 安全水位告警：这些状态会显著削弱隔离/边界，启动时必须可见 ──
+  const runnerExe = path.join(__dirname, '../sandbox/sandbox_runner.exe');
+  if (process.platform === 'win32' && !fs.existsSync(runnerExe)) {
+    logWarn('SANDBOX', 'sandbox_runner.exe 未编译，将以传统模式裸跑用户代码（无 Job Object/受限令牌/低完整性隔离）');
+    logWarn('SANDBOX', '  修复: 执行 backend\\sandbox\\build.bat（或 start.bat 会自动编译）；或设 NoldOJ_REQUIRE_RUNNER=1 使缺 runner 时 fail-closed 拒绝判题');
+  }
+  if (process.env.NoldOJ_REQUIRE_RUNNER === '1') {
+    logInfo('SANDBOX', 'NoldOJ_REQUIRE_RUNNER=1: 缺 sandbox_runner.exe 时将拒绝判题 (fail-closed)');
+  }
+  if (!config.cors.restricted) {
+    logWarn('CORS', 'CORS_RESTRICTED=false: 任意 Origin 可携带凭据调用 API，仅限本地/内网演示环境');
+  }
+
   const server = http.createServer(app);
   // 初始化 Socket.io 实时推送
   const { initSocket } = require('../services/socket');
@@ -337,7 +348,7 @@ async function main() {
 
   // 重启后回收上次崩溃遗留的孤儿判题进程/临时目录（D-M13）
   const { cleanupOrphanProcesses } = require('../sandbox/executor');
-  try { cleanupOrphanProcesses(); } catch {}
+  try { cleanupOrphanProcesses(); } catch (e) { logWarn('SANDBOX', `清理孤儿进程失败: ${sanitizeLog(String(e && e.message || e))}`); }
 
   // R9-5: 清理崩溃残留的 testdata 临时上传文件（独立非公开目录，非 /uploads）
   try {
@@ -346,12 +357,17 @@ async function main() {
       fs.rmSync(tmpUploadDir, { recursive: true, force: true });
       fs.mkdirSync(tmpUploadDir, { recursive: true });
     }
-  } catch {}
+  } catch (e) { logWarn('BOOT', `清理残留上传失败: ${sanitizeLog(String(e && e.message || e))}`); }
 
   // 重启后恢复中断的判题任务（内存队列在进程退出时丢失）
   const { recoverInterruptedSubmissions } = require('../services/judge');
   const recovered = recoverInterruptedSubmissions();
   if (recovered > 0) logInfo('JUDGE', `Recovered ${recovered} interrupted submission(s).`);
+
+  // IDE 运行队列同样只在内存中，残留中间态必须收敛，否则永远显示"运行中"
+  const { recoverInterruptedIdeRuns } = require('../services/ideJudge');
+  const recoveredRuns = recoverInterruptedIdeRuns();
+  if (recoveredRuns > 0) logInfo('IDE', `Marked ${recoveredRuns} interrupted IDE run(s) as system_error.`);
 
   server.listen(config.port, () => {
     logInfo('READY', `==========================================`);

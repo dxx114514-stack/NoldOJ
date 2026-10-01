@@ -133,7 +133,7 @@
 - **编译/运行命令**：支持 `{src}`、`{exe}`、`{workdir}` 占位符
 
 ### 验证码系统
-- **SVG 图形验证码**：使用 svg-captcha 动态生成 4 位随机字符（排除易混淆字符 O/0/I/1），带干扰线和彩色噪点
+- **SVG 图形验证码**：自绘 SVG（opentype.js 将字形转 path，答案不写入 DOM），生成 4 位随机字符（排除易混淆字符 O/0/I/1），叠加干扰线与湍流扭曲防 OCR
 - **点击刷新**：点击验证码图片即可生成新的验证码
 - **一次性使用**：验证成功/失败后立即销毁，防止重放
 - **5 分钟有效期**：超时自动过期，需重新获取
@@ -226,7 +226,6 @@
 | **JDK** | 任意版本 | Java 编译和执行（可选） |
 | **操作系统** | Windows 10 及以上 | 主要支持平台（Node 24 官方构建最低要求 Win10；沙箱运行器最低需 Win8+，整体以 Node 要求为准） |
 | **Ollama** | 任意版本 | AI 代码安全审查（可选，需加载 qwen3:1.7b 模型） |
-| **svg-captcha** | >= 1.4.0 | SVG 图形验证码生成 |
 
 ## 快速开始
 
@@ -270,6 +269,25 @@ npm install
 - **初始密码**：随机生成，首次启动时在控制台日志中显示一次（仅此一次显示）
 
 > **重要**：登录后请立即修改管理员密码！
+
+## 测试
+
+```batch
+cd backend
+npm test            :: 单元 + 数据库测试（不依赖已启动的服务）
+npm run lint        :: ESLint 静态检查
+npm run test:server :: 黑盒安全/登录测试（需服务已启动，见下）
+```
+
+- `npm test` 覆盖计分脚本解释器、输出比较、限流、查重、考试/比赛、Excel 导入、沙箱真实编译共 8 个文件。
+- 需要数据库的测试自动使用 `%TEMP%\NoldOJ-test\` 下的独立库，**不读写生产库** `backend/data/NoldOJ.db`，测试中断也不会留下脏数据。
+- `sandbox.test.js` 会真实调用 g++ 编译 C++，未安装 MinGW 的环境自动跳过这 3 个用例。
+- `test:server` 包含 `security.test.js`（CSP/CORS/上传伪装/SPJ 逃逸/登录爆破等黑盒用例）与 `reset-login.test.js`，共 24 项；执行前须在**另一窗口**以调试模式启动服务（否则登录被验证码 403 拦截）：
+  ```batch
+  set NoldOJ_CAPTCHA_DEBUG=1
+  npm start
+  ```
+  该变量使验证码接口附带 `code` 供测试自动作答，**仅限测试环境，生产/日常运行严禁设置**。
 
 ## 数据库迁移（sql.js → node:sqlite）
 
@@ -366,7 +384,6 @@ CORS_RESTRICTED=true
 > - `captcha.txt` — 验证码开关，缺失时默认开启
 > - `jwt.txt` — JWT 密钥，缺失时首次启动自动生成强随机密钥
 > - `judge.txt` — 判题并发，缺失时按 CPU 核数自动确定
-> - `sandboxie.txt` — Sandboxie 隔离开关、路径配置、模板克隆。默认开启；未安装 Sandboxie 时自动回退 Job Object
 
 ### 核心配置
 
@@ -394,7 +411,9 @@ NoldOJ/
 ├── start.bat               # 一键启动脚本
 ├── st.bat                  # 一键启动脚本（含cloudflare tunnel启动和混合输出）
 ├── README.md               # 项目说明
-├── openapi.yaml            # OpenAPI 3.0 规范文档
+├── docs/
+│   ├── api/openapi.yaml    # OpenAPI 3.0 规范文档（含 APIuse.md 接口文档）
+│   └── support.html        # 支持页 / FAQ
 ├── config/                 # 外部配置文件（已被 .gitignore 忽略）
 │   ├── ai.txt              # AI 代码安全审查配置
 │   ├── email.txt           # 邮件发送配置
@@ -403,21 +422,21 @@ NoldOJ/
 ├── backend/
 │   ├── config/             # 核心配置（config.js）
 │   ├── database/           # 数据库 schema 和初始化（含自动迁移）
+│   ├── data/               # 运行时数据：SQLite 库 + 测试数据 + 上传文件（自动创建）
 │   ├── middleware/         # 认证、限流、在线用户追踪
-│   ├── routes/             # API 路由（16个模块，100+端点）
+│   ├── routes/             # API 路由（22 个文件，21 组，162 个端点）
 │   ├── services/           # 评测引擎 + IDE 评测 + AI 安全审查 + 验证码 + 查重
 │   ├── sandbox/            # 代码执行沙箱 + 计分脚本解释器
-│   ├── test/               # 单元测试（70+ 测试用例）
+│   ├── test/               # 测试（10 个测试文件，77 个用例）
 │   └── src/                # 服务器入口
 ├── frontend/
 │   ├── css/                # 全局样式（含暗色模式覆盖）
 │   ├── js/                 # 公共 JS（API 封装、Markdown 渲染、导航栏）
 │   ├── favicon.svg         # 网站图标
-│   └── pages/              # HTML 页面（30个页面，全中文界面，支持 Markdown/KaTeX）
+│   └── pages/              # HTML 页面（41 个页面，全中文界面，支持 Markdown/KaTeX）
 ├── scripts/                # 工具脚本（种子数据、favicon 添加等）
-├── tools/                  # 自动安装的语言运行时（.gitignore 排除）
-├── data/                   # 运行时数据（自动创建）
-└── problems/               # 测试点文件（自动创建）
+├── log/                    # 运行日志（按启动时间戳建目录，已被 .gitignore 忽略）
+└── data/                   # 上传文件等运行时数据（自动创建）
 ```
 
 ## 角色权限说明
@@ -451,6 +470,15 @@ NoldOJ/
 - 试卷题目支持 Excel 导入：试卷编辑页新增「Excel 导入 / 下载模板」，前端解析 xlsx（题型/题目/选项/答案/分值/主观题列名映射，兼容无表头固定列序），输出结构与手动录入一致；解析逻辑抽到 `js/exam-import.js` 并配套 15 项单元测试；另提供站内示例文件 `/exam-sample.xlsx`（示例题目 + 「填写说明」工作表）可直接下载参考
 - 前端页面：试卷列表、答题界面、结果展示、教师批改界面
 - 导航栏新增"试卷"入口
+- 测试隔离：需要数据库的测试改用 `%TEMP%\NoldOJ-test\` 独立库，不再读写生产库 `backend/data/NoldOJ.db`；`sandbox.test.js` 在无 g++ 环境自动跳过真实编译用例
+- 测试入口补全：新增 `npm run test:server` 跑黑盒安全套件 `security.test.js` 与 `reset-login.test.js`（需先 `npm start`），README 补「测试」章节说明用法
+- 启动时收敛 IDE 运行残留中间态（`pending/pending_review/compiling/running` → `system_error`），与判题恢复 `recoverInterruptedSubmissions()` 对齐，避免崩溃后永远显示"运行中"
+- 启动告警：`sandbox_runner.exe` 未编译（回退无隔离的传统模式）、`CORS_RESTRICTED=false`（反射任意 Origin）等高风险状态现在会在启动日志里明确 WARN
+- 补日志的静默空 catch：评测后处理、成就检查、题单进度更新、工作目录清理、启动期孤儿进程/残留上传清理——失败不再毫无痕迹
+- 清理死代码：移除 v2.0.0 已废弃的 Sandboxie 配置加载（`loadSandboxieConfig()` + `example-config/sandboxie.txt`）、`config.js` 重复 `problemsDir` 键、`server.js` 重复注释、0 引用的 `backend/_assets.json` 与 0 字节 `intro1.mp4`
+- 文档与实现同步：验证码章节改为自绘 SVG（opentype.js）、路由 22 文件/162 端点、41 个页面、10 个测试文件、`docs/api/openapi.yaml` 与 `backend/data/problems/` 路径、Node 要求与 `engines` 统一为 >=24，`APIuse.md` 去掉已移除的 Sandboxie 描述
+- 引入 ESLint（`backend/eslint.config.js` + `npm run lint`，eslint:recommended，空 catch 允许、未用变量 `_` 前缀豁免）：首跑清零存量 77 项，并顺带修出两处真实运行时缺陷——`GET /api/v1/submissions/:id/detail` 响应引用未定义的 `test_groups`（必抛 ReferenceError）、`routes/problems.js` 有 7 处在函数外引用未导入的 `config`（删题/改题号/测试数据目录清理会抛 ReferenceError），另清理 21 处未使用变量与 5 处无效赋值
+- 新增 CI（`.github/workflows/test.yml`）：`lint-and-test` job 跑 `npm ci` + `npm run lint` + `npm test`；`blackbox` job 以 `NoldOJ_CAPTCHA_DEBUG=1` 启动服务并健康检查后跑 `npm run test:server`（24 项）
 
 ### v2.0.0
 - **重大重构**：移除 Sandboxie 依赖，改用原生三层安全架构（低完整性级别 + Job Object + 受限令牌/AppContainer）
@@ -599,7 +627,7 @@ A: Bilibili 用 `@[bilibili](BV号)`，任意网站用 `@[url](URL)`，音频 `@
 A: 编辑 `config/ai.txt` 文件。将 `AI_ENABLED` 设为 `true` 启用审查，通过 `URL` 设置 AI 服务地址（默认 `http://localhost:11434/api/chat`），`MODEL` 设置模型名称（默认 `qwen3:1.7b`），`KEY` 设置 API Key（可选，用于需要认证的服务）。
 
 **Q: 验证码是如何工作的？**
-A: 系统使用 svg-captcha 动态生成 4 位随机字符的 SVG 图形验证码，带干扰线和彩色噪点。用户登录/注册时需输入验证码，验证后立即销毁（一次性使用），5 分钟内有效。点击验证码图片可刷新。验证码开关通过 `config/captcha.txt` 中 `CAPTCHA_ENABLED` 控制（设为 `true` 启用，`false` 关闭）。
+A: 系统自绘 SVG 验证码：启动时用 opentype.js 把捆绑字体的字形转成 `<path>` 轮廓（答案字符串不写入 DOM，天然免疫 DOM 读取），生成 4 位随机字符（排除易混淆的 O/0/I/1，随机数走 `crypto.randomInt`），叠加干扰线与湍流扭曲防 OCR。用户登录/注册时需输入验证码，验证后立即销毁（一次性使用），5 分钟内有效。点击验证码图片可刷新。验证码开关通过 `config/captcha.txt` 中 `CAPTCHA_ENABLED` 控制（设为 `true` 启用，`false` 关闭）。
 
 **Q: 如何修改某用户的图床限额？**
 A: 以超级管理员登录，进入用户管理页面，找到目标用户，点击编辑按钮即可修改单文件大小限制和总存储空间。只能管理权限等级低于自己或自己的账号。

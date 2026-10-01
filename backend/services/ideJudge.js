@@ -86,4 +86,15 @@ function enqueueIdeRun(runId) {
   setImmediate(processIdeQueue);
 }
 
-module.exports = { enqueueIdeRun };
+// D-I6: 队列在内存中、子进程随进程退出消失；崩溃重启后残留的中间态
+// （pending/pending_review/compiling/running）已无对应任务，若不收敛会永远显示"运行中"。
+function recoverInterruptedIdeRuns() {
+  const rows = db.prepare("SELECT id FROM ide_runs WHERE status IN ('pending','pending_review','compiling','running')").all();
+  for (const r of rows) {
+    db.prepare("UPDATE ide_runs SET status = 'system_error', stderr = ? WHERE id = ?")
+      .run('Server restarted while this run was in progress, please run it again.', r.id);
+  }
+  return rows.length;
+}
+
+module.exports = { enqueueIdeRun, recoverInterruptedIdeRuns };

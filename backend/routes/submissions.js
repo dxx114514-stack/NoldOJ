@@ -295,7 +295,7 @@ router.get('/:id/detail', requireAuth, (req, res) => {
     ORDER BY COALESCE(sd.group_id, 0), sd.id
   `).all(submission.id);
   const testGroups = db.prepare('SELECT id, subtask_id, score FROM test_groups WHERE problem_id = ? ORDER BY id').all(submission.problem_id);
-  res.json({ submission, details, test_groups });
+  res.json({ submission, details, test_groups: testGroups });
 });
 
 // 代码 Diff View：返回同用户同题的上一次提交代码 + 当前代码；WA 时附带期望/实际输出
