@@ -279,7 +279,7 @@ npm run lint        :: ESLint 静态检查
 npm run test:server :: 黑盒安全/登录测试（需服务已启动，见下）
 ```
 
-- `npm test` 覆盖计分脚本解释器、输出比较、限流、查重、考试/比赛、Excel 导入、沙箱真实编译共 8 个文件。
+- `npm test` 覆盖计分脚本解释器、输出比较、限流、查重、考试/比赛、Excel 导入、沙箱真实编译、初始管理员口令策略共 9 个文件。
 - 需要数据库的测试自动使用 `%TEMP%\NoldOJ-test\` 下的独立库，**不读写生产库** `backend/data/NoldOJ.db`，测试中断也不会留下脏数据。
 - `sandbox.test.js` 会真实调用 g++ 编译 C++，未安装 MinGW 的环境自动跳过这 3 个用例。
 - `test:server` 包含 `security.test.js`（CSP/CORS/上传伪装/SPJ 逃逸/登录爆破等黑盒用例）与 `reset-login.test.js`，共 24 项；执行前须在**另一窗口**以调试模式启动服务（否则登录被验证码 403 拦截）：
@@ -288,6 +288,7 @@ npm run test:server :: 黑盒安全/登录测试（需服务已启动，见下�
   npm start
   ```
   该变量使验证码接口附带 `code` 供测试自动作答，**仅限测试环境，生产/日常运行严禁设置**。
+- 全新环境首次初始化数据库时 admin 口令为随机生成（仅启动日志显示一次）；CI 黑盒测试以 `NoldOJ_INIT_ADMIN_PASSWORD=admin123` 显式指定初始口令以便 `admin/admin123` 登录，日志不回显明文，**仅测试环境使用**。
 
 ## 数据库迁移（sql.js → node:sqlite）
 
@@ -427,7 +428,7 @@ NoldOJ/
 │   ├── routes/             # API 路由（22 个文件，21 组，162 个端点）
 │   ├── services/           # 评测引擎 + IDE 评测 + AI 安全审查 + 验证码 + 查重
 │   ├── sandbox/            # 代码执行沙箱 + 计分脚本解释器
-│   ├── test/               # 测试（10 个测试文件，77 个用例）
+│   ├── test/               # 测试（11 个测试文件，105 个用例）
 │   └── src/                # 服务器入口
 ├── frontend/
 │   ├── css/                # 全局样式（含暗色模式覆盖）
@@ -476,9 +477,10 @@ NoldOJ/
 - 启动告警：`sandbox_runner.exe` 未编译（回退无隔离的传统模式）、`CORS_RESTRICTED=false`（反射任意 Origin）等高风险状态现在会在启动日志里明确 WARN
 - 补日志的静默空 catch：评测后处理、成就检查、题单进度更新、工作目录清理、启动期孤儿进程/残留上传清理——失败不再毫无痕迹
 - 清理死代码：移除 v2.0.0 已废弃的 Sandboxie 配置加载（`loadSandboxieConfig()` + `example-config/sandboxie.txt`）、`config.js` 重复 `problemsDir` 键、`server.js` 重复注释、0 引用的 `backend/_assets.json` 与 0 字节 `intro1.mp4`
-- 文档与实现同步：验证码章节改为自绘 SVG（opentype.js）、路由 22 文件/162 端点、41 个页面、10 个测试文件、`docs/api/openapi.yaml` 与 `backend/data/problems/` 路径、Node 要求与 `engines` 统一为 >=24，`APIuse.md` 去掉已移除的 Sandboxie 描述
+- 文档与实现同步：验证码章节改为自绘 SVG（opentype.js）、路由 22 文件/162 端点、41 个页面、11 个测试文件、`docs/api/openapi.yaml` 与 `backend/data/problems/` 路径、Node 要求与 `engines` 统一为 >=24，`APIuse.md` 去掉已移除的 Sandboxie 描述
 - 引入 ESLint（`backend/eslint.config.js` + `npm run lint`，eslint:recommended，空 catch 允许、未用变量 `_` 前缀豁免）：首跑清零存量 77 项，并顺带修出两处真实运行时缺陷——`GET /api/v1/submissions/:id/detail` 响应引用未定义的 `test_groups`（必抛 ReferenceError）、`routes/problems.js` 有 7 处在函数外引用未导入的 `config`（删题/改题号/测试数据目录清理会抛 ReferenceError），另清理 21 处未使用变量与 5 处无效赋值
 - 新增 CI（`.github/workflows/test.yml`）：`lint-and-test` job 跑 `npm ci` + `npm run lint` + `npm test`；`blackbox` job 以 `NoldOJ_CAPTCHA_DEBUG=1` 启动服务并健康检查后跑 `npm run test:server`（24 项）
+- 修 CI 首跑两类失败：Linux 判题回退路径 `runUnix: './{exe}'` 给绝对路径拼出 `.//home/...` 致 spawn ENOENT（`executor.js` 改为 `{exe}`，Windows 分支本就不用 `runUnix`）；全新 runner 初始化出随机 admin 口令致黑盒登录 401（新增 `NoldOJ_INIT_ADMIN_PASSWORD` 环境变量覆盖、日志不回显，配套 `init-password.test.js` 3 项）
 
 ### v2.0.0
 - **重大重构**：移除 Sandboxie 依赖，改用原生三层安全架构（低完整性级别 + Job Object + 受限令牌/AppContainer）

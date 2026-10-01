@@ -480,14 +480,22 @@ async function initDB() {
 
   const adminCount = sqlDb.prepare("SELECT COUNT(*) as c FROM users WHERE username = 'admin'").get()?.c || 0;
   if (adminCount === 0) {
-    // 初始管理员使用随机口令，避免硬编码默认密码；口令仅在本次启动日志中显示一次
-    const initialPw = Array.from(crypto.getRandomValues(new Uint8Array(12)))
-      .map(b => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$'.charAt(b % 58))
-      .join('');
+    // 初始管理员默认使用随机口令，避免硬编码默认密码；口令仅在本次启动日志中显示一次。
+    // 自动化/CI 可通过 NoldOJ_INIT_ADMIN_PASSWORD 显式指定初始口令（例如黑盒测试）。
+    const envPw = process.env.NoldOJ_INIT_ADMIN_PASSWORD;
+    const initialPw = envPw && envPw.length > 0
+      ? envPw
+      : Array.from(crypto.getRandomValues(new Uint8Array(12)))
+        .map(b => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$'.charAt(b % 58))
+        .join('');
     const hash = bcrypt.hashSync(initialPw, 10);
     sqlDb.prepare('INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)').run('admin', hash, 'Super Admin', 'su');
-    // 仅在数据库刚初始化、且此前不存在 admin 时输出
-    console.log('[DB] 初始管理员账号 admin 已创建，初始密码（仅此一次显示）: ' + initialPw);
+    // 仅在数据库刚初始化、且此前不存在 admin 时输出；环境变量指定的口令不回显
+    if (envPw && envPw.length > 0) {
+      console.log('[DB] 初始管理员账号 admin 已创建，初始密码由环境变量 NoldOJ_INIT_ADMIN_PASSWORD 指定（不回显）');
+    } else {
+      console.log('[DB] 初始管理员账号 admin 已创建，初始密码（仅此一次显示）: ' + initialPw);
+    }
   }
 
   return sqlDb;

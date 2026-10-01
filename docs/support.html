@@ -694,9 +694,10 @@ build.bat</code></pre>
             <li>测试隔离：需要数据库的测试改用 <code>%TEMP%\NoldOJ-test\</code> 独立库，不再读写生产库；<code>sandbox.test.js</code> 在无 g++ 环境自动跳过真实编译用例；新增 <code>npm run test:server</code> 跑黑盒安全套件（需先 <code>npm start</code>）</li>
             <li>启动时收敛 IDE 运行残留中间态（<code>pending/compiling/running</code> → <code>system_error</code>），与判题恢复逻辑对齐；<code>sandbox_runner.exe</code> 未编译、<code>CORS_RESTRICTED=false</code> 等高风险状态启动即告警</li>
             <li>补日志的静默空 catch（评测后处理、成就检查、题单进度、目录清理），失败不再毫无痕迹；清理 v2.0.0 已废弃的 Sandboxie 配置加载、重复定义与 0 引用文件</li>
-            <li>文档与实现同步：验证码改为自绘 SVG、路由 22 文件/162 端点、41 个页面、10 个测试文件、Node 要求与 <code>engines</code> 统一为 &gt;=24，<code>APIuse.md</code> 去掉已移除的 Sandboxie 描述</li>
+            <li>文档与实现同步：验证码改为自绘 SVG、路由 22 文件/162 端点、41 个页面、11 个测试文件、Node 要求与 <code>engines</code> 统一为 &gt;=24，<code>APIuse.md</code> 去掉已移除的 Sandboxie 描述</li>
             <li>引入 ESLint（<code>npm run lint</code>）：首跑清零 77 项存量问题，顺带修出两处真实运行时缺陷（提交详情接口引用未定义的 <code>test_groups</code>、<code>problems.js</code> 7 处引用未导入的 <code>config</code> 导致删题/改题号抛 ReferenceError）</li>
-            <li>新增 CI（<code>.github/workflows/test.yml</code>）：push/PR 自动跑 lint + 78 项单元测试，另有黑盒 job 启动服务后跑 <code>npm run test:server</code>（24 项）</li>
+            <li>新增 CI（<code>.github/workflows/test.yml</code>）：push/PR 自动跑 lint + 81 项单元测试，另有黑盒 job 启动服务后跑 <code>npm run test:server</code>（24 项）</li>
+            <li>修 CI 首跑两类失败：Linux 判题回退路径 <code>runUnix: './{exe}'</code> 给绝对路径拼出 <code>.//home/...</code> 致 spawn ENOENT（<code>executor.js</code> 改为 <code>{exe}</code>）；全新 runner 初始化出随机 admin 口令致黑盒登录 401（新增 <code>NoldOJ_INIT_ADMIN_PASSWORD</code> 环境变量覆盖、日志不回显，配套 <code>init-password.test.js</code> 3 项）</li>
           </ul>
         </div>
         <div class="ver"><b>v2.0.0</b>

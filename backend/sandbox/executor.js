@@ -12,8 +12,10 @@ const SANDBOX_RUNNER_PATH = path.join(__dirname, 'sandbox_runner.exe');
 const hasSandboxRunner = process.platform === 'win32' && fs.existsSync(SANDBOX_RUNNER_PATH);
 
 const LANG_MAP = {
-  c: { compile: 'gcc -O2 -Wall -o "{exe}" "{src}"', run: '"{exe}"', ext: '.c', runUnix: './{exe}', compiled: true },
-  cpp: { compile: 'g++ -O2 -Wall -std=c++17 -o "{exe}" "{src}"', run: '"{exe}"', ext: '.cpp', runUnix: './{exe}', compiled: true },
+  // {exe} 由 prepareWorkDir 给出的是绝对路径，runUnix 不能加 './' 前缀，
+  // 否则 Linux 下会拼成 .//home/... 的非法路径导致 spawn ENOENT。
+  c: { compile: 'gcc -O2 -Wall -o "{exe}" "{src}"', run: '"{exe}"', ext: '.c', runUnix: '{exe}', compiled: true },
+  cpp: { compile: 'g++ -O2 -Wall -std=c++17 -o "{exe}" "{src}"', run: '"{exe}"', ext: '.cpp', runUnix: '{exe}', compiled: true },
   python3: { compile: '', run: 'python "{src}"', ext: '.py' },
   java: { compile: 'javac "{src}" -d "{workdir}"', run: 'java -cp "{workdir}" Main', ext: '.java', compiled: true },
   javascript: { compile: '', run: 'node "{src}"', ext: '.js' }
