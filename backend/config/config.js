@@ -218,7 +218,7 @@ function loadSecurityContact() {
       }
     }
   } catch {}
-  return 'https://github.com/dxx114514-stack/NoldOJ.mimo';
+  return 'https://github.com/dxxjudges/NoldOJ';
 }
 
 module.exports = {
