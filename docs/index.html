@@ -481,7 +481,7 @@
         <li>等待自动安装完成</li>
         <li>运行安装目录下的 <code>start.bat</code></li>
         <li>浏览器打开 <code>http://localhost:3000</code></li>
-        <li>管理员账号 <code>admin</code>，初始密码随机生成，首次启动时在控制台日志中显示一次，登录后请立即修改</li>
+        <li>管理员账号 <code>admin</code>，初始密码随机生成，首次启动时在启动日志 <code>log/&lt;时间戳&gt;/server.log</code> 中显示一次，登录后请立即修改</li>
       </ol>
       <div class="notice info" style="margin-top: 16px; font-size: 14px;">
         <b>首次启动自动迁移：</b>若根目录存在 <code>problems/</code> 且 <code>backend/data/problems/</code> 不存在，<code>start.bat</code> 会自动将其移动到 <code>backend/data/problems/</code>（与数据库同级），便于整体备份。
@@ -521,7 +521,7 @@ npm install</code></pre>
         <li>进入 <code>backend</code> 目录执行 <code>npm install</code></li>
         <li>返回项目根目录运行 <code>start.bat</code></li>
         <li>浏览器打开 <code>http://localhost:3000</code></li>
-        <li>管理员账号 <code>admin</code>，初始密码随机生成，首次启动时在控制台日志中显示一次，登录后请立即修改</li>
+        <li>管理员账号 <code>admin</code>，初始密码随机生成，首次启动时在启动日志 <code>log/&lt;时间戳&gt;/server.log</code> 中显示一次，登录后请立即修改</li>
       </ol>
     </div>
   </div>
@@ -575,7 +575,7 @@ npm install</code></pre>
     <div class="reveal">
       <details open>
         <summary>代码提交后一直显示"评测中"？</summary>
-        <p>检查服务器控制台是否有报错。可能是编译器未安装或路径未配置。</p>
+        <p>检查启动日志 <code>log/&lt;时间戳&gt;/server.log</code> 是否有报错（start.bat 将服务输出写入该文件）。可能是编译器未安装或路径未配置。</p>
       </details>
       <details>
         <summary>内存显示 0KB？</summary>

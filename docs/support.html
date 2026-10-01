@@ -248,7 +248,7 @@ start.bat</code></pre>
         </div>
       </div>
       <div class="notice danger">
-        <b>管理员账号：</b><code>admin</code>，初始密码<b>随机生成</b>，首次启动时在控制台日志中显示一次（仅此一次）<br>
+        <b>管理员账号：</b><code>admin</code>，初始密码<b>随机生成</b>，首次启动时在启动日志 <code>log/&lt;时间戳&gt;/server.log</code> 中显示一次（仅此一次，控制台窗口不显示服务日志）<br>
         登录后请<b>立即修改管理员密码</b>。
       </div>
       <div class="notice warn">
@@ -586,7 +586,7 @@ build.bat</code></pre>
       <h3 class="block">启动与安装</h3>
       <details open>
         <summary>代码提交后一直显示「评测中」？</summary>
-        <p>检查服务器控制台是否有报错。可能是编译器未安装或路径未配置（MinGW / Python / JDK 需在 PATH 中）。</p>
+        <p>检查启动日志 <code>log/&lt;时间戳&gt;/server.log</code> 是否有报错（start.bat 将服务输出写入该文件）。可能是编译器未安装或路径未配置（MinGW / Python / JDK 需在 PATH 中）。</p>
       </details>
       <details>
         <summary>内存显示 0KB？</summary>
