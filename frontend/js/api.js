@@ -52,7 +52,7 @@ async function refreshAccessToken() {
       if (res.status === 403) {
         throw { status: 403, message: '账号已被封禁' };
       }
-      throw { status: 401, message: 'Refresh failed' };
+      throw { status: 401, message: '登录已过期，请重新登录' };
     } finally {
       refreshPromise = null;
     }
@@ -140,7 +140,10 @@ async function apiCall(method, path, body = null) {
   }
   let data;
   try { data = await res.json(); } catch { data = {}; }
-if (res.status === 401 && data.reason === 'ERR_UNAUTHORIZED') {
+  // 登录/刷新接口的 401 属于业务错误（如密码错误、刷新令牌无效），不是令牌过期，
+  // 不触发自动续期，否则真实错误信息会被刷新失败提示顶掉
+  const isAuthSemantic = path.startsWith('/auth/login') || path.startsWith('/auth/refresh');
+  if (res.status === 401 && data.reason === 'ERR_UNAUTHORIZED' && !isAuthSemantic) {
     try {
       const newToken = await refreshAccessToken();
       headers['Authorization'] = `Bearer ${newToken}`;
