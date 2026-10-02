@@ -484,6 +484,14 @@ CREATE TABLE IF NOT EXISTS exams (
   is_public INTEGER DEFAULT 1,
   is_hidden INTEGER DEFAULT 0,
   allow_ai_grading INTEGER DEFAULT 1, -- 是否允许 AI 评分主观题
+  start_time TEXT,                 -- 开考时间（ISO8601，NULL=不限；期间外禁止作答）
+  end_time TEXT,                   -- 结束时间（NULL=不限，且不参与自动封榜）
+  freeze_minutes INTEGER DEFAULT 0, -- 结束前 N 分钟自动封榜，0=不自动封榜
+  leaderboard_enabled INTEGER DEFAULT 1, -- 启用排行榜
+  leaderboard_view_incomplete INTEGER DEFAULT 0, -- 未交卷用户能否查看排行榜，0=仅完成者
+  manual_frozen INTEGER DEFAULT 0, -- 手动封榜开关
+  manual_frozen_at TEXT,           -- 手动封榜时刻（榜单快照锚点，UTC）
+  unfrozen INTEGER DEFAULT 0,      -- 手动解榜开关（抑制自动封榜窗口）
   creator_id INTEGER NOT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>排行榜 - NoldOJ</title>
+  <script src="/js/tailwind.js"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
+  <script src="/js/api.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
+  <div id="nav"></div>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">🏆 排行榜</h1>
+      <a id="backLink" href="/pages/exams.html" class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">← 返回</a>
+    </div>
+    <div id="msg" class="text-center py-12 text-gray-400">加载中...</div>
+    <div id="board" class="hidden">
+      <div id="head" class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-6"></div>
+      <div id="mine" class="hidden mb-6"></div>
+      <div id="rows" class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 overflow-hidden"></div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('nav').innerHTML = renderNav('exams');
+    const params = new URLSearchParams(window.location.search);
+    const eid = params.get('id');
+    const user = getUser();
+    const staff = !!user && ['teacher', 'admin', 'su'].includes(user.role);
+    let data = null;
+    let refreshTimer = null;
+
+    function setMsg(html) {
+      document.getElementById('msg').innerHTML = html;
+      document.getElementById('msg').classList.remove('hidden');
+      document.getElementById('board').classList.add('hidden');
+    }
+
+    async function load() {
+      if (!eid) { setMsg('<p class="text-red-500">未指定试卷 ID</p>'); return; }
+      try {
+        data = await apiCall('GET', `/exams/${eid}/leaderboard`);
+      } catch (err) {
+        setMsg(`<div class="space-y-4">
+          <p class="text-red-500">${escapeHtml(err.message) || '加载失败'}</p>
+          <a href="/pages/exam.html?id=${encodeURIComponent(eid)}" class="text-indigo-600 dark:text-indigo-400 hover:underline">← 返回考试</a>
+        </div>`);
+        return;
+      }
+      document.getElementById('msg').classList.add('hidden');
+      document.getElementById('board').classList.remove('hidden');
+      document.getElementById('backLink').href = `/pages/exam.html?id=${encodeURIComponent(eid)}`;
+      renderHead();
+      renderMine();
+      renderRows();
+
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => { load().catch(() => {}); }, 30000);
+    }
+
+    function windowBadge() {
+      if (!data.start_time || !data.end_time) return '';
+      const s = Date.parse(data.start_time), e = Date.parse(data.end_time);
+      if (isNaN(s) || isNaN(e)) return '';
+      const now = Date.now();
+      if (now < s) return '<span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">未开始</span>';
+      if (now > e) return '<span class="px-2 py-0.5 text-xs rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">已结束</span>';
+      return '<span class="px-2 py-0.5 text-xs rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">进行中</span>';
+    }
+
+    function renderHead() {
+      let controls = '';
+      if (staff) {
+        if (data.manual_frozen) {
+          controls = '<button onclick="setFreeze(false)" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-xl font-medium transition">🔓 解除封榜</button>';
+        } else if (data.frozen) {
+          controls = '<button onclick="setUnfrozen(true)" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-xl font-medium transition">🔓 手动解榜</button>';
+        } else {
+          controls = '<button onclick="setFreeze(true)" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-xl font-medium transition">🔒 手动封榜</button>';
+          if (data.unfrozen) {
+            controls += '<button onclick="setUnfrozen(false)" class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition">▶️ 恢复自动封榜</button>';
+          }
+        }
+      }
+
+      const freezeHint = data.frozen
+        ? `<div class="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 rounded-xl text-sm">
+             🔒 榜单已封（${data.freeze_at ? new Date(data.freeze_at).toLocaleString('zh-CN') : ''} 起，${data.freeze_source === 'auto' ? '自动封榜' : '手动封榜'}），封榜后交卷暂不计入榜单。
+           </div>`
+        : (data.unfrozen ? '<div class="mt-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 rounded-xl text-sm">已手动解除自动封榜，榜单实时公开。</div>' : '');
+
+      document.getElementById('head').innerHTML = `
+        <div class="flex flex-wrap items-center gap-3">
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">${escapeHtml(data.title)}</h2>
+          ${windowBadge()}
+          ${data.frozen ? '<span class="px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">🔒 封榜中</span>' : '<span class="px-2 py-0.5 text-xs rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">实时榜单</span>'}
+          <span class="text-sm text-gray-500 dark:text-gray-400">💯 满分 ${data.total_score}</span>
+          ${data.start_time && data.end_time ? `<span class="text-sm text-gray-500 dark:text-gray-400">📅 ${new Date(data.start_time).toLocaleString('zh-CN')} ~ ${new Date(data.end_time).toLocaleString('zh-CN')}</span>` : ''}
+          <div class="ml-auto flex gap-2">${controls}</div>
+        </div>
+        ${freezeHint}
+      `;
+    }
+
+    function renderMine() {
+      const box = document.getElementById('mine');
+      if (!data.my) { box.classList.add('hidden'); return; }
+      const m = data.my;
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-5 flex items-center gap-6">
+          <span class="text-lg font-bold text-indigo-600 dark:text-indigo-400">我的名次 #${m.rank}</span>
+          <span class="text-sm text-gray-600 dark:text-gray-300">得分 <b class="text-indigo-600 dark:text-indigo-400">${m.total_score}</b> / ${data.total_score}</span>
+          <span class="text-sm text-gray-500 dark:text-gray-400">尝试 ${m.attempts} 次</span>
+          ${m.submitted_at ? `<span class="text-sm text-gray-500 dark:text-gray-400">${new Date(m.submitted_at).toLocaleString('zh-CN')}</span>` : ''}
+        </div>
+      `;
+    }
+
+    function renderRows() {
+      const box = document.getElementById('rows');
+      const list = data.leaderboard || [];
+      if (list.length === 0) {
+        box.innerHTML = '<p class="text-gray-400 text-center py-10">暂无上榜记录</p>';
+        return;
+      }
+      const medal = r => r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : r;
+      box.innerHTML = `
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+              <th class="px-5 py-3 font-medium">名次</th>
+              <th class="px-5 py-3 font-medium">选手</th>
+              <th class="px-5 py-3 font-medium text-right">得分</th>
+              <th class="px-5 py-3 font-medium text-right">尝试</th>
+              <th class="px-5 py-3 font-medium text-right">交卷时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(r => {
+              const mine = user && r.user_id === user.id;
+              return `
+                <tr class="${mine ? 'bg-indigo-50 dark:bg-indigo-900/20' : (r.rank % 2 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-800/50')} border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+                  <td class="px-5 py-3 font-bold text-gray-900 dark:text-white">${medal(r.rank)}</td>
+                  <td class="px-5 py-3 text-gray-900 dark:text-white">${escapeHtml(r.nickname || r.username)}${mine ? '<span class="ml-2 text-xs text-indigo-500">(我)</span>' : ''}</td>
+                  <td class="px-5 py-3 text-right font-mono font-semibold ${r.total_score >= data.total_score ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}">${r.total_score}</td>
+                  <td class="px-5 py-3 text-right text-gray-500 dark:text-gray-400">${r.attempts}</td>
+                  <td class="px-5 py-3 text-right text-gray-500 dark:text-gray-400">${r.submitted_at ? new Date(r.submitted_at).toLocaleString('zh-CN') : '-'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function setFreeze(v) {
+      try {
+        await apiCall('PUT', `/exams/${eid}`, v
+          ? { manual_frozen: true, unfrozen: false }
+          : { manual_frozen: false, unfrozen: true });
+        await load();
+      } catch (err) {
+        alert(err.message || '操作失败');
+      }
+    }
+
+    async function setUnfrozen(v) {
+      try {
+        await apiCall('PUT', `/exams/${eid}`, { unfrozen: v });
+        await load();
+      } catch (err) {
+        alert(err.message || '操作失败');
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

@@ -59,6 +59,30 @@
         </div>
       </div>
 
+      <!-- 时间窗与排行榜 -->
+      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">时间窗与排行榜</h2>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">开考时间（留空=不限）</label>
+            <input id="f-start" type="datetime-local" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">结束时间（留空=不限）</label>
+            <input id="f-end" type="datetime-local" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">结束前 N 分钟自动封榜（0=不自动）</label>
+            <input id="f-freeze" type="number" value="0" min="0" max="10080" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white">
+          </div>
+          <div class="flex flex-col gap-2 justify-center">
+            <label class="flex items-center gap-2"><input id="f-lben" type="checkbox" checked class="w-4 h-4 text-indigo-600 rounded"><span class="text-sm text-gray-700 dark:text-gray-300">启用排行榜</span></label>
+            <label class="flex items-center gap-2"><input id="f-lbinc" type="checkbox" class="w-4 h-4 text-indigo-600 rounded"><span class="text-sm text-gray-700 dark:text-gray-300">允许未完成者查看</span></label>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">开考前考生不可见且无法作答；结束后自动解榜并禁止交卷与代码提交。封榜期间排行榜只统计封榜时刻前的交卷，教师可在排行榜页手动封榜/解榜。</p>
+      </div>
+
       <!-- 题目列表 -->
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -98,6 +122,20 @@
     const editId = params.get('id');
     let questions = [];
     let questionIdCounter = 0;
+
+    // ISO8601（存储/传输） ⇆ datetime-local 输入值（本地墙钟） 互转
+    function isoToLocalInput(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    function localInputToIso(v) {
+      if (!v) return null;
+      const ms = Date.parse(v);
+      return isNaN(ms) ? null : new Date(ms).toISOString();
+    }
     let langList = [
       { name: 'c', display_name: 'C' },
       { name: 'cpp', display_name: 'C++' },
@@ -129,6 +167,11 @@
         document.getElementById('f-hidden').checked = data.is_hidden === 1;
         document.getElementById('f-showanswer').checked = data.show_answer === 1;
         document.getElementById('f-ai').checked = data.allow_ai_grading === 1;
+        document.getElementById('f-start').value = isoToLocalInput(data.start_time);
+        document.getElementById('f-end').value = isoToLocalInput(data.end_time);
+        document.getElementById('f-freeze').value = data.freeze_minutes || 0;
+        document.getElementById('f-lben').checked = data.leaderboard_enabled !== 0;
+        document.getElementById('f-lbinc').checked = data.leaderboard_view_incomplete === 1;
 
         questions = (data.questions || []).map(q => {
           const item = {
@@ -591,6 +634,11 @@
         is_public: document.getElementById('f-public').checked,
         is_hidden: document.getElementById('f-hidden').checked,
         allow_ai_grading: document.getElementById('f-ai').checked,
+        start_time: localInputToIso(document.getElementById('f-start').value),
+        end_time: localInputToIso(document.getElementById('f-end').value),
+        freeze_minutes: parseInt(document.getElementById('f-freeze').value) || 0,
+        leaderboard_enabled: document.getElementById('f-lben').checked,
+        leaderboard_view_incomplete: document.getElementById('f-lbinc').checked,
         questions: questions.map((q, i) => {
           const item = {
             question_type: q.question_type,

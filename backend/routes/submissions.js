@@ -8,6 +8,7 @@ const { enqueueSubmission } = require('../services/judge');
 const { reviewCode, CODE_LENGTH_LIMIT } = require('../services/security');
 const { sanitizeLog, banUserAndRevoke } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
+const { checkExamWindow } = require('../utils/examWindow');
 const config = require('../config/config');
 
 const router = express.Router();
@@ -146,6 +147,11 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
     }
     if (exam.is_hidden && !['teacher', 'admin', 'su'].includes(req.user.role)) {
       return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam not found.' });
+    }
+    // 时间窗门禁：开考前/结束后禁止提交代码（教师/管理员放行）
+    const winMsg = checkExamWindow(exam, req.user);
+    if (winMsg) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: winMsg });
     }
     const inExam = db.prepare("SELECT id FROM exam_questions WHERE exam_id = ? AND problem_id = ? AND question_type = 'program'").get(exam.id, problem_id);
     if (!inExam) {

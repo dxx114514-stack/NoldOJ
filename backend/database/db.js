@@ -237,6 +237,18 @@ async function initDB() {
   sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problems_exam ON problems(exam_id)');
   sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_submissions_exam ON submissions(exam_id, user_id, exam_attempt)');
 
+  // ═══ 试卷时间窗与排行榜（exam leaderboard）迁移 ═══
+  // 旧库渐进 ALTER；新装 schema.sql 已含。语义见 exams.js 的 resolveFreeze/窗口门禁。
+  const exCols = tableCols('exams');
+  if (!exCols.includes('start_time')) sqlDb.exec('ALTER TABLE exams ADD COLUMN start_time TEXT');
+  if (!exCols.includes('end_time')) sqlDb.exec('ALTER TABLE exams ADD COLUMN end_time TEXT');
+  if (!exCols.includes('freeze_minutes')) sqlDb.exec("ALTER TABLE exams ADD COLUMN freeze_minutes INTEGER DEFAULT 0");
+  if (!exCols.includes('leaderboard_enabled')) sqlDb.exec("ALTER TABLE exams ADD COLUMN leaderboard_enabled INTEGER DEFAULT 1");
+  if (!exCols.includes('leaderboard_view_incomplete')) sqlDb.exec("ALTER TABLE exams ADD COLUMN leaderboard_view_incomplete INTEGER DEFAULT 0");
+  if (!exCols.includes('manual_frozen')) sqlDb.exec("ALTER TABLE exams ADD COLUMN manual_frozen INTEGER DEFAULT 0");
+  if (!exCols.includes('manual_frozen_at')) sqlDb.exec('ALTER TABLE exams ADD COLUMN manual_frozen_at TEXT');
+  if (!exCols.includes('unfrozen')) sqlDb.exec("ALTER TABLE exams ADD COLUMN unfrozen INTEGER DEFAULT 0");
+
   const ideCols = tableCols('ide_runs');
   if (!ideCols.includes('status')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN status TEXT DEFAULT 'pending'");
   if (!ideCols.includes('compile_output')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN compile_output TEXT DEFAULT ''");

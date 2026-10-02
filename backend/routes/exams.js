@@ -5,6 +5,10 @@ const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth')
 const { parsePageLimit } = require('../utils/pagination');
 const { sanitizeText } = require('../utils/securityHelpers');
 const examProgram = require('../services/examProgram');
+const {
+  normalizeExamTime, validateExamWindow, examWindowState,
+  fromSqliteUtc, toSqliteUtc, resolveFreeze, checkExamWindow
+} = require('../utils/examWindow');
 
 const router = express.Router();
 
@@ -261,6 +265,12 @@ router.get('/:id', optionalAuth, (req, res) => {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam not found.' });
   }
 
+  // 时间窗：开考前对考生不可见（教师/管理员可预览）；结束后仍可查看结果
+  if (examWindowState(exam) === 'not_started' &&
+      !(req.user && ['teacher', 'admin', 'su'].includes(req.user.role))) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '考试尚未开始。' });
+  }
+
   // 获取题目（不含答案，除非是教师+且有查询参数 show_answers=true）
   const showAnswers = req.query.show_answers === 'true' && req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
 
@@ -331,12 +341,115 @@ router.get('/:id', optionalAuth, (req, res) => {
   res.json({ ...exam, questions, user_submission: userSubmission, current_attempt: currentAttempt });
 });
 
+// 排行榜：完成门槛 + 封榜过滤 + 每人最佳一次尝试排名（仅考生入榜）
+router.get('/:id/leaderboard', optionalAuth, (req, res) => {
+  const exam = db.prepare('SELECT * FROM exams WHERE id = ?').get(req.params.id);
+  if (!exam) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Exam not found.' });
+  }
+  const staff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  if (exam.is_hidden && !staff) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam not found.' });
+  }
+  if (!exam.leaderboard_enabled) {
+    return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Leaderboard not found.' });
+  }
+  // 完成门槛：有交卷记录=已完成；未完成者（含匿名）仅在教师放开时可看
+  const finished = req.user
+    ? db.prepare('SELECT 1 as x FROM exam_submissions WHERE exam_id = ? AND user_id = ? LIMIT 1').get(exam.id, req.user.id)
+    : null;
+  if (!staff && !finished && !exam.leaderboard_view_incomplete) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '完成考试后可查看排行榜。' });
+  }
+
+  const fz = resolveFreeze(exam);
+
+  // 封榜时只统计封榜时刻前的交卷；教师/管理员不入榜
+  let sql = `
+    SELECT es.user_id, es.total_score, es.max_score, es.submitted_at, es.status, u.username, u.nickname,
+      (SELECT COUNT(*) FROM exam_submissions x WHERE x.exam_id = es.exam_id AND x.user_id = es.user_id) as attempts
+    FROM exam_submissions es JOIN users u ON u.id = es.user_id
+    WHERE es.exam_id = ? AND u.role = 'user'`;
+  const params = [exam.id];
+  if (fz.frozen && fz.freeze_at) {
+    sql += ' AND es.submitted_at <= ?';
+    params.push(toSqliteUtc(fz.freeze_at));
+  }
+  const rows = db.prepare(sql).all(...params);
+
+  // 每人取最佳一次：分数降序，同分先交卷者靠前
+  const best = new Map();
+  for (const r of rows) {
+    const cur = best.get(r.user_id);
+    if (!cur || r.total_score > cur.total_score ||
+        (r.total_score === cur.total_score && String(r.submitted_at) < String(cur.submitted_at))) {
+      best.set(r.user_id, r);
+    }
+  }
+  const sorted = [...best.values()].sort((a, b) =>
+    (b.total_score - a.total_score) || String(a.submitted_at).localeCompare(String(b.submitted_at))
+  );
+
+  const toIso = (s) => {
+    const d = fromSqliteUtc(s);
+    return d ? d.toISOString() : null;
+  };
+  const entryOf = (r, idx) => ({
+    rank: idx + 1,
+    user_id: r.user_id,
+    username: r.username,
+    nickname: r.nickname || '',
+    total_score: r.total_score,
+    max_score: r.max_score,
+    attempts: r.attempts,
+    status: r.status,
+    submitted_at: toIso(r.submitted_at)
+  });
+
+  const limit = clampInt(req.query.limit, 1, 200, 100);
+  const leaderboard = sorted.slice(0, limit).map(entryOf);
+  let my = null;
+  if (req.user) {
+    const idx = sorted.findIndex(r => r.user_id === req.user.id);
+    if (idx >= 0) my = entryOf(sorted[idx], idx);
+  }
+
+  res.json({
+    exam_id: exam.id,
+    title: exam.title,
+    total_score: exam.total_score,
+    start_time: exam.start_time || null,
+    end_time: exam.end_time || null,
+    freeze_minutes: exam.freeze_minutes || 0,
+    frozen: !!fz.frozen,
+    freeze_at: fz.freeze_at,
+    freeze_source: fz.source,
+    manual_frozen: !!exam.manual_frozen,
+    unfrozen: !!exam.unfrozen,
+    view_incomplete: !!exam.leaderboard_view_incomplete,
+    leaderboard,
+    my
+  });
+});
+
 // 创建试卷
 router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
-  const { title, description, time_limit, pass_score, max_attempts, show_answer, is_public, is_hidden, allow_ai_grading, questions } = req.body;
+  const { title, description, time_limit, pass_score, max_attempts, show_answer, is_public, is_hidden, allow_ai_grading,
+    start_time, end_time, freeze_minutes, leaderboard_enabled, leaderboard_view_incomplete, questions } = req.body;
 
   if (!title) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'title is required.' });
+  }
+
+  // 时间窗校验（须同时设置或同时留空）
+  let st;
+  let et;
+  try {
+    st = normalizeExamTime(start_time);
+    et = normalizeExamTime(end_time);
+    validateExamWindow(st, et);
+  } catch (e) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: e.message });
   }
 
   // 题目预校验（编程题在此解析 ZIP/inline 测试数据），失败直接 400，避免建出半套试卷
@@ -350,8 +463,9 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
   }
 
   const result = db.prepare(`
-    INSERT INTO exams (title, description, time_limit, pass_score, max_attempts, show_answer, is_public, is_hidden, allow_ai_grading, creator_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO exams (title, description, time_limit, pass_score, max_attempts, show_answer, is_public, is_hidden, allow_ai_grading,
+      start_time, end_time, freeze_minutes, leaderboard_enabled, leaderboard_view_incomplete, creator_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     sanitizeText(title).trim(),
     sanitizeText(description || ''),
@@ -362,6 +476,11 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     is_public !== false ? 1 : 0,
     is_hidden ? 1 : 0,
     allow_ai_grading !== false ? 1 : 0,
+    st,
+    et,
+    clampInt(freeze_minutes, 0, 10080, 0),
+    leaderboard_enabled === false ? 0 : 1,
+    leaderboard_view_incomplete ? 1 : 0,
     req.user.id
   );
 
@@ -420,6 +539,18 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   }
 
   const { title, description, time_limit, pass_score, max_attempts, show_answer, is_public, is_hidden, allow_ai_grading, questions } = req.body;
+  const has = (k) => Object.prototype.hasOwnProperty.call(req.body, k);
+
+  // 时间窗：先算出生效值并校验，失败不动库（未提供则沿用原值）
+  let effStart = exam.start_time;
+  let effEnd = exam.end_time;
+  try {
+    if (has('start_time')) effStart = normalizeExamTime(req.body.start_time);
+    if (has('end_time')) effEnd = normalizeExamTime(req.body.end_time);
+    validateExamWindow(effStart, effEnd);
+  } catch (e) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: e.message });
+  }
 
   db.prepare(`
     UPDATE exams SET
@@ -444,6 +575,34 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     is_public !== undefined ? (is_public ? 1 : 0) : null,
     is_hidden !== undefined ? (is_hidden ? 1 : 0) : null,
     allow_ai_grading !== undefined ? (allow_ai_grading ? 1 : 0) : null,
+    req.params.id
+  );
+
+  // 时间窗 / 排行榜设置 / 手动封解榜状态机：
+  // 封榜动作（manual_frozen=1）强制解除手动解榜标记；解榜动作清空快照锚点
+  const newManualFrozen = has('manual_frozen') ? (req.body.manual_frozen ? 1 : 0) : (exam.manual_frozen || 0);
+  let newUnfrozen = has('unfrozen') ? (req.body.unfrozen ? 1 : 0) : (exam.unfrozen || 0);
+  if (newManualFrozen) newUnfrozen = 0;
+  let newFrozenAt = exam.manual_frozen_at || null;
+  if (has('manual_frozen')) {
+    newFrozenAt = newManualFrozen ? toSqliteUtc(Date.now()) : null;
+  }
+  db.prepare(`
+    UPDATE exams SET
+      start_time = ?, end_time = ?, freeze_minutes = ?,
+      leaderboard_enabled = ?, leaderboard_view_incomplete = ?,
+      manual_frozen = ?, manual_frozen_at = ?, unfrozen = ?,
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    effStart,
+    effEnd,
+    has('freeze_minutes') ? clampInt(req.body.freeze_minutes, 0, 10080, 0) : (exam.freeze_minutes || 0),
+    has('leaderboard_enabled') ? (req.body.leaderboard_enabled ? 1 : 0) : (exam.leaderboard_enabled || 1),
+    has('leaderboard_view_incomplete') ? (req.body.leaderboard_view_incomplete ? 1 : 0) : (exam.leaderboard_view_incomplete || 0),
+    newManualFrozen,
+    newFrozenAt,
+    newUnfrozen,
     req.params.id
   );
 
@@ -582,6 +741,12 @@ router.post('/:id/submit', requireAuth, (req, res) => {
   }
   if (exam.is_hidden && !['teacher', 'admin', 'su'].includes(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam not found.' });
+  }
+
+  // 时间窗门禁：开考前/结束后禁止交卷（教师/管理员放行）
+  const winMsg = checkExamWindow(exam, req.user);
+  if (winMsg) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: winMsg });
   }
 
   // 检查尝试次数；当前尝试号 = 已提交次数 + 1（程序题代码按此号归属）

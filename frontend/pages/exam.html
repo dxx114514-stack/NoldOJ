@@ -102,16 +102,28 @@
 
     function renderExam(e) {
       const questions = e.questions || [];
+      const me = getUser();
+      const staffView = !!me && ['teacher', 'admin', 'su'].includes(me.role);
+      // 时间窗状态（与后端 examWindowState 同款逻辑）；开考前考生会被后端 403 拦在本页之前
+      let winState = null;
+      if (e.start_time && e.end_time) {
+        const s = Date.parse(e.start_time), en = Date.parse(e.end_time);
+        if (!isNaN(s) && !isNaN(en)) winState = Date.now() < s ? 'not_started' : (Date.now() > en ? 'ended' : 'running');
+      }
+      const locked = winState === 'ended' && !staffView;
       let html = `
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-6">
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">${escapeHtml(e.title)}</h1>
           <div class="text-gray-500 dark:text-gray-400 prose dark:prose-invert max-w-none prose-sm">${renderMarkdown(e.description || '')}</div>
-          <div class="flex items-center gap-4 mt-4 text-sm text-gray-500 dark:text-gray-400">
+          <div class="flex flex-wrap items-center gap-4 mt-4 text-sm text-gray-500 dark:text-gray-400">
             <span>📊 ${questions.length} 题</span>
             <span>💯 总分 ${e.total_score}</span>
             ${e.time_limit ? `<span>⏱️ ${e.time_limit} 分钟</span>` : ''}
             ${e.pass_score ? `<span>✅ 及格 ${e.pass_score} 分</span>` : ''}
+            ${e.start_time && e.end_time ? `<span>📅 ${new Date(e.start_time).toLocaleString('zh-CN')} ~ ${new Date(e.end_time).toLocaleString('zh-CN')}</span>` : ''}
+            ${e.leaderboard_enabled !== 0 ? `<a href="/pages/exam-leaderboard.html?id=${e.id}" class="ml-auto px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition no-underline font-medium">🏆 排行榜</a>` : ''}
           </div>
+          ${locked ? '<div class="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 rounded-xl text-sm">⛔ 考试已结束，无法再作答或交卷。</div>' : ''}
           ${e.time_limit ? '<div id="timer" class="mt-4 text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400"></div>' : ''}
         </div>
       `;
@@ -199,8 +211,8 @@
             <div class="flex justify-end">
               <button id="psubmit-${q.id}" onclick="submitProgram(${q.id})"
                 class="px-6 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition text-sm"
-                ${mySub ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
-                ${mySub ? '已提交' : '提交代码'}
+                ${mySub || locked ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
+                ${mySub ? '已提交' : (locked ? '已结束' : '提交代码')}
               </button>
             </div>
           `;
@@ -211,7 +223,7 @@
 
       html += `
         <div class="mt-6 flex justify-end">
-          <button onclick="submitExam()" class="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">
+          <button onclick="submitExam()" ${locked ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''} class="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">
             提交试卷
           </button>
         </div>
@@ -221,8 +233,8 @@
 
       initProgramEditors();
 
-      // 启动计时器
-      if (e.time_limit && e.time_limit > 0) {
+      // 启动计时器（考试已结束则不再计时）
+      if (!locked && e.time_limit && e.time_limit > 0) {
         timeLeft = e.time_limit * 60;
         updateTimer();
         timer = setInterval(() => {
@@ -373,6 +385,11 @@
         window.location.reload();
       } catch (err) {
         alert(err.message || '提交失败');
+        // 考试窗口已结束：不再重启计时器，刷新进入只读态
+        if (currentExam && currentExam.end_time && Date.now() > Date.parse(currentExam.end_time)) {
+          window.location.reload();
+          return;
+        }
         if (timer) {
           timer = setInterval(() => {
             timeLeft--;
@@ -412,6 +429,11 @@
           ${currentExam.show_answer || (getUser() && ['teacher','admin','su'].includes(getUser().role)) ? `
           <div class="mt-4">
             <a href="/pages/exam-grading.html?id=${currentExam.id}&sid=${submission.id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">查看详细答案 →</a>
+          </div>
+          ` : ''}
+          ${currentExam.leaderboard_enabled !== 0 ? `
+          <div class="mt-4">
+            <a href="/pages/exam-leaderboard.html?id=${currentExam.id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">🏆 查看排行榜 →</a>
           </div>
           ` : ''}
         </div>
