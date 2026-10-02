@@ -107,7 +107,7 @@ function problemVisibilityError(problem, req) {
 router.get('/', optionalAuth, (req, res) => {
   const { page = 1, limit = 50, search = '', tag = '', tags = '', category = '', difficulty = '', sort = '', order = 'desc' } = req.query;
   const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
-  let where = 'WHERE p.is_public = 1';
+  let where = 'WHERE p.is_public = 1 AND p.exam_id IS NULL';
   const params = [];
   // 隐藏题目仅对 teacher/admin/su 可见；管理角色可加 include_hidden=1 在列表中查看
   const isManager = !!(req.user && isStaff(req.user.role));
@@ -305,6 +305,10 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
+  // 试卷内编程题只允许经试卷接口（exams.js）编辑，防止绕过试卷改题/改测试数据
+  if (problem.exam_id) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '试卷内编程题请通过试卷编辑接口修改。' });
+  }
   const inContest = db.prepare('SELECT id FROM contest_problems WHERE problem_id = ?').get(problem.id);
   if (inContest) {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot edit a problem that is part of a contest.' });
@@ -363,6 +367,10 @@ router.delete('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
+  // 试卷内编程题随试卷一起删除（exams.js 级联），禁止单独删
+  if (problem.exam_id) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '试卷内编程题请通过试卷删除接口移除。' });
+  }
   const inContest = db.prepare('SELECT id FROM contest_problems WHERE problem_id = ?').get(problem.id);
   if (inContest) {
     return res.status(400).json({ code: 2, reason: 'ERR_INVALID_STATE', message: 'Cannot delete a problem that is part of a contest.' });
@@ -393,6 +401,10 @@ router.put('/:id/reindex', requireAuth, requireRole('admin'), (req, res) => {
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(req.params.id);
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
+  }
+  // 试卷内编程题占用 EXAM_PROBLEM_ID_BASE 号段，不允许改到普通号段（反之亦然）
+  if (problem.exam_id || Number(req.body.new_id) >= db.EXAM_PROBLEM_ID_BASE) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '试卷内编程题与题库题目不可跨号段重编号。' });
   }
   const newId = Number(req.body.new_id);
   if (!Number.isInteger(newId) || newId < 1 || String(newId) !== String(req.body.new_id)) {

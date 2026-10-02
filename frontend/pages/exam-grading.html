@@ -41,6 +41,7 @@
 
     function renderGrading(sub) {
       const answers = sub.answers || [];
+      const hasSubjective = answers.some(a => a.is_subjective === 1);
       let html = `
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6 mb-6">
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">📊 ${escapeHtml(sub.exam_title)} - 批改</h1>
@@ -56,9 +57,9 @@
           </div>
           <div class="mt-4 text-sm text-gray-500">
             状态: <span class="${sub.status === 'graded' ? 'text-green-600' : 'text-yellow-600'}">${sub.status === 'graded' ? '已批改' : '待批改'}</span>
-            ${sub.status === 'grading' ? `
+            ${sub.status === 'grading' && hasSubjective ? `
             <button onclick="aiGrade()" class="ml-4 px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">🤖 AI 批改</button>
-            ` : ''}
+            ` : sub.status === 'grading' ? '<span class="ml-4 text-yellow-600">⏳ 编程题判题中，稍后刷新</span>' : ''}
           </div>
         </div>
       `;
@@ -66,36 +67,53 @@
       answers.forEach((a, i) => {
         const options = JSON.parse(a.options || '[]');
         const isSubjective = a.is_subjective === 1;
+        const isProgram = a.question_type === 'program';
         const isCorrect = a.is_correct === 1;
+        const progPending = isProgram && a.grading_status && ['pending', 'pending_review', 'running', 'compiling', 'judging', 'pending_rejudge'].includes(a.grading_status);
+        const borderColor = progPending
+          ? 'border-yellow-300 dark:border-yellow-700'
+          : isSubjective ? 'border-yellow-300 dark:border-yellow-700' : isCorrect ? 'border-green-300 dark:border-green-700' : 'border-red-300 dark:border-red-700';
 
         html += `
-          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border ${isSubjective ? 'border-yellow-300 dark:border-yellow-700' : isCorrect ? 'border-green-300 dark:border-green-700' : 'border-red-300 dark:border-red-700'} p-6 mb-4">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border ${borderColor} p-6 mb-4">
             <div class="flex items-start gap-3 mb-4">
-              <span class="flex-shrink-0 w-8 h-8 rounded-full ${isCorrect ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center font-bold text-sm">${i + 1}</span>
+              <span class="flex-shrink-0 w-8 h-8 rounded-full ${progPending ? 'bg-yellow-100 text-yellow-600' : isCorrect ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center font-bold text-sm">${i + 1}</span>
               <div class="flex-1">
                 <div class="font-medium text-gray-900 dark:text-white prose dark:prose-invert max-w-none prose-sm">${renderMarkdown(a.question_title)}</div>
                 <div class="text-xs text-gray-400 mt-1">
-                  ${a.question_type === 'choice' ? '选择题' : a.question_type === 'true_false' ? '判断题' : a.question_type === 'fill_blank' ? '填空题' : '大题'}
+                  ${a.question_type === 'choice' ? '选择题' : a.question_type === 'true_false' ? '判断题' : a.question_type === 'fill_blank' ? '填空题' : a.question_type === 'program' ? '💻 编程题' : '大题'}
                   · ${a.max_score} 分
-                  ${isSubjective ? '· 主观题' : '· 客观题'}
+                  ${isProgram ? '' : (isSubjective ? '· 主观题' : '· 客观题')}
                 </div>
               </div>
               <div class="text-right">
-                <div class="text-lg font-bold ${isCorrect ? 'text-green-600' : 'text-red-600'}">${a.score}/${a.max_score}</div>
+                <div class="text-lg font-bold ${progPending ? 'text-yellow-600' : isCorrect ? 'text-green-600' : 'text-red-600'}">${a.score}/${a.max_score}</div>
               </div>
             </div>
 
-            ${!isSubjective && a.correct_answer ? `
+            ${!isSubjective && !isProgram && a.correct_answer ? `
             <div class="mb-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
               <div class="text-xs text-green-600 dark:text-green-400 font-medium">正确答案</div>
               <div class="text-sm text-gray-700 dark:text-gray-300 mt-1">${escapeHtml(a.correct_answer)}</div>
             </div>
             ` : ''}
 
+            ${isProgram ? `
+            <div class="mb-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
+              <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">提交代码</div>
+              <div class="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                ${a.code_submission_id ? `
+                  <a href="/pages/submission.html?id=${a.code_submission_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">查看代码提交 #${a.code_submission_id} →</a>
+                  <span class="ml-2">${progPending ? '⏳ 判题中' : (isCorrect ? '✅ 通过' : '❌ 未通过')}</span>
+                ` : '<span class="text-gray-400">(未提交代码)</span>'}
+              </div>
+            </div>
+            ` : `
             <div class="mb-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
               <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">学生答案</div>
               <div class="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">${escapeHtml(a.answer || '(未作答)')}</div>
             </div>
+            `}
 
             ${isSubjective ? `
             <div class="mt-4">

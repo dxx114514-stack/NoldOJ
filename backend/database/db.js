@@ -25,6 +25,10 @@ const ALLOWED_TABLES = new Set([
   'exams', 'exam_questions', 'exam_submissions', 'exam_answers'
 ]);
 
+// 试卷内编程题的题目号段起点：题库普通题目 id 恒 < 此值，
+// 试卷内部题目 id 恒 >= 此值，两侧独立分配（见 findNextId 特判与 exams.js 分配逻辑）。
+const EXAM_PROBLEM_ID_BASE = 1000000;
+
 // 返回表中的下一个可用 ID。
 // node:sqlite 全程同步执行，调用方均在 findNextId 与 INSERT 之间无异步间隙，
 // 单线程模型下不存在并发取到相同 ID 的竞态窗口。
@@ -32,6 +36,15 @@ const ALLOWED_TABLES = new Set([
 function findNextId(table) {
   if (!ALLOWED_TABLES.has(table)) {
     throw new Error(`findNextId: invalid table name "${table}"`);
+  }
+  if (table === 'problems') {
+    // 题库只在普通号段（id < EXAM_PROBLEM_ID_BASE）内分配，避免与试卷内部题目撞号
+    const row = sqlDb.prepare('SELECT MAX(id) as m FROM problems WHERE id < ?').get(EXAM_PROBLEM_ID_BASE);
+    const next = (row?.m || 0) + 1;
+    if (next >= EXAM_PROBLEM_ID_BASE) {
+      throw new Error('findNextId: problems id space exhausted below EXAM_PROBLEM_ID_BASE');
+    }
+    return next;
   }
   const row = sqlDb.prepare(`SELECT MAX(id) as m FROM ${table}`).get();
   return (row?.m || 0) + 1;
@@ -174,6 +187,55 @@ async function initDB() {
   sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions(user_id, id)");
   sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user_problem_status ON submissions(user_id, problem_id, status)");
   sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_problem_status ON submissions(problem_id, status)");
+
+  // ═══ 试卷编程题（exam program）迁移 ═══
+  // 1) problems/submissions/exam_answers 新列（旧库渐进 ALTER；新装 schema.sql 已含）
+  if (!probCols.includes('exam_id')) sqlDb.exec('ALTER TABLE problems ADD COLUMN exam_id INTEGER');
+  if (!subCols.includes('exam_id')) sqlDb.exec('ALTER TABLE submissions ADD COLUMN exam_id INTEGER');
+  if (!subCols.includes('exam_attempt')) sqlDb.exec("ALTER TABLE submissions ADD COLUMN exam_attempt INTEGER DEFAULT 0");
+  const eaCols = tableCols('exam_answers');
+  if (!eaCols.includes('code_submission_id')) sqlDb.exec('ALTER TABLE exam_answers ADD COLUMN code_submission_id INTEGER');
+
+  // 2) exam_questions：CHECK 需扩展 'program' + 增 problem_id 列（SQLite 无法 ALTER CHECK → 重建）。
+  //    重建期间必须关闭 foreign_keys：否则 DROP/RENAME 会改写/级联 exam_answers 的 FK 引用
+  //    （与 R11 修复的 submissions_old 悬空外键同源）。FK 关闭时 RENAME 不改写他人 REFERENCES，
+  //    exam_answers 仍指向同名新表，语义正确。幂等：重建后 sql 含 'program'，下次启动跳过。
+  const eqRow = sqlDb.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='exam_questions'").get();
+  if (eqRow && !String(eqRow.sql).includes("'program'")) {
+    sqlDb.exec('PRAGMA foreign_keys = OFF');
+    try {
+      sqlDb.exec(`CREATE TABLE exam_questions_migrate (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exam_id INTEGER NOT NULL,
+        question_type TEXT NOT NULL CHECK(question_type IN ('choice','true_false','fill_blank','long_answer','program')),
+        title TEXT NOT NULL,
+        options TEXT DEFAULT '[]',
+        correct_answer TEXT DEFAULT '',
+        score REAL DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        is_subjective INTEGER DEFAULT 0,
+        ai_grading_prompt TEXT DEFAULT '',
+        problem_id INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+        FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+      )`);
+      const oldEqCols = tableCols('exam_questions');
+      const eqPick = ['id', 'exam_id', 'question_type', 'title', 'options', 'correct_answer', 'score', 'sort_order', 'is_subjective', 'ai_grading_prompt', 'created_at']
+        .filter(c => oldEqCols.includes(c));
+      sqlDb.exec(`INSERT INTO exam_questions_migrate (${eqPick.join(',')}) SELECT ${eqPick.join(',')} FROM exam_questions`);
+      sqlDb.exec('DROP TABLE exam_questions');
+      sqlDb.exec('ALTER TABLE exam_questions_migrate RENAME TO exam_questions');
+      console.log("[DB] exam_questions table rebuilt with 'program' type + problem_id");
+    } finally {
+      sqlDb.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+
+  // 3) 新列索引（旧库 schema.sql 的 CREATE INDEX 跑在 ALTER 之前会因缺列报错，故只在此建）
+  sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_exam_answers_code_sub ON exam_answers(code_submission_id)');
+  sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_problems_exam ON problems(exam_id)');
+  sqlDb.exec('CREATE INDEX IF NOT EXISTS idx_submissions_exam ON submissions(exam_id, user_id, exam_attempt)');
 
   const ideCols = tableCols('ide_runs');
   if (!ideCols.includes('status')) sqlDb.exec("ALTER TABLE ide_runs ADD COLUMN status TEXT DEFAULT 'pending'");
@@ -501,6 +563,6 @@ async function initDB() {
   return sqlDb;
 }
 
-const db = { prepare, exec, findNextId, closeDB };
+const db = { prepare, exec, findNextId, closeDB, EXAM_PROBLEM_ID_BASE };
 module.exports = db;
 module.exports.initDB = initDB;

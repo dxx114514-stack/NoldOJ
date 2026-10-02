@@ -274,7 +274,7 @@ async function main() {
       return res.json(statsCache);
     }
     const problems = db.prepare('SELECT COUNT(*) as c FROM problems WHERE is_public = 1 AND is_hidden = 0').get().c;
-    const submissions = db.prepare('SELECT COUNT(*) as c FROM submissions').get().c;
+    const submissions = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE exam_id IS NULL').get().c;
     const users = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
     const languages = db.prepare('SELECT COUNT(*) as c FROM languages WHERE is_enabled = 1').get().c;
     statsCache = { problems, submissions, users, languages };

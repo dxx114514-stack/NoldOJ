@@ -68,9 +68,11 @@ CREATE TABLE IF NOT EXISTS problems (
   is_hidden INTEGER DEFAULT 0,
   provider TEXT DEFAULT '',
   created_by INTEGER,
+  exam_id INTEGER,  -- 非空 = 试卷内编程题（隔离于题库），EXAM_PROBLEM_ID_BASE 号段
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (created_by) REFERENCES users(id)
+  FOREIGN KEY (created_by) REFERENCES users(id),
+  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS test_groups (
@@ -115,6 +117,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   JudgerDetail TEXT DEFAULT '{}',
   first_accepted INTEGER DEFAULT 0,
   virtual_contest_id INTEGER,
+  exam_id INTEGER,        -- 非空 = 试卷考试提交（全站记录/统计/成就隔离）
+  exam_attempt INTEGER DEFAULT 0, -- 所属考试尝试次数（从 1 起），同尝试每题仅 1 次
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
@@ -490,7 +494,7 @@ CREATE TABLE IF NOT EXISTS exams (
 CREATE TABLE IF NOT EXISTS exam_questions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   exam_id INTEGER NOT NULL,
-  question_type TEXT NOT NULL CHECK(question_type IN ('choice','true_false','fill_blank','long_answer')),
+  question_type TEXT NOT NULL CHECK(question_type IN ('choice','true_false','fill_blank','long_answer','program')),
   title TEXT NOT NULL,           -- 题目内容
   options TEXT DEFAULT '[]',     -- 选项（选择题/判断题用），JSON 数组
   correct_answer TEXT DEFAULT '', -- 正确答案（客观题）
@@ -498,8 +502,10 @@ CREATE TABLE IF NOT EXISTS exam_questions (
   sort_order INTEGER DEFAULT 0,
   is_subjective INTEGER DEFAULT 0, -- 填空题：0=客观题，1=主观题
   ai_grading_prompt TEXT DEFAULT '', -- AI 评分提示词（可选）
+  problem_id INTEGER,            -- 题型 program 时关联的内部题目（EXAM_PROBLEM_ID_BASE 号段）
   created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
+  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+  FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
 );
 
 -- 试卷提交记录
@@ -533,6 +539,7 @@ CREATE TABLE IF NOT EXISTS exam_answers (
   grading_status TEXT DEFAULT 'pending' CHECK(grading_status IN ('pending','ai_graded','human_graded')),
   ai_comment TEXT DEFAULT '',    -- AI 评语
   human_comment TEXT DEFAULT '', -- 人工评语
+  code_submission_id INTEGER,    -- 题型 program 时关联的代码提交（判题完成后回填分数）
   graded_at TEXT,
   FOREIGN KEY (submission_id) REFERENCES exam_submissions(id) ON DELETE CASCADE,
   FOREIGN KEY (question_id) REFERENCES exam_questions(id) ON DELETE CASCADE
@@ -543,3 +550,4 @@ CREATE INDEX IF NOT EXISTS idx_exam_questions_exam ON exam_questions(exam_id);
 CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam ON exam_submissions(exam_id);
 CREATE INDEX IF NOT EXISTS idx_exam_submissions_user ON exam_submissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_exam_answers_submission ON exam_answers(submission_id);
+

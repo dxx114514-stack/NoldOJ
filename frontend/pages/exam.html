@@ -14,6 +14,21 @@
   <script src="/js/api.js"></script>
   <script src="/js/purify.min.js"></script>
   <script src="/js/markdown.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+  <style>
+    #editorContainer, .prog-editor { width: 100%; height: 260px; border-radius: 0.75rem; border: 1px solid #e5e7eb; text-align: left; }
+    .dark .prog-editor { border-color: #374151; }
+    .dark .prog-editor .CodeMirror { background: #282a36; color: #f8f8f2; }
+    .CodeMirror { text-align: left !important; }
+  </style>
   <style type="text/tailwindcss">
     .question-card { @apply bg-white dark:bg-gray-800 rounded-2xl shadow-sm dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-6; }
     .option-label { @apply flex items-center gap-3 p-3 rounded-xl cursor-pointer transition border-2 border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500; }
@@ -34,6 +49,36 @@
     let answers = {};
     let timer = null;
     let timeLeft = 0;
+    let programEditors = {};       // question_id -> CodeMirror 实例
+    let programSubmitted = {};     // question_id -> 本次页面内已提交的 submission id
+    let langInfoMap = {};          // 语言名 -> { display_name, extension }
+    let examTimers = [];           // 编程题状态轮询计时器
+
+    const langModeMap = { c: 'text/x-csrc', cpp: 'text/x-c++src', python3: 'text/x-python', java: 'text/x-java', javascript: 'javascript' };
+    const NON_TERMINAL = new Set(['pending', 'pending_review', 'running', 'compiling', 'judging', 'pending_rejudge']);
+    const STATUS_TEXT = {
+      pending: '⏳ 待评测', pending_review: '⏳ 审查中', running: '⏳ 评测中', compiling: '⏳ 编译中',
+      judging: '⏳ 评测中', pending_rejudge: '⏳ 重测中',
+      accepted: '✅ 通过', wrong_answer: '❌ 答案错误', time_limit_exceeded: '⏱️ 超时',
+      memory_limit_exceeded: '🧠 超内存', runtime_error: '💥 运行错误',
+      compile_error: '🚫 编译错误', system_error: '⚠️ 系统错误'
+    };
+    function statusBadge(s) {
+      const cls = s === 'accepted' ? 'text-green-600 dark:text-green-400' : NON_TERMINAL.has(s) ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400';
+      return `<span class="${cls} font-medium">${STATUS_TEXT[s] || escapeHtml(s)}</span>`;
+    }
+    function langLabel(name) {
+      return (langInfoMap[name] && langInfoMap[name].display_name) || name;
+    }
+
+    (async () => {
+      try {
+        const langs = await apiCall('GET', '/ide/languages');
+        if (Array.isArray(langs)) {
+          langs.forEach(l => { langInfoMap[l.name] = l; });
+        }
+      } catch {}
+    })();
 
     async function loadExam() {
       if (!eid) { document.getElementById('content').innerHTML = '<p class="text-red-500">未指定试卷 ID</p>'; return; }
@@ -80,9 +125,9 @@
               <div class="flex-1">
                 <div class="font-medium text-gray-900 dark:text-white prose dark:prose-invert max-w-none prose-sm">${renderMarkdown(q.title)}</div>
                 <div class="text-xs text-gray-400 mt-1">
-                  ${q.question_type === 'choice' ? '选择题' : q.question_type === 'true_false' ? '判断题' : q.question_type === 'fill_blank' ? '填空题' : '大题'}
+                  ${q.question_type === 'choice' ? '选择题' : q.question_type === 'true_false' ? '判断题' : q.question_type === 'fill_blank' ? '填空题' : q.question_type === 'program' ? '💻 编程题' : '大题'}
                   · ${q.score} 分
-                  ${q.is_subjective ? '· 主观题' : '· 客观题'}
+                  ${q.question_type !== 'program' ? (q.is_subjective ? '· 主观题' : '· 客观题') : ''}
                 </div>
               </div>
             </div>
@@ -128,6 +173,37 @@
               class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none dark:bg-gray-700 dark:text-white resize-y"
               oninput="setAnswer(${q.id}, this.value)"></textarea>
           `;
+        } else if (q.question_type === 'program') {
+          const pg = q.program || {};
+          const allowed = Array.isArray(pg.allowed_languages) ? pg.allowed_languages : [];
+          const langNames = allowed.length ? allowed
+            : (Object.keys(langInfoMap).length ? Object.keys(langInfoMap) : ['c', 'cpp', 'python3', 'java', 'javascript']);
+          const langOptions = langNames.map(n => `<option value="${n}">${escapeHtml(langLabel(n))}</option>`).join('');
+          const mySub = pg.my_submission || (programSubmitted[q.id] ? { id: programSubmitted[q.id] } : null);
+          html += `
+            <div class="prose dark:prose-invert max-w-none prose-sm mb-4 text-gray-700 dark:text-gray-300">
+              ${pg.background ? `<div class="mb-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl"><div class="text-xs font-medium text-gray-500 dark:text-gray-400 not-prose mb-1">📋 背景</div>${renderMarkdown(pg.background)}</div>` : ''}
+              ${pg.description ? renderMarkdown(pg.description) : ''}
+              ${pg.input_desc ? `<div class="mt-3"><div class="text-xs font-medium text-gray-500 dark:text-gray-400 not-prose mb-1">📥 输入格式</div>${renderMarkdown(pg.input_desc)}</div>` : ''}
+              ${pg.output_desc ? `<div class="mt-3"><div class="text-xs font-medium text-gray-500 dark:text-gray-400 not-prose mb-1">📤 输出格式</div>${renderMarkdown(pg.output_desc)}</div>` : ''}
+              ${pg.hint ? `<div class="mt-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl"><div class="text-xs font-medium text-indigo-600 dark:text-indigo-400 not-prose mb-1">💡 提示</div>${renderMarkdown(pg.hint)}</div>` : ''}
+              <div class="text-xs text-gray-400 not-prose mt-3">⏱️ 时限 ${pg.time_limit || 1000} ms · 🧠 内存 ${pg.memory_limit || 256} MB</div>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <select id="lang-${q.id}" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm" onchange="onProgramLangChange(${q.id})">
+                ${langOptions}
+              </select>
+              <span id="pstat-${q.id}" class="text-sm">${mySub ? statusBadge(mySub.status) : '<span class="text-gray-400">未提交</span>'}</span>
+            </div>
+            <div id="editor-${q.id}" class="prog-editor mb-3"></div>
+            <div class="flex justify-end">
+              <button id="psubmit-${q.id}" onclick="submitProgram(${q.id})"
+                class="px-6 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition text-sm"
+                ${mySub ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
+                ${mySub ? '已提交' : '提交代码'}
+              </button>
+            </div>
+          `;
         }
 
         html += '</div>';
@@ -142,6 +218,8 @@
       `;
 
       document.getElementById('content').innerHTML = html;
+
+      initProgramEditors();
 
       // 启动计时器
       if (e.time_limit && e.time_limit > 0) {
@@ -174,6 +252,97 @@
       answers[qid] = value;
     }
 
+    function programQuestions() {
+      return ((currentExam && currentExam.questions) || []).filter(q => q.question_type === 'program');
+    }
+
+    function initProgramEditors() {
+      if (typeof CodeMirror === 'undefined') return;
+      programQuestions().forEach(q => {
+        const container = document.getElementById('editor-' + q.id);
+        if (!container) return;
+        const sel = document.getElementById('lang-' + q.id);
+        const lang = sel ? sel.value : 'cpp';
+        const ed = CodeMirror(container, {
+          value: '',
+          mode: langModeMap[lang] || 'text/plain',
+          theme: document.documentElement.classList.contains('dark') ? 'dracula' : 'default',
+          lineNumbers: true,
+          matchBrackets: true,
+          autoCloseBrackets: true,
+          styleActiveLine: true,
+          indentUnit: 4,
+          tabSize: 4,
+          indentWithTabs: false,
+          lineWrapping: false,
+          viewportMargin: Infinity
+        });
+        ed.setSize('100%', '260px');
+        programEditors[q.id] = ed;
+
+        const pg = q.program || {};
+        if (pg.my_submission) {
+          if (NON_TERMINAL.has(pg.my_submission.status)) {
+            pollProgramSubmission(q.id, pg.my_submission.id);
+          }
+        }
+      });
+    }
+
+    function onProgramLangChange(qid) {
+      const sel = document.getElementById('lang-' + qid);
+      const ed = programEditors[qid];
+      if (sel && ed) ed.setOption('mode', langModeMap[sel.value] || 'text/plain');
+    }
+
+    async function submitProgram(qid) {
+      const user = getUser();
+      if (!user) { window.location.href = '/pages/login.html'; return; }
+      const q = programQuestions().find(x => x.id === qid);
+      if (!q || !q.program) return;
+      const sel = document.getElementById('lang-' + qid);
+      const ed = programEditors[qid];
+      const code = ed ? ed.getValue() : '';
+      if (!code.trim()) { alert('请输入代码'); return; }
+
+      const btn = document.getElementById('psubmit-' + qid);
+      if (btn) { btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '提交中...'; }
+      try {
+        const data = await apiCall('POST', '/submissions', {
+          problem_id: q.program.problem_id,
+          language: sel ? sel.value : 'cpp',
+          source_code: code,
+          exam_id: parseInt(eid)
+        });
+        programSubmitted[qid] = data.submission_id;
+        const stat = document.getElementById('pstat-' + qid);
+        if (stat) stat.innerHTML = statusBadge('pending');
+        if (btn) { btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '已提交'; }
+        pollProgramSubmission(qid, data.submission_id);
+      } catch (err) {
+        alert(err.message || '提交失败');
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '提交代码'; }
+      }
+    }
+
+    function pollProgramSubmission(qid, sid) {
+      const tick = async () => {
+        let done = true;
+        try {
+          const s = await apiCall('GET', `/submissions/${sid}`);
+          const stat = document.getElementById('pstat-' + qid);
+          if (stat) stat.innerHTML = statusBadge(s.status);
+          if (NON_TERMINAL.has(s.status)) {
+            done = false;
+            examTimers.push(setTimeout(tick, 2000));
+          }
+        } catch {
+          examTimers.push(setTimeout(tick, 3000));
+        }
+      };
+      tick();
+    }
+
     async function submitExam() {
       if (timer) clearInterval(timer);
       const user = getUser();
@@ -184,18 +353,27 @@
         answer
       }));
 
-      if (answerArray.length === 0) {
+      const missingProg = programQuestions().filter(q => {
+        const pg = q.program || {};
+        return !pg.my_submission && !programSubmitted[q.id];
+      });
+
+      if (answerArray.length === 0 && missingProg.length === 0) {
         if (!confirm('你还没有作答，确定要提交吗？')) return;
+      } else if (missingProg.length > 0) {
+        if (!confirm(`还有 ${missingProg.length} 道编程题尚未提交代码，确定交卷吗？`)) return;
       }
 
       try {
         const result = await apiCall('POST', `/exams/${eid}/submit`, { answers: answerArray });
-        alert(`提交成功！\n得分: ${result.total_score} / ${result.max_score}${result.has_subjective ? '\n含有主观题，等待批改...' : ''}`);
+        let tail = '';
+        if (result.has_pending_program) tail = '\n⏳ 编程题评测中，稍后刷新查看成绩';
+        else if (result.has_subjective) tail = '\n含有主观题，等待批改...';
+        alert(`提交成功！\n得分: ${result.total_score} / ${result.max_score}${tail}`);
         window.location.reload();
       } catch (err) {
         alert(err.message || '提交失败');
         if (timer) {
-          // 重新启动计时器
           timer = setInterval(() => {
             timeLeft--;
             updateTimer();

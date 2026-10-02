@@ -98,6 +98,19 @@
     const editId = params.get('id');
     let questions = [];
     let questionIdCounter = 0;
+    let langList = [
+      { name: 'c', display_name: 'C' },
+      { name: 'cpp', display_name: 'C++' },
+      { name: 'python3', display_name: 'Python 3' },
+      { name: 'java', display_name: 'Java' },
+      { name: 'javascript', display_name: 'JavaScript' }
+    ];
+    apiCall('GET', '/ide/languages').then(ls => {
+      if (Array.isArray(ls) && ls.length) {
+        langList = ls.map(l => ({ name: l.name, display_name: l.display_name }));
+        if (questions.some(q => q.question_type === 'program')) renderQuestions();
+      }
+    }).catch(() => {});
 
     if (editId) {
       document.getElementById('pageTitle').textContent = '编辑试卷';
@@ -117,34 +130,82 @@
         document.getElementById('f-showanswer').checked = data.show_answer === 1;
         document.getElementById('f-ai').checked = data.allow_ai_grading === 1;
 
-        questions = (data.questions || []).map(q => ({
-          _id: ++questionIdCounter,
-          question_type: q.question_type,
-          title: q.title,
-          options: JSON.parse(q.options || '[]'),
-          correct_answer: q.correct_answer || '',
-          score: q.score || 0,
-          is_subjective: q.is_subjective || 0,
-          ai_grading_prompt: q.ai_grading_prompt || ''
-        }));
+        questions = (data.questions || []).map(q => {
+          const item = {
+            _id: ++questionIdCounter,
+            question_type: q.question_type,
+            title: q.title,
+            options: JSON.parse(q.options || '[]'),
+            correct_answer: q.correct_answer || '',
+            score: q.score || 0,
+            is_subjective: q.is_subjective || 0,
+            ai_grading_prompt: q.ai_grading_prompt || ''
+          };
+          if (q.question_type === 'program') {
+            const pg = q.program || {};
+            item.correct_answer = '';
+            item.options = [];
+            item.problem_id = pg.problem_id || q.problem_id || null;
+            item.program = {
+              description: pg.description || '',
+              background: pg.background || '',
+              input_desc: pg.input_desc || '',
+              output_desc: pg.output_desc || '',
+              hint: pg.hint || '',
+              time_limit: Number(pg.time_limit) || 1000,
+              memory_limit: Number(pg.memory_limit) || 256,
+              allowed_languages: Array.isArray(pg.allowed_languages) ? pg.allowed_languages.slice() : [],
+              testcases: (pg.testcases || []).map(tc => ({
+                input: tc.input || '',
+                output: tc.output || '',
+                score: Number(tc.score) || 0,
+                subtask: tc.subtask || ''
+              })),
+              zipBase64: null,
+              zipName: ''
+            };
+            if (!item.program.testcases.length) {
+              item.program.testcases.push({ input: '', output: '', score: 1, subtask: '' });
+            }
+          }
+          return item;
+        });
         renderQuestions();
       } catch (err) {
         alert(err.message || '加载失败');
       }
     }
 
+    function defaultProgram() {
+      return {
+        description: '',
+        background: '',
+        input_desc: '',
+        output_desc: '',
+        hint: '',
+        time_limit: 1000,
+        memory_limit: 256,
+        allowed_languages: [],
+        testcases: [{ input: '', output: '', score: 1, subtask: '' }],
+        zipBase64: null,
+        zipName: ''
+      };
+    }
+
     function addQuestion(type) {
       const t = type || 'choice';
-      questions.push({
+      const q = {
         _id: ++questionIdCounter,
         question_type: t,
         title: '',
         options: t === 'choice' ? ['', '', '', ''] : t === 'true_false' ? [] : [],
         correct_answer: '',
-        score: 5,
+        score: t === 'program' ? 30 : 5,
         is_subjective: 0,
         ai_grading_prompt: ''
-      });
+      };
+      if (t === 'program') q.program = defaultProgram();
+      questions.push(q);
       renderQuestions();
     }
 
@@ -161,7 +222,7 @@
       }
 
       container.innerHTML = questions.map((q, i) => {
-        const typeLabel = q.question_type === 'choice' ? '选择题' : q.question_type === 'true_false' ? '判断题' : q.question_type === 'fill_blank' ? '填空题' : '大题';
+        const typeLabel = q.question_type === 'choice' ? '选择题' : q.question_type === 'true_false' ? '判断题' : q.question_type === 'fill_blank' ? '填空题' : q.question_type === 'program' ? '编程题' : '大题';
         let optionsHtml = '';
 
         if (q.question_type === 'choice') {
@@ -193,6 +254,111 @@
               </label>
             </div>
           `;
+        } else if (q.question_type === 'program') {
+          const pg = q.program || (q.program = defaultProgram());
+          const isAllowed = n => pg.allowed_languages.length === 0 || pg.allowed_languages.includes(n);
+          optionsHtml = `
+            <div class="mt-3 space-y-3">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">题面描述（Markdown）</label>
+                  <textarea rows="5" onchange="questions[${i}].program.description = this.value"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm font-mono resize-y"
+                    placeholder="题目完整描述...">${escapeHtml(pg.description)}</textarea>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">背景（可选）</label>
+                  <textarea rows="5" onchange="questions[${i}].program.background = this.value"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm font-mono resize-y"
+                    placeholder="题目背景故事...">${escapeHtml(pg.background)}</textarea>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">输入格式</label>
+                  <textarea rows="2" onchange="questions[${i}].program.input_desc = this.value"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm font-mono resize-y">${escapeHtml(pg.input_desc)}</textarea>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">输出格式</label>
+                  <textarea rows="2" onchange="questions[${i}].program.output_desc = this.value"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm font-mono resize-y">${escapeHtml(pg.output_desc)}</textarea>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">提示（可选）</label>
+                <textarea rows="2" onchange="questions[${i}].program.hint = this.value"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm font-mono resize-y">${escapeHtml(pg.hint)}</textarea>
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">时限 (ms)</label>
+                  <input type="number" value="${pg.time_limit}" min="1" max="10000"
+                    onchange="questions[${i}].program.time_limit = Number(this.value)"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">内存 (MB)</label>
+                  <input type="number" value="${pg.memory_limit}" min="1" max="1048576"
+                    onchange="questions[${i}].program.memory_limit = Number(this.value)"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white">
+                </div>
+                <div class="md:col-span-2">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">允许语言（全不勾=全部允许）</label>
+                  <div class="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+                    ${langList.map(l => `
+                      <label class="flex items-center gap-1.5">
+                        <input type="checkbox" ${isAllowed(l.name) ? 'checked' : ''} onchange="toggleProgLang(${q._id}, '${l.name}', this.checked)"
+                          class="w-4 h-4 text-indigo-600 rounded">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">${escapeHtml(l.display_name)}</span>
+                      </label>
+                    `).join('')}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">测试点（inline 或 ZIP 二选一/并存，保存时合并）</label>
+                  <div class="flex items-center gap-2">
+                    <button type="button" onclick="addTc(${q._id})" class="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50">+ 添加测试点</button>
+                    <button type="button" onclick="document.getElementById('zip-${q._id}').click()" class="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50">📦 上传 ZIP</button>
+                    <input type="file" id="zip-${q._id}" accept=".zip" class="hidden" onchange="pickZip(${q._id}, this)">
+                  </div>
+                </div>
+                <p class="text-xs text-gray-400 mb-2">ZIP 结构：<code>1.in/1.out</code> 平铺在根目录，或 <code>sub1/1.in</code> 子目录作为 subtask；限 ~7MB</p>
+                ${pg.zipName ? `
+                <div class="mb-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl text-xs text-indigo-600 dark:text-indigo-400 flex items-center justify-between">
+                  <span>📦 已选择 ${escapeHtml(pg.zipName)}（保存时解析）</span>
+                  <button type="button" onclick="clearZip(${q._id})" class="text-red-500 hover:underline">移除</button>
+                </div>
+                ` : ''}
+                <div class="space-y-2">
+                  ${pg.testcases.map((tc, ti) => `
+                    <div class="border border-gray-200 dark:border-gray-600 rounded-xl p-3">
+                      <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <span class="text-xs font-medium text-gray-500">测试点 ${ti + 1}</span>
+                        <div class="flex items-center gap-3">
+                          <label class="text-xs text-gray-500 flex items-center gap-1">分值
+                            <input type="number" value="${tc.score}" min="0" onchange="questions[${i}].program.testcases[${ti}].score = Number(this.value)"
+                              class="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-xs dark:bg-gray-700 dark:text-white text-center">
+                          </label>
+                          <label class="text-xs text-gray-500 flex items-center gap-1">subtask
+                            <input type="text" value="${escapeHtml(tc.subtask)}" placeholder="可选" onchange="questions[${i}].program.testcases[${ti}].subtask = this.value"
+                              class="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-xs dark:bg-gray-700 dark:text-white">
+                          </label>
+                          ${pg.testcases.length > 1 ? `<button type="button" onclick="removeTc(${q._id}, ${ti})" class="text-red-400 hover:text-red-600 text-xs">删除</button>` : ''}
+                        </div>
+                      </div>
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <textarea placeholder="输入数据 (input)" rows="3" onchange="questions[${i}].program.testcases[${ti}].input = this.value"
+                          class="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs font-mono dark:bg-gray-700 dark:text-white resize-y">${escapeHtml(tc.input)}</textarea>
+                        <textarea placeholder="期望输出 (output)" rows="3" onchange="questions[${i}].program.testcases[${ti}].output = this.value"
+                          class="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs font-mono dark:bg-gray-700 dark:text-white resize-y">${escapeHtml(tc.output)}</textarea>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          `;
         } else {
           optionsHtml = `<p class="text-sm text-gray-400 mt-2">大题 = 单条长横线答案，必为主观题</p>`;
         }
@@ -208,6 +374,7 @@
                   <option value="true_false" ${q.question_type==='true_false'?'selected':''}>判断题</option>
                   <option value="fill_blank" ${q.question_type==='fill_blank'?'selected':''}>填空题</option>
                   <option value="long_answer" ${q.question_type==='long_answer'?'selected':''}>大题</option>
+                  <option value="program" ${q.question_type==='program'?'selected':''}>编程题</option>
                 </select>
                 <input type="number" value="${q.score}" min="0" onchange="questions[${i}].score = Number(this.value)"
                   class="w-20 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white text-center">
@@ -227,12 +394,14 @@
 
             ${optionsHtml}
 
+            ${q.question_type !== 'program' ? `
             <div class="mt-3">
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">${q.question_type === 'long_answer' || (q.question_type === 'fill_blank' && q.is_subjective) ? '参考答案（可选）' : '正确答案 *'}</label>
               <input value="${escapeHtml(q.correct_answer)}" onchange="questions[${i}].correct_answer = this.value"
                 class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-700 dark:text-white text-sm"
                 placeholder="${q.question_type === 'choice' ? '输入 A/B/C/D' : q.question_type === 'true_false' ? '输入 true 或 false' : '输入答案'}">
             </div>
+            ` : ''}
 
             ${(q.question_type === 'long_answer' || (q.question_type === 'fill_blank' && q.is_subjective)) ? `
             <div class="mt-3">
@@ -257,6 +426,13 @@
       if (type === 'true_false') { q.options = []; q.correct_answer = ''; }
       if (type === 'long_answer') { q.is_subjective = 1; q.options = []; }
       if (type === 'fill_blank') { q.options = []; }
+      if (type === 'program') {
+        if (!q.program) q.program = defaultProgram();
+        q.options = [];
+        q.correct_answer = '';
+        q.is_subjective = 0;
+        q.ai_grading_prompt = '';
+      }
       renderQuestions();
     }
 
@@ -282,6 +458,62 @@
     function updateOption(qid, idx, value) {
       const q = questions.find(q => q._id === qid);
       if (q) q.options[idx] = value;
+    }
+
+    function addTc(qid) {
+      const q = questions.find(x => x._id === qid);
+      if (q && q.program) {
+        q.program.testcases.push({ input: '', output: '', score: 1, subtask: '' });
+        renderQuestions();
+      }
+    }
+
+    function removeTc(qid, idx) {
+      const q = questions.find(x => x._id === qid);
+      if (q && q.program && q.program.testcases.length > 1) {
+        q.program.testcases.splice(idx, 1);
+        renderQuestions();
+      }
+    }
+
+    function toggleProgLang(qid, name, on) {
+      const q = questions.find(x => x._id === qid);
+      if (!q || !q.program) return;
+      let arr = q.program.allowed_languages;
+      if (arr.length === 0) arr = langList.map(l => l.name);
+      if (on) {
+        if (!arr.includes(name)) arr.push(name);
+      } else {
+        arr = arr.filter(x => x !== name);
+      }
+      q.program.allowed_languages = arr;
+    }
+
+    function pickZip(qid, input) {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      if (!/\.zip$/i.test(file.name)) { alert('请选择 .zip 文件'); return; }
+      if (file.size > 7 * 1024 * 1024) { alert('ZIP 文件不能超过 7MB'); return; }
+      const q = questions.find(x => x._id === qid);
+      if (!q || !q.program) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        q.program.zipBase64 = String(reader.result).split(',')[1] || '';
+        q.program.zipName = file.name;
+        renderQuestions();
+      };
+      reader.onerror = () => alert('读取文件失败');
+      reader.readAsDataURL(file);
+    }
+
+    function clearZip(qid) {
+      const q = questions.find(x => x._id === qid);
+      if (q && q.program) {
+        q.program.zipBase64 = null;
+        q.program.zipName = '';
+        renderQuestions();
+      }
     }
 
     function downloadExamTemplate() {
@@ -334,6 +566,21 @@
 
       if (questions.length === 0) { alert('请至少添加一道题目'); return; }
 
+      for (let vi = 0; vi < questions.length; vi++) {
+        const q = questions[vi];
+        if (q.question_type !== 'program') continue;
+        const pg = q.program;
+        if (!pg) { alert(`第 ${vi + 1} 题：编程题配置缺失`); return; }
+        const hasTc = pg.testcases.some(tc => (tc.input || '').length || (tc.output || '').length);
+        if (!hasTc && !pg.zipBase64) {
+          alert(`第 ${vi + 1} 题：请至少填写一个测试点，或上传测试数据 ZIP`);
+          return;
+        }
+        if (pg.allowed_languages.length === 0) pg.allowed_languages = langList.map(l => l.name);
+        pg.time_limit = Math.min(10000, Math.max(1, Number(pg.time_limit) || 1000));
+        pg.memory_limit = Math.min(1048576, Math.max(1, Number(pg.memory_limit) || 256));
+      }
+
       const payload = {
         title,
         description: document.getElementById('f-desc').value.trim(),
@@ -344,16 +591,37 @@
         is_public: document.getElementById('f-public').checked,
         is_hidden: document.getElementById('f-hidden').checked,
         allow_ai_grading: document.getElementById('f-ai').checked,
-        questions: questions.map((q, i) => ({
-          question_type: q.question_type,
-          title: q.title,
-          options: q.options,
-          correct_answer: q.correct_answer,
-          score: q.score,
-          sort_order: i,
-          is_subjective: q.is_subjective,
-          ai_grading_prompt: q.ai_grading_prompt
-        }))
+        questions: questions.map((q, i) => {
+          const item = {
+            question_type: q.question_type,
+            title: q.title,
+            options: q.question_type === 'program' ? [] : q.options,
+            correct_answer: q.question_type === 'program' ? '' : q.correct_answer,
+            score: q.score,
+            sort_order: i,
+            is_subjective: q.question_type === 'program' ? 0 : q.is_subjective,
+            ai_grading_prompt: q.question_type === 'program' ? '' : q.ai_grading_prompt
+          };
+          if (q.question_type === 'program') {
+            const pg = q.program;
+            item.problem_id = q.problem_id || undefined;
+            item.problem = {
+              description: pg.description,
+              background: pg.background,
+              input_desc: pg.input_desc,
+              output_desc: pg.output_desc,
+              hint: pg.hint,
+              time_limit: pg.time_limit,
+              memory_limit: pg.memory_limit,
+              allowed_languages: pg.allowed_languages,
+              testcases: pg.testcases
+                .filter(tc => (tc.input || '').length || (tc.output || '').length)
+                .map(tc => ({ input: tc.input, output: tc.output, score: Number(tc.score) || 0, subtask: tc.subtask || '' })),
+              testcase_zip_base64: pg.zipBase64 || undefined
+            };
+          }
+          return item;
+        })
       };
 
       try {

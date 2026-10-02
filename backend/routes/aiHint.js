@@ -22,7 +22,7 @@ function pruneCooldown() {
 function failedAttempts(userId, problemId) {
   const row = db.prepare(`
     SELECT COUNT(*) as c FROM submissions
-    WHERE user_id = ? AND problem_id = ?
+    WHERE user_id = ? AND problem_id = ? AND exam_id IS NULL
       AND status IN ('wrong_answer','time_limit_exceeded','memory_limit_exceeded','runtime_error','compile_error')
   `).get(userId, problemId);
   return row?.c || 0;
@@ -32,7 +32,7 @@ function failedAttempts(userId, problemId) {
 function lastSubmission(userId, problemId) {
   return db.prepare(`
     SELECT source_code, language FROM submissions
-    WHERE user_id = ? AND problem_id = ?
+    WHERE user_id = ? AND problem_id = ? AND exam_id IS NULL
     ORDER BY id DESC LIMIT 1
   `).get(userId, problemId);
 }

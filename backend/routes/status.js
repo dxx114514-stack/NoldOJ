@@ -26,8 +26,9 @@ router.get('/status', requireAuth, (req, res) => {
   const counts = {
     users: db.prepare('SELECT COUNT(*) as c FROM users').get().c,
     problems: db.prepare('SELECT COUNT(*) as c FROM problems').get().c,
-    submissions: db.prepare('SELECT COUNT(*) as c FROM submissions').get().c,
+    submissions: db.prepare('SELECT COUNT(*) as c FROM submissions WHERE exam_id IS NULL').get().c,
     testCases: db.prepare('SELECT COUNT(*) as c FROM test_cases').get().c,
+    // 安全审核队列不滤试卷提交：漏审比多审代价高
     pendingReview: db.prepare("SELECT COUNT(*) as c FROM submissions WHERE status = 'pending_review'").get().c
   };
 
@@ -42,8 +43,8 @@ router.get('/status', requireAuth, (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const todayStats = db.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM submissions WHERE date(created_at) = ?) as today_submits,
-      (SELECT COUNT(*) FROM submissions WHERE date(created_at) = ? AND status = 'accepted') as today_ac,
+      (SELECT COUNT(*) FROM submissions WHERE date(created_at) = ? AND exam_id IS NULL) as today_submits,
+      (SELECT COUNT(*) FROM submissions WHERE date(created_at) = ? AND status = 'accepted' AND exam_id IS NULL) as today_ac,
       (SELECT COUNT(*) FROM users WHERE date(created_at) = ?) as today_users
   `).get(today, today, today);
 

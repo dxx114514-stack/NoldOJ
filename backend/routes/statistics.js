@@ -14,7 +14,7 @@ function getStatsData(uid) {
     SELECT substr(created_at, 1, 10) as d,
       COUNT(*) as submits,
       SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as acs
-    FROM submissions WHERE user_id = ? AND created_at >= ?
+    FROM submissions WHERE user_id = ? AND exam_id IS NULL AND created_at >= ?
     GROUP BY substr(created_at, 1, 10)
   `).all(uid, startStr);
   const calMap = new Map(calRows.map(r => [r.d, { submits: r.submits, acs: r.acs || 0 }]));
@@ -32,7 +32,7 @@ function getStatsData(uid) {
     SELECT language,
       COUNT(*) as submits,
       SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as acs
-    FROM submissions WHERE user_id = ?
+    FROM submissions WHERE user_id = ? AND exam_id IS NULL
     GROUP BY language ORDER BY submits DESC
   `).all(uid);
   const languages = langRows.map(r => ({ language: r.language, submits: r.submits, acs: r.acs || 0 }));
@@ -40,16 +40,16 @@ function getStatsData(uid) {
   // 难度分布：AC 的题目按难度（去重）分布
   const diffRows = db.prepare(`
     SELECT p.difficulty, COUNT(*) as c
-    FROM (SELECT DISTINCT problem_id FROM submissions WHERE user_id = ? AND status = 'accepted') ac
+    FROM (SELECT DISTINCT problem_id FROM submissions WHERE user_id = ? AND exam_id IS NULL AND status = 'accepted') ac
     JOIN problems p ON p.id = ac.problem_id
     GROUP BY p.difficulty ORDER BY p.difficulty
   `).all(uid);
   const difficulty = diffRows.map(r => ({ difficulty: r.difficulty, count: r.c }));
 
   // 概览
-  const totalAccepted = db.prepare("SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND status = 'accepted'").get(uid).c;
-  const totalSubmits = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE user_id = ?').get(uid).c;
-  const totalProblems = db.prepare("SELECT COUNT(DISTINCT problem_id) as c FROM submissions WHERE user_id = ? AND status = 'accepted'").get(uid).c;
+  const totalAccepted = db.prepare("SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND exam_id IS NULL AND status = 'accepted'").get(uid).c;
+  const totalSubmits = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND exam_id IS NULL').get(uid).c;
+  const totalProblems = db.prepare("SELECT COUNT(DISTINCT problem_id) as c FROM submissions WHERE user_id = ? AND exam_id IS NULL AND status = 'accepted'").get(uid).c;
   const totalFavorites = db.prepare('SELECT COUNT(*) as c FROM user_favorites WHERE user_id = ?').get(uid).c;
   const achievements = db.prepare('SELECT COUNT(*) as c FROM user_achievements WHERE user_id = ?').get(uid).c;
 

@@ -16,7 +16,7 @@ const rateLimit = createRateLimit(config.rateLimit.submissions);
 router.get('/', requireAuth, (req, res) => {
   const { page = 1, limit = 50, user_id, problem_id, status, score_min, score_max, username } = req.query;
   const { page: pageNum, limit: limitNum, offset } = parsePageLimit(page, limit, 50, 100);
-  let where = 'WHERE 1=1';
+  let where = 'WHERE s.exam_id IS NULL';
   const params = [];
 
   // 用户筛选：普通用户固定只能看自己的提交，杜绝通过 user_id 参数越权查看他人
@@ -131,6 +131,48 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
 
+  // ── 试卷编程题提交校验 ──
+  let examAttempt = null;
+  if (problem.exam_id) {
+    const exam = db.prepare('SELECT * FROM exams WHERE id = ?').get(problem.exam_id);
+    if (!exam) {
+      return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Exam not found.' });
+    }
+    if (Number(req.body.exam_id) !== problem.exam_id) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'exam_id 与题目不匹配。' });
+    }
+    if (!exam.is_public) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam is not public.' });
+    }
+    if (exam.is_hidden && !['teacher', 'admin', 'su'].includes(req.user.role)) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam not found.' });
+    }
+    const inExam = db.prepare("SELECT id FROM exam_questions WHERE exam_id = ? AND problem_id = ? AND question_type = 'program'").get(exam.id, problem_id);
+    if (!inExam) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '该题不是此试卷的编程题。' });
+    }
+    if (virtual_contest_id || contest_id) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '考试题不支持比赛提交。' });
+    }
+    // 尝试号 = 已交卷次数 + 1（交卷前的作答归属于即将创建的那次尝试）
+    const attemptCount = db.prepare('SELECT COUNT(*) as c FROM exam_submissions WHERE exam_id = ? AND user_id = ?').get(exam.id, req.user.id).c;
+    if (exam.max_attempts > 0 && attemptCount >= exam.max_attempts) {
+      return res.status(400).json({ code: 1, reason: 'ERR_MAX_ATTEMPTS', message: '考试尝试次数已用尽，无法再提交代码。' });
+    }
+    examAttempt = attemptCount + 1;
+    // 每次尝试每题仅 1 次提交（teacher+ 可重复提交以便调试）
+    if (req.user.role === 'user') {
+      const used = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE exam_id = ? AND user_id = ? AND exam_attempt = ? AND problem_id = ?')
+        .get(exam.id, req.user.id, examAttempt, problem_id).c;
+      if (used > 0) {
+        return res.status(400).json({ code: 1, reason: 'ERR_ALREADY_SUBMITTED', message: '本场考试该题只能提交一次。' });
+      }
+    }
+  } else if (req.body.exam_id) {
+    // 普通题禁止携带 exam_id，防止伪造隔离标记把提交从全站记录里藏掉
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'exam_id 仅用于试卷内编程题。' });
+  }
+
   // 功能9：虚拟比赛提交校验
   let effectiveVirtualContestId = virtual_contest_id || null;
   if (virtual_contest_id) {
@@ -236,8 +278,9 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
   }
 
   const newId = db.findNextId('submissions');
-  db.prepare('INSERT INTO submissions (id, user_id, problem_id, language, source_code, answer_data, status, virtual_contest_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
-    newId, req.user.id, problem_id, language, mainCode, answer_data || '', 'pending_review', effectiveVirtualContestId
+  db.prepare('INSERT INTO submissions (id, user_id, problem_id, language, source_code, answer_data, status, virtual_contest_id, exam_id, exam_attempt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    newId, req.user.id, problem_id, language, mainCode, answer_data || '', 'pending_review', effectiveVirtualContestId,
+    problem.exam_id || null, examAttempt || 0
   );
 
   // 写入多文件记录

@@ -29,9 +29,9 @@ function checkAchievements(userId, problemId, language, createdAt) {
   // 当日（UTC）是否算"登录做题"：以提交 created_at 的日期为准
   const day = createdAt.slice(0, 10);
 
-  // 汇总统计
-  const totalAccepted = db.prepare("SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND status = 'accepted'").get(userId).c;
-  const totalSubmits = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE user_id = ?').get(userId).c;
+  // 汇总统计（试卷考试提交隔离，不计入全站成就）
+  const totalAccepted = db.prepare("SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND exam_id IS NULL AND status = 'accepted'").get(userId).c;
+  const totalSubmits = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE user_id = ? AND exam_id IS NULL').get(userId).c;
 
   if (totalAccepted === 1) unlock('first_ac');
   if (totalAccepted >= 10) unlock('ac_10');
@@ -42,7 +42,7 @@ function checkAchievements(userId, problemId, language, createdAt) {
   // 全能选手：用 C++ / Python / Java 三种语言 AC 同一题
   if (language && problemId) {
     const langs = db.prepare(
-      "SELECT DISTINCT language FROM submissions WHERE user_id = ? AND problem_id = ? AND status = 'accepted'"
+      "SELECT DISTINCT language FROM submissions WHERE user_id = ? AND problem_id = ? AND exam_id IS NULL AND status = 'accepted'"
     ).all(userId, problemId).map(r => r.language);
     const have = new Set(langs.map(l => l.toLowerCase().replace(/\s+/g, '')));
     const hit = new Set();
@@ -61,7 +61,7 @@ function checkAchievements(userId, problemId, language, createdAt) {
 // 计算截至 day 的连续做题天数，满足 3/7/30 即解锁
 function unlockStreak(userId, day, unlock) {
   const days = db.prepare(
-    'SELECT DISTINCT substr(created_at, 1, 10) as d FROM submissions WHERE user_id = ? ORDER BY d DESC'
+    'SELECT DISTINCT substr(created_at, 1, 10) as d FROM submissions WHERE user_id = ? AND exam_id IS NULL ORDER BY d DESC'
   ).all(userId).map(r => r.d);
   const set = new Set(days);
   let maxStreak = 0, cur = 0;
