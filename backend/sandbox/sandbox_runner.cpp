@@ -320,7 +320,7 @@ typedef HRESULT (WINAPI *FnCreateAppContainerToken)(HANDLE, PSID_AND_ATTRIBUTES,
 static bool buildAppContainerToken(HANDLE baseToken, PSID* outSid, HANDLE* outToken) {
     // 每次评测用独立包名 → 独立包 SID → 题与题之间互不可见
     char name[80];
-    snprintf(name, sizeof(name), "WinOJ.Sandbox.%lu.%lu",
+    snprintf(name, sizeof(name), "NoldOJ.Sandbox.%lu.%lu",
              (unsigned long)GetCurrentProcessId(), (unsigned long)GetTickCount());
     wchar_t wname[160];
     MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, 160);

@@ -2918,6 +2918,252 @@ paths:
         '200':
           description: 讨论列表
 
+  # ===== EXAMS =====
+  /exams:
+    get:
+      tags: [试卷]
+      summary: 试卷列表
+      responses:
+        '200':
+          description: 试卷列表
+    post:
+      tags: [试卷]
+      summary: 创建试卷
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                time_limit:
+                  type: integer
+                pass_score:
+                  type: number
+                max_attempts:
+                  type: integer
+                show_answer:
+                  type: integer
+                is_public:
+                  type: integer
+                is_hidden:
+                  type: integer
+                allow_ai_grading:
+                  type: integer
+                start_time:
+                  type: string
+                  format: date-time
+                  description: 开考时间（与 end_time 同时设置或同空，结束须晚于开考）
+                end_time:
+                  type: string
+                  format: date-time
+                freeze_minutes:
+                  type: integer
+                  description: 结束前 N 分钟自动封榜（0 关闭）
+                leaderboard_enabled:
+                  type: integer
+                  description: 1 显示排行榜
+                leaderboard_view_incomplete:
+                  type: integer
+                  description: 1 允许未完成者查看排行榜
+                questions:
+                  type: array
+                  items:
+                    type: object
+                  description: 试卷题目数组
+      responses:
+        '201':
+          description: 创建成功
+        '400':
+          description: 参数错误（code 1）
+  /exams/{id}:
+    get:
+      tags: [试卷]
+      summary: 试卷详情（开考前对考生 403）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 试卷详情
+        '403':
+          description: 考试尚未开始
+    put:
+      tags: [试卷]
+      summary: 编辑试卷（含封榜控制 manual_frozen/unfrozen）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                manual_frozen:
+                  type: integer
+                  description: 1 封榜、0 解封
+                unfrozen:
+                  type: integer
+                  description: 1 恢复自动封榜（与 manual_frozen=0 搭配）
+      responses:
+        '200':
+          description: 更新成功
+    delete:
+      tags: [试卷]
+      summary: 删除试卷
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+  /exams/{id}/submit:
+    post:
+      tags: [试卷]
+      summary: 交卷（须在时间窗内）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 交卷成功
+        '403':
+          description: 不在考试时间窗内
+  /exams/{id}/submission/{sid}:
+    get:
+      tags: [试卷]
+      summary: 考生答卷详情
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 答卷详情
+  /exams/{id}/submissions:
+    get:
+      tags: [试卷]
+      summary: 试卷提交列表（教师）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 提交列表
+  /exams/{id}/grade/{sid}:
+    post:
+      tags: [试卷]
+      summary: 手动批改主观题（教师）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 批改保存成功
+  /exams/{id}/ai-grade/{sid}:
+    post:
+      tags: [试卷]
+      summary: AI 批改主观题（教师）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: AI 批改任务已提交
+  /exams/{id}/leaderboard:
+    get:
+      tags: [试卷]
+      summary: 试卷排行榜（完成门槛/封榜快照）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 200
+      responses:
+        '200':
+          description: 排行榜（含 my 本人名次）
+        '403':
+          description: 完成考试后可查看排行榜
+  # ===== SYSTEM =====
+  /system/status:
+    get:
+      tags: [系统]
+      summary: 系统运行状态仪表盘（admin+）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 运行状态（uptime/CPU/内存/计数/今日统计/判题队列）
+        '403':
+          description: 仅管理员可查看系统状态
+
   # ===== ARTICLES =====
   /articles:
     get:

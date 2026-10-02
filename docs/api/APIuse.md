@@ -38,13 +38,13 @@ user（用户） < teacher（教师） < admin（管理员） < su（超级管�
 
 提交代码时自动调用配置的 AI 服务（默认 `localhost:11434`，模型 `qwen3:1.7b`）进行安全审查。发现恶意代码将自动封禁用户。代码少于 50 字符跳过审查。源代码上限 128KB (131072 字符)。
 
-**提示词注入防护**：15 种注入模式检测、代码截断脱敏、AI 响应操纵检测。
+**提示词注入防护**：14 种注入模式检测、代码截断脱敏、AI 响应操纵检测。
 
-可通过 `config/ai.txt` 配置：
-- `AI_ENABLED` — 启用/禁用 AI 审查
-- `URL` — AI 服务 API 地址
-- `MODEL` — 审查模型名称
-- `KEY` — API Key（可选）
+可通过 `config/ai.txt` 配置（AI 提示/AI 测试数据另有 `HINT_*`/`TESTDATA_*` 同名键，回退 `SECURITY_*`）：
+- `SECURITY_ENABLED` — 启用/禁用 AI 审查
+- `SECURITY_URL` — AI 服务 API 地址
+- `SECURITY_MODEL` — 审查模型名称
+- `SECURITY_KEY` — API Key（可选）
 
 ---
 
@@ -52,7 +52,7 @@ user（用户） < teacher（教师） < admin（管理员） < su（超级管�
 
 ### GET /auth/captcha — 获取图形验证码
 
-无需认证。返回验证码 id + SVG 图像（`svg-captcha`），用于登录/注册。在 `config` 中禁用验证码时返回 404。
+无需认证。返回验证码 id + SVG 图像（自绘 SVG，opentype.js 字形转 `<path>`，非 svg-captcha），用于登录/注册。在 `config` 中禁用验证码时返回 404。
 
 **响应：**
 ```json
@@ -997,6 +997,60 @@ multipart/form-data，字段名 `files`，文件命名 `name.in`/`name.out`。
 ### PUT /discussions/:id/official — 标记官方题解
 
 需教师及以上。请求体：`is_official`（boolean）。
+
+---
+
+## 11.5 试卷模块 `/exams`
+
+### GET /exams — 试卷列表
+
+公开未隐藏卷可匿名查看；教师/管理员可见全部。
+
+### POST /exams — 创建试卷
+
+需教师及以上。必填 `title`；可选 `description`、`time_limit`、`pass_score`、`max_attempts`、`show_answer`、`is_public`、`is_hidden`、`allow_ai_grading`、`questions`（题目数组），以及时间窗/排行榜：`start_time`、`end_time`（ISO8601，须同时设置或同时留空，结束须晚于开考）、`freeze_minutes`（结束前 N 分钟自动封榜，0 关闭）、`leaderboard_enabled`、`leaderboard_view_incomplete`。
+
+### GET /exams/:id — 试卷详情
+
+开考前对考生返回 403「考试尚未开始。」；教师/管理员不受时间窗限制。
+
+### PUT /exams/:id — 编辑试卷
+
+需教师及以上。字段同创建；另支持封榜控制：`manual_frozen`（`true` 封榜、`false` 解封）、`unfrozen`（`true` 恢复自动封榜，与 `manual_frozen:false` 搭配使用）。
+
+### DELETE /exams/:id — 删除试卷
+
+需教师及以上。
+
+### POST /exams/:id/submit — 交卷
+
+需登录且在时间窗内（开考前/结束后 403）。服务端汇总客观/主观得分并折算程序题得分。
+
+### GET /exams/:id/submission/:sid — 考生答卷详情
+
+需登录。返回成绩、逐题作答与代码提交。
+
+### GET /exams/:id/submissions — 试卷提交列表
+
+需教师及以上。
+
+### POST /exams/:id/grade/:sid — 手动批改
+
+需教师及以上。保存主观题批改分数。
+
+### POST /exams/:id/ai-grade/:sid — AI 批改
+
+需教师及以上。调用 AI 服务批改主观题。
+
+### GET /exams/:id/leaderboard — 试卷排行榜
+
+门禁顺序：试卷 404 → 隐藏 403 → `leaderboard_enabled=0` 返回 404 → 未完成 403（`leaderboard_view_incomplete=1` 时放开）。`?limit=` 默认 100、上限 200。每人最佳一次尝试、总分降序、同分先交卷者靠前，仅 `role=user` 入榜；封榜期只计冻结时刻前的提交；返回 `my`（本人名次）。
+
+## 11.6 系统状态 `/system`
+
+### GET /system/status — 系统运行状态仪表盘
+
+需 admin/su。返回运行时长、主机/平台、CPU、内存、Node 版本、数据库大小、资源计数（users/problems/submissions/testCases/pendingReview）、今日统计与判题队列（最近 20 条）。
 
 ---
 

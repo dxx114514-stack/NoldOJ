@@ -15,8 +15,7 @@ data/uploads/
 *.db-wal
 *.db-shm
 
-# Sandbox temp files
-winoj-sandbox/
+# Sandbox
 backend/sandbox/sandbox_runner.exe
 
 # OS files

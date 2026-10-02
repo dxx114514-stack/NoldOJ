@@ -369,7 +369,6 @@ npm install</code></pre>
         <h4>管理员</h4>
         <ul>
           <li>管理权限低于自己或自己的用户：封禁 / 解封 / 强制登出（封禁时 Access &amp; Refresh Token 立即失效）</li>
-          <li>查看 15 分钟内活跃的在线用户</li>
           <li>删除任意提交记录（编号自动回收）、删除任意讨论</li>
         </ul>
       </div>
@@ -446,11 +445,11 @@ abs(@score - 50)</code></pre>
     <!-- ═══ 4. 运维 ═══ -->
     <div class="section" id="ops">
       <h2 class="sec-title"><span class="n">4</span>配置与运维</h2>
-      <p class="sec-desc">所有配置均通过 config/ 目录下的配置文件管理，不使用环境变量。</p>
+      <p class="sec-desc">配置以 config/ 目录下的配置文件为主；另有 PORT、DB_PATH、COOKIE_SECURE、SANDBOX_TEMP、NoldOJ_PROBLEMS_DIR、NoldOJ_JUDGE_THREADS、TRUST_PROXY、OJ_LOG_DIR、NoldOJ_REQUIRE_RUNNER 等环境变量可覆盖部署行为（测试/CI 专用变量见 wiki 配置说明）。</p>
 
       <h3 class="block" id="config">配置文件</h3>
       <div class="notice info">
-        <b>配置示例：</b><code>example-config/</code> 目录提供全部配置文件的完整示例（含字段说明与默认值）。可直接 <code>copy example-config\* config\</code> 后按需修改。<code>config/</code> 已在 <code>.gitignore</code> 中忽略，不会提交密钥到仓库。<code>jwt.txt</code> 缺失时服务启动会自动生成强随机密钥。
+        <b>配置示例：</b><code>example-config/</code> 目录提供 <code>ai / cors / email / register</code> 四个配置示例（含字段说明与默认值）。可直接 <code>copy example-config\* config\</code> 后按需修改。<code>config/</code> 已在 <code>.gitignore</code> 中忽略，不会提交密钥到仓库。<code>jwt.txt</code> 缺失时服务启动会自动生成强随机密钥。
       </div>
 
       <div class="table-wrap">
@@ -460,7 +459,7 @@ abs(@score - 50)</code></pre>
             <tr>
               <td><code>config/ai.txt</code></td>
               <td>AI 代码安全审查</td>
-              <td><code>AI_ENABLED</code>（默认 false）、<code>URL</code>（默认 http://localhost:11434/api/chat）、<code>MODEL</code>（默认 qwen3:1.7b）、<code>KEY</code>、<code>CODE_LENGTH_LIMIT</code></td>
+              <td><code>SECURITY_ENABLED</code> / <code>HINT_ENABLED</code> / <code>TESTDATA_ENABLED</code>（默认均 false，各自独立）、各组同名 <code>URL</code>（默认 http://localhost:11434/api/chat）/ <code>MODEL</code>（默认 qwen3:1.7b）/ <code>KEY</code>（未配置回退 <code>SECURITY_*</code>）、<code>CODE_LENGTH_LIMIT</code></td>
             </tr>
             <tr>
               <td><code>config/email.txt</code></td>
@@ -518,7 +517,7 @@ abs(@score - 50)</code></pre>
           <pre><code>cd backend\sandbox
 build.bat</code></pre>
         </div>
-        <p>未编译时 start.bat 会自动编译；编译失败回退到传统模式（spawn），安全性较低。可用以下环境变量控制沙箱行为：</p>
+        <p>start.bat 每次启动都会从 <code>sandbox_runner.cpp</code> 重新编译（需 g++）；编译不可用时回退到传统模式（spawn），安全性较低。可用以下环境变量控制沙箱行为：</p>
       </div>
       <div class="table-wrap">
         <table>
@@ -591,7 +590,7 @@ build.bat</code></pre>
       </details>
       <details>
         <summary>内存显示 0KB？</summary>
-        <p>沙箱模式下内存由 Job Object 测量；若显示 0KB，说明 <code>sandbox_runner.exe</code> 构建失败并回退到传统模式（该模式不测量内存）。确认 <code>backend/sandbox/sandbox_runner.exe</code> 存在（缺失时 start.bat 会自动构建），或手动运行 <code>cd backend\sandbox &amp;&amp; build.bat</code>。</p>
+        <p>沙箱模式下内存由 Job Object 测量；回退模式（无 <code>sandbox_runner.exe</code>）在 Windows 上每 150ms 用 <code>tasklist</code> 轮询内存、超限即杀（标记 <code>MEMORY_LIMIT</code>）。若显示 0KB，通常是非 Windows 回退或 <code>tasklist</code> 无采样（进程过早退出），不代表回退模式不测内存。确认 <code>backend/sandbox/sandbox_runner.exe</code> 存在（start.bat 每次启动都会从源码重新编译，需 g++），或手动运行 <code>cd backend\sandbox &amp;&amp; build.bat</code>。</p>
       </details>
       <details>
         <summary>提示「安全沙箱运行器缺失」？</summary>
@@ -621,7 +620,7 @@ build.bat</code></pre>
       </details>
       <details>
         <summary>AI 代码安全审查如何配置？</summary>
-        <p>编辑 <code>config/ai.txt</code>：<code>AI_ENABLED</code> 设为 true，<code>URL</code> 设置服务地址（默认 http://localhost:11434/api/chat），<code>MODEL</code> 设置模型（默认 qwen3:1.7b），可选设置 <code>KEY</code>。</p>
+        <p>编辑 <code>config/ai.txt</code>：<code>SECURITY_ENABLED</code> 设为 true，<code>SECURITY_URL</code> 设置服务地址（默认 http://localhost:11434/api/chat），<code>SECURITY_MODEL</code> 设置模型（默认 qwen3:1.7b），可选设置 <code>SECURITY_KEY</code>。AI 提示与 AI 测试数据生成另有 <code>HINT_*</code>、<code>TESTDATA_*</code> 独立开关。</p>
       </details>
       <details>
         <summary>自定义计分脚本怎么写？</summary>
@@ -629,11 +628,11 @@ build.bat</code></pre>
       </details>
       <details>
         <summary>验证码是如何工作的？</summary>
-        <p>svg-captcha 动态生成 4 位字符（排除易混淆 O/0/I/1），带干扰线和彩色噪点。一次性使用、5 分钟有效、点击刷新、大小写不敏感（自动转大写匹配）。开关：<code>config/captcha.txt</code> 的 <code>CAPTCHA_ENABLED</code>。</p>
+        <p>自绘 SVG 验证码：启动时用 opentype.js 把字体字形转 <code>&lt;path&gt;</code> 轮廓（答案不写入 DOM），4 位字符排除易混淆 O/0/I/1（<code>crypto.randomInt</code>），叠加干扰线与湍流扭曲防 OCR。一次性使用、5 分钟有效、点击刷新、大小写不敏感（自动转大写匹配）。开关：<code>config/captcha.txt</code> 的 <code>CAPTCHA_ENABLED</code>。</p>
       </details>
       <details>
         <summary>AI 提示（AI Hint）怎么用？</summary>
-        <p>登录后进入题目页，对同一题提交失败 2 次以上，「AI Hint」按钮自动出现。点击即可获取方向性算法提示（不给完整代码）。每题 60 秒冷却。需管理员启用 AI（<code>config/ai.txt</code> 的 <code>AI_ENABLED=true</code>）。</p>
+        <p>登录后进入题目页，对同一题提交失败 2 次以上，「AI Hint」按钮自动出现。点击即可获取方向性算法提示（不给完整代码）。每题 60 秒冷却。需管理员启用 AI（<code>config/ai.txt</code> 的 <code>HINT_ENABLED=true</code>）。</p>
       </details>
       <details>
         <summary>AI 测试数据生成怎么用？</summary>
@@ -746,7 +745,7 @@ build.bat</code></pre>
         <div class="ver"><b>v1.5.0</b>
           <ul>
             <li>新增黑夜模式一键切换、用户偏好语言、Markdown 嵌入语法（@[bilibili] / @[url] / @[audio] / @[video]）</li>
-            <li>新增 IDE 三阶段状态、队列模式、内存检测；AI 安全审查提示词注入防护（15 种模式）</li>
+            <li>新增 IDE 三阶段状态、队列模式、内存检测；AI 安全审查提示词注入防护（14 种模式）</li>
             <li>新增 force_logout_at 强制登出、注册限流、用户 ID 复用、OpenAPI 3.0 文档、55+ 单元测试</li>
           </ul>
         </div>

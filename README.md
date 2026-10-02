@@ -40,7 +40,7 @@
 - **异步审查**：审查在后台运行，不阻塞提交响应，审查通过后才编译运行
 - **恶意代码检测**：检测文件攻击、网络攻击、权限提升、挖矿程序、敏感信息窃取等
 - **自动封禁**：发现恶意代码立即封禁用户并踢出登录，Access Token 立即失效
-- **提示词注入防护**：15 种注入模式检测、代码截断脱敏、AI 响应操纵检测
+- **提示词注入防护**：14 种注入模式检测、代码截断脱敏、AI 响应操纵检测
 
 ### AI 提示（AI Hint）
 - **失败后思路引导**：学生对某题失败 2 次后可获取方向性算法提示（不给完整代码，300 字以内中文）
@@ -333,29 +333,41 @@ v1.8.0 起数据库引擎从 `sql.js`（WASM 内存库，每次写操作整库�
 
 ### 配置文件
 
-所有配置均通过 `config/` 目录下的配置文件管理，不使用环境变量。
+配置以 `config/` 目录下的配置文件为主；另有一批环境变量可覆盖部署行为（`PORT`、`DB_PATH`、`COOKIE_SECURE`、`SANDBOX_TEMP`、`NoldOJ_PROBLEMS_DIR`、`NoldOJ_JUDGE_THREADS`、`TRUST_PROXY`、`OJ_LOG_DIR`、`NoldOJ_REQUIRE_RUNNER` 等，完整表见 [wiki 配置说明](https://github.com/dxxjudges/NoldOJ/wiki/Configuration)）。
 
-> **配置示例**：`example-config/` 目录提供了全部配置文件的完整示例（含字段说明与默认值），
+> **配置示例**：`example-config/` 目录提供了 `ai/cors/email/register` 四个配置示例（含字段说明与默认值），
 > 可直接 `copy example-config\* config\` 后按需修改。`config/` 目录已在 `.gitignore` 中忽略，
 > 不会提交密钥到仓库；`jwt.txt` 缺失时服务启动会自动生成强随机密钥。
 
-#### `config/ai.txt` — AI 代码安全审查配置
+#### `config/ai.txt` — AI 能力配置（安全审查 / AI 提示 / 测试数据生成）
+
+三个功能独立开关，`HINT_*`、`TESTDATA_*` 未配置的 URL/Model/Key 自动回退 `SECURITY_*`：
 
 ```
-AI_ENABLED=false
-URL=http://localhost:11434/api/chat
-MODEL=qwen3:1.7b
-KEY=
 CODE_LENGTH_LIMIT=131072
+SECURITY_ENABLED=false
+SECURITY_URL=http://localhost:11434/api/chat
+SECURITY_MODEL=qwen3:1.7b
+SECURITY_KEY=
+HINT_ENABLED=false
+HINT_URL=
+HINT_MODEL=
+HINT_KEY=
+TESTDATA_ENABLED=false
+TESTDATA_URL=
+TESTDATA_MODEL=
+TESTDATA_KEY=
 ```
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `AI_ENABLED` | `false` | 是否启用 AI 代码审查 |
-| `URL` | `http://localhost:11434/api/chat` | AI 服务 API 地址 |
-| `MODEL` | `qwen3:1.7b` | 审查模型名称 |
-| `KEY` | 空 | AI 服务 API Key（可选，用于需要认证的服务） |
-| `CODE_LENGTH_LIMIT` | 131072 | 源代码最大字符数 (128KB) |
+| `CODE_LENGTH_LIMIT` | `131072` | 源代码最大字符数 (128KB)，超出直接拒绝 |
+| `SECURITY_ENABLED` | `false` | 是否启用 AI 代码安全审查 |
+| `SECURITY_URL` | `http://localhost:11434/api/chat` | AI 服务 API 地址（Ollama 或 OpenAI 兼容 `/api/chat`） |
+| `SECURITY_MODEL` | `qwen3:1.7b` | 审查模型名称 |
+| `SECURITY_KEY` | 空 | AI 服务 API Key（可选，用于需要认证的服务） |
+| `HINT_ENABLED` | `false` | 是否启用 AI 提示（学生失败后思路引导） |
+| `TESTDATA_ENABLED` | `false` | 是否启用 AI 测试数据生成（教师一键生成测试点） |
 
 #### `config/email.txt` — 邮件发送配置
 
@@ -423,18 +435,18 @@ NoldOJ/
 ├── backend/
 │   ├── config/             # 核心配置（config.js）
 │   ├── database/           # 数据库 schema 和初始化（含自动迁移）
-│   ├── data/               # 运行时数据：SQLite 库 + 测试数据 + 上传文件（自动创建）
-│   ├── middleware/         # 认证、限流、在线用户追踪
-│   ├── routes/             # API 路由（22 个文件，21 组，162 个端点）
+│   ├── data/               # 运行时数据：SQLite 库 + 题目测试数据 problems/（自动创建）
+│   ├── middleware/         # 认证、限流、管理员操作日志
+│   ├── routes/             # API 路由（22 个文件，21 组，163 个端点）
 │   ├── services/           # 评测引擎 + IDE 评测 + AI 安全审查 + 验证码 + 查重
 │   ├── sandbox/            # 代码执行沙箱 + 计分脚本解释器
-│   ├── test/               # 测试（11 个测试文件，105 个用例）
+│   ├── test/               # 测试（13 个文件：`npm test` 单测 104 项 + 黑盒 `test:server` 24 项）
 │   └── src/                # 服务器入口
 ├── frontend/
 │   ├── css/                # 全局样式（含暗色模式覆盖）
 │   ├── js/                 # 公共 JS（API 封装、Markdown 渲染、导航栏）
 │   ├── favicon.svg         # 网站图标
-│   └── pages/              # HTML 页面（41 个页面，全中文界面，支持 Markdown/KaTeX）
+│   └── pages/              # HTML 页面（42 个页面，全中文界面，支持 Markdown/KaTeX）
 ├── scripts/                # 工具脚本（种子数据、favicon 添加等）
 ├── log/                    # 运行日志（按启动时间戳建目录，已被 .gitignore 忽略）
 └── data/                   # 上传文件等运行时数据（自动创建）
@@ -446,7 +458,7 @@ NoldOJ/
 |------|------|---------|
 | **用户** | 普通注册用户 | 做题、提交代码、使用 IDE（需登录）、查看提交记录、加入比赛、查看他人资料、发帖/回复讨论、虚拟参赛、查看题单 |
 | **教师** | 题目管理者 | 创建/编辑题目、管理测试点、创建比赛、邀请用户、重测提交、发布文章、文件上传/图床、管理公告、置顶/加精/锁定讨论、发起代码查重、创建题单 |
-| **管理员** | 用户管理者 | 管理权限低于自己或自己的用户（封禁/解封/强制登出）、查看在线用户、删除提交、删除任意讨论 |
+| **管理员** | 用户管理者 | 管理权限低于自己或自己的用户（封禁/解封/强制登出）、删除提交、删除任意讨论 |
 | **超级管理员** | 最高权限 | 所有权限 + 修改角色、重置密码、免密登录、管理语言、设置 Rating、自删除、设置图床限额 |
 
 ## 更新日志
@@ -558,7 +570,7 @@ NoldOJ/
 - 新增 IDE 内存检测
 - 新增题目输入输出样例展示（代码框包裹、一键复制）
 - 新增题目提示/说明编辑框，提醒填写数据范围
-- 新增 AI 安全审查提示词注入防护（15 种模式检测）
+- 新增 AI 安全审查提示词注入防护（14 种模式检测）
 - 新增 force_logout_at 机制，强制登出后 Access Token 立即失效
 - 新增计分脚本条件括号支持、min/max/abs 函数
 - 新增导航栏 Rating 每 30 秒自动刷新
@@ -611,7 +623,7 @@ NoldOJ/
 A: 检查启动日志 `log/<时间戳>/server.log` 是否有报错（`start.bat` 将服务输出写入该文件）。可能是编译器未安装或路径未配置。
 
 **Q: 内存显示 0KB？**
-A: 沙箱模式下内存由 Job Object 测量；若显示 0KB，说明 `sandbox_runner.exe` 构建失败并回退到传统模式（该模式不测量内存）。确保 `sandbox/sandbox_runner.exe` 存在（缺失时 start.bat 会自动从源码构建）。
+A: 沙箱模式下内存由 Job Object 测量；回退模式（无 `sandbox_runner.exe`）在 Windows 上每 150ms 用 `tasklist` 轮询内存、超限即杀（标记 `MEMORY_LIMIT`）。若显示 0KB，通常是非 Windows 回退或 `tasklist` 无采样（进程过早退出），不代表回退模式不测内存。确保 `sandbox/sandbox_runner.exe` 存在（start.bat 每次启动都会从源码重新编译，需 g++）。
 
 **Q: 如何添加新语言？**
 A: 以超级管理员登录，进入"语言"管理页面，填写编译/运行命令即可。
@@ -626,7 +638,7 @@ A: 行内公式用 `$E=mc^2$`，块级公式用 `$$\sum_{i=1}^{n} i$$`。
 A: Bilibili 用 `@[bilibili](BV号)`，任意网站用 `@[url](URL)`，音频 `@[audio](URL)`，视频 `@[video](URL)`，Office 文档用 `@[office](URL)`（须公网 https），ECharts 图表用 `@[echarts]({JSON})`，Mermaid 流程图用 `@[mermaid]` 与 `@[/mermaid]` 包裹多行文本。
 
 **Q: AI 安全审查如何配置？**
-A: 编辑 `config/ai.txt` 文件。将 `AI_ENABLED` 设为 `true` 启用审查，通过 `URL` 设置 AI 服务地址（默认 `http://localhost:11434/api/chat`），`MODEL` 设置模型名称（默认 `qwen3:1.7b`），`KEY` 设置 API Key（可选，用于需要认证的服务）。
+A: 编辑 `config/ai.txt` 文件。将 `SECURITY_ENABLED` 设为 `true` 启用审查，通过 `SECURITY_URL` 设置 AI 服务地址（默认 `http://localhost:11434/api/chat`），`SECURITY_MODEL` 设置模型名称（默认 `qwen3:1.7b`），`SECURITY_KEY` 设置 API Key（可选，用于需要认证的服务）。
 
 **Q: 验证码是如何工作的？**
 A: 系统自绘 SVG 验证码：启动时用 opentype.js 把捆绑字体的字形转成 `<path>` 轮廓（答案字符串不写入 DOM，天然免疫 DOM 读取），生成 4 位随机字符（排除易混淆的 O/0/I/1，随机数走 `crypto.randomInt`），叠加干扰线与湍流扭曲防 OCR。用户登录/注册时需输入验证码，验证后立即销毁（一次性使用），5 分钟内有效。点击验证码图片可刷新。验证码开关通过 `config/captcha.txt` 中 `CAPTCHA_ENABLED` 控制（设为 `true` 启用，`false` 关闭）。

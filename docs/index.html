@@ -347,7 +347,7 @@
           <li>本地 Ollama 自动审查提交代码</li>
           <li>检测文件攻击、挖矿、提权、信息窃取</li>
           <li>恶意代码立即封禁并踢出登录</li>
-          <li>15 种提示词注入模式检测</li>
+          <li>14 种提示词注入模式检测</li>
         </ul>
       </div>
       <div class="card reveal">
@@ -553,7 +553,7 @@ npm install</code></pre>
           <tr>
             <td class="role-name">管理员</td>
             <td>用户管理者</td>
-            <td>封禁 / 解封 / 强制登出、查看在线用户、删除提交、删除任意讨论</td>
+            <td>封禁 / 解封 / 强制登出、删除提交、删除任意讨论</td>
           </tr>
           <tr>
             <td class="role-name">超级管理员</td>
@@ -579,7 +579,7 @@ npm install</code></pre>
       </details>
       <details>
         <summary>内存显示 0KB？</summary>
-        <p>沙箱模式下内存由 Job Object 测量。若显示 0KB，说明 sandbox_runner.exe 构建失败并回退到传统模式（该模式不测量内存）。确认 backend/sandbox/sandbox_runner.exe 存在（缺失时 start.bat 会自动从源码构建）。</p>
+        <p>沙箱模式下内存由 Job Object 测量。回退模式（无 sandbox_runner.exe）在 Windows 上每 150ms 用 tasklist 轮询内存、超限即杀。若显示 0KB，通常是非 Windows 回退或 tasklist 无采样（进程过早退出），不代表回退模式不测内存。确认 backend/sandbox/sandbox_runner.exe 存在（start.bat 每次启动都会从源码重新编译，需 g++）。</p>
       </details>
       <details>
         <summary>如何在题目描述中使用公式？</summary>
@@ -591,7 +591,7 @@ npm install</code></pre>
       </details>
       <details>
         <summary>AI 代码安全审查如何配置？</summary>
-        <p>编辑 <code>config/ai.txt</code>，将 AI_ENABLED 设为 true，通过 URL 设置服务地址（默认 http://localhost:11434/api/chat），MODEL 设置模型名称（默认 qwen3:1.7b）。</p>
+        <p>编辑 <code>config/ai.txt</code>，将 SECURITY_ENABLED 设为 true，通过 SECURITY_URL 设置服务地址（默认 http://localhost:11434/api/chat），SECURITY_MODEL 设置模型名称（默认 qwen3:1.7b）。</p>
       </details>
       <details>
         <summary>数据库在哪里？</summary>
