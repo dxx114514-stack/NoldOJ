@@ -67,7 +67,8 @@
       return { text: '新手', color: 'text-gray-600 bg-gray-50' };
     }
 
-    async function loadRating() {
+    async function loadRating(page) {
+      if (page) currentPage = page;
       try {
         const params = new URLSearchParams({ page: currentPage, limit: 20 });
         if (showHidden && isAdmin) params.append('show_hidden', '1');

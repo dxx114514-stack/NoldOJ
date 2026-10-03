@@ -7,6 +7,8 @@ const db = require('../database/db');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { parsePageLimit } = require('../utils/pagination');
 const { isStaff } = require('../utils/roles');
+// 题目可见性校验与提交接口共用（原为本文件私有，导致 POST /submissions 绕过校验）
+const { problemVisibilityError } = require('../utils/visibility');
 const { buildUpdates } = require('../utils/db');
 const { sanitizeLog } = require('../utils/securityHelpers');
 const { createRateLimit } = require('../middleware/ratelimit');
@@ -49,6 +51,26 @@ function normalizeSamples(raw) {
   }
   return out;
 }
+
+// real_number_tolerance 只接受 {absolute, relative} 且为有限非负数。
+// 原先请求体原样 JSON.stringify 落库：compareRealNumber 用
+//   if (absErr > tolerance.absolute && relErr > tolerance.relative) return false;
+// 传入 1e300 这类超大容差会让两个条件恒假 → 任意答案全部判对（判题口径被静默放空）；
+// 传负数/字符串/数组则会让整题恒判错。undefined → 返回 undefined（调用方用默认值）。
+function normalizeTolerance(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const num = (v, dflt) => {
+    if (v === undefined || v === null) return dflt;
+    const n = Number(v);
+    if (!isFinite(n) || n < 0 || n > 1e9) return NaN;
+    return n;
+  };
+  const absolute = num(raw.absolute, 0.001);
+  const relative = num(raw.relative, 0.001);
+  if (!isFinite(absolute) || !isFinite(relative)) return null;
+  return { absolute, relative };
+}
 function getSamples(problemId) {
   return db.prepare('SELECT input, output, note FROM problem_samples WHERE problem_id = ? ORDER BY sort_order, id').all(problemId);
 }
@@ -70,36 +92,7 @@ function sanitizeProblem(p) {
   return result;
 }
 
-// 题目可见性校验（隐藏题 / 非公开题），返回错误响应对象或 null
-function problemVisibilityError(problem, req) {
-  const isManager = !!(req.user && isStaff(req.user.role));
-  if (problem.is_hidden && !isManager) {
-    return { code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' };
-  }
-  if (!problem.is_public) {
-    if (isManager || (req.user && req.user.id === problem.created_by)) return null;
-    const contests = db.prepare(`
-      SELECT c.id, c.start_time, c.end_time FROM contest_problems cp
-      JOIN contests c ON c.id = cp.contest_id
-      WHERE cp.problem_id = ?
-    `).all(problem.id);
-    const now = Date.now();
-    const running = contests.some(c => {
-      const s = new Date(c.start_time).getTime();
-      const e = new Date(c.end_time).getTime();
-      return !isNaN(s) && !isNaN(e) && s <= now && now <= e;
-    });
-    const participant = running && req.user ? db.prepare(`
-      SELECT 1 FROM contest_participants WHERE contest_id IN (
-        SELECT cp2.contest_id FROM contest_problems cp2 WHERE cp2.problem_id = ?
-      ) AND user_id = ?
-    `).get(problem.id, req.user.id) : null;
-    if (!running || !req.user || !participant) {
-      return { code: 6, reason: 'ERR_FORBIDDEN', message: 'Problem is not public.' };
-    }
-  }
-  return null;
-}
+// 题目可见性校验 problemVisibilityError 已抽到 utils/visibility.js（提交接口共用）
 
 // 作者/管理视图: 保留 spj_code 与 scoring_script，用于题目编辑回显
 // （fullProblem 恒等包装已移除，直接返回数据库对象）
@@ -261,10 +254,14 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
   if (time_limit !== undefined && time_limit !== null && (!Number.isInteger(Number(time_limit)) || Number(time_limit) < 1 || Number(time_limit) > 10000)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'time_limit 必须在 1~10000 ms 之间。' });
   }
-  if (memory_limit !== undefined && memory_limit !== null && (!Number.isInteger(Number(memory_limit)) || Number(memory_limit) < 1 || Number(memory_limit) > 1048576)) {
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'memory_limit 必须在 1~1048576 KB 之间。' });
+  if (memory_limit !== undefined && memory_limit !== null && (!Number.isInteger(Number(memory_limit)) || Number(memory_limit) < 1 || Number(memory_limit) > 1024)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'memory_limit 必须在 1~1024 MB 之间（判题端硬上限 1024MB）。' });
   }
   const newId = db.findNextId('problems');
+  const newTolerance = normalizeTolerance(real_number_tolerance);
+  if (newTolerance === null) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'real_number_tolerance 必须是 {absolute, relative} 且为 0~1e9 的有限数值。' });
+  }
   // R12-1: samples 数组存在时以首条双写旧字段, 全量入新表
   let samples = normalizeSamples(req.body.samples);
   if (samples === null && req.body.samples !== undefined) {
@@ -283,7 +280,7 @@ router.post('/', requireAuth, requireRole('teacher'), (req, res) => {
     memory_limit || 256,
     problem_type || 'traditional',
     compare_mode || 'text_strict',
-    JSON.stringify(real_number_tolerance || { absolute: 0.001, relative: 0.001 }),
+    JSON.stringify(newTolerance || { absolute: 0.001, relative: 0.001 }),
     spj_code || '',
     JSON.stringify(allowed_languages || []),
     is_public !== undefined ? (is_public ? 1 : 0) : 1,
@@ -327,8 +324,8 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (bodyTl !== undefined && bodyTl !== null && (!Number.isInteger(Number(bodyTl)) || Number(bodyTl) < 1 || Number(bodyTl) > 10000)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'time_limit 必须在 1~10000 ms 之间。' });
   }
-  if (bodyMl !== undefined && bodyMl !== null && (!Number.isInteger(Number(bodyMl)) || Number(bodyMl) < 1 || Number(bodyMl) > 1048576)) {
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'memory_limit 必须在 1~1048576 KB 之间。' });
+  if (bodyMl !== undefined && bodyMl !== null && (!Number.isInteger(Number(bodyMl)) || Number(bodyMl) < 1 || Number(bodyMl) > 1024)) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'memory_limit 必须在 1~1024 MB 之间（判题端硬上限 1024MB）。' });
   }
   const transformValue = (field, value) => {
     if (field === 'real_number_tolerance' || field === 'allowed_languages') return JSON.stringify(value);
@@ -336,6 +333,17 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
     if (field === 'difficulty') return parseInt(value) || 0;
     return value;
   };
+  // R12-1: samples 必须先校验再落库。原先放在 UPDATE 之后，
+  // 一旦 samples 非法就返回 400，但其它字段已经提交 —— 客户端认为整次编辑失败，
+  // 实际上题目已被改成一半（半次更新）。
+  const samples = normalizeSamples(req.body.samples);
+  if (samples === null && req.body.samples !== undefined) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'samples 必须为 [{input,output,note}] 数组。' });
+  }
+  if (req.body.real_number_tolerance !== undefined && req.body.real_number_tolerance !== null
+      && normalizeTolerance(req.body.real_number_tolerance) === null) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'real_number_tolerance 必须是 {absolute, relative} 且为 0~1e9 的有限数值。' });
+  }
   const u = buildUpdates(fields.map(f => ({ key: f, value: req.body[f], transform: v => transformValue(f, v) })), { touchUpdatedAt: true });
   if (u.count === 0 && req.body.samples === undefined) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'No fields to update.' });
@@ -343,11 +351,7 @@ router.put('/:id', requireAuth, requireRole('teacher'), (req, res) => {
   if (u.count > 0) {
     db.prepare(`UPDATE problems SET ${u.clause} WHERE id = ?`).run(...u.values, problem.id);
   }
-  // R12-1: samples 数组存在即全量替换(含空数组=清空样例); 否则旧字段变化时同步回新表首条
-  let samples = normalizeSamples(req.body.samples);
-  if (samples === null && req.body.samples !== undefined) {
-    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'samples 必须为 [{input,output,note}] 数组。' });
-  }
+  // samples 数组存在即全量替换(含空数组=清空样例); 否则旧字段变化时同步回新表首条
   if (samples !== null) {
     replaceSamples(problem.id, samples);
     // 同步旧字段到返回视图
@@ -440,7 +444,12 @@ router.put('/:id/reindex', requireAuth, requireRole('admin'), (req, res) => {
       'test_groups', 'test_cases', 'submissions', 'problem_set_items',
       'problem_set_progress', 'contest_problems', 'problem_solutions',
       'problem_tags', 'problem_categories', 'discussions', 'user_favorites',
-      'problem_samples'
+      'problem_samples',
+      // plagiarism_tasks.problem_id 也有 FK(schema.sql)，遗漏会导致 COMMIT 时
+      // FOREIGN KEY constraint failed → 已查重过的题目重编号必定 500
+      'plagiarism_tasks',
+      // exam_questions.problem_id 同理（试卷内编程题）
+      'exam_questions'
     ];
     for (const t of refTables) {
       db.prepare(`UPDATE ${t} SET problem_id = ? WHERE problem_id = ?`).run(newId, problem.id);
@@ -943,6 +952,12 @@ router.get('/:id/solutions', optionalAuth, (req, res) => {
   if (!problem) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
+  // 与 GET /problems/:id 一致的可见性校验：否则隐藏题 / 赛前比赛题可绕过详情页
+  // 通过题解列表探测题解（含题解标题），并枚举到对应文章的存在性
+  const verr = problemVisibilityError(problem, req);
+  if (verr) {
+    return res.status(403).json(verr);
+  }
   const solutions = db.prepare(`
     SELECT ps.id, ps.article_id, ps.sort_order, ps.show_after_contest, ps.created_at,
            a.title as article_title, a.content as article_content, a.is_published,
@@ -1262,6 +1277,14 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
       return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '文件内容缺少 problem.title。' });
     }
     const p = bundle.problem;
+    // 导入包是任意 JSON：容差/资源限制原样落库会把判题口径放空或撑爆判题线程
+    const importTolerance = normalizeTolerance(p.real_number_tolerance);
+    if (importTolerance === null) {
+      cleanup();
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problem.real_number_tolerance 非法。' });
+    }
+    const importTl = Math.min(10000, Math.max(1, Number(p.time_limit) || 1000));
+    const importMl = Math.min(1024, Math.max(1, Number(p.memory_limit) || 256));
     const newId = db.findNextId('problems');
     db.prepare(`INSERT INTO problems (id, title, description, background, input_desc, output_desc, hint, time_limit, memory_limit, problem_type, compare_mode, real_number_tolerance, spj_code, scoring_script, allowed_languages, is_public, provider, created_by, sample_input, sample_output, subtask_mode, difficulty, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       newId,
@@ -1271,11 +1294,11 @@ router.post('/import', requireAuth, requireRole('teacher'), upload.single('file'
       p.input_desc || '',
       p.output_desc || '',
       p.hint || '',
-      p.time_limit || 1000,
-      p.memory_limit || 256,
+      importTl,
+      importMl,
       p.problem_type || 'traditional',
       p.compare_mode || 'text_strict',
-      JSON.stringify(p.real_number_tolerance || { absolute: 0.001, relative: 0.001 }),
+      JSON.stringify(importTolerance || { absolute: 0.001, relative: 0.001 }),
       p.spj_code || '',
       p.scoring_script || '',
       JSON.stringify(p.allowed_languages || []),

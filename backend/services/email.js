@@ -74,7 +74,11 @@ function saveCode(email, code) {
 // D-M3: 单码最多 5 次失败，防 6 位验证码被暴力枚举
 const MAX_VERIFY_ATTEMPTS = 5;
 
-function verifyCode(email, code) {
+// consume=false 用于"预校验"（如 /verify-code）：只校验不核销，
+// 否则前端先校验再提交的两步流程里，第二步 reset-password/register 会拿不到验证码。
+// 失败计数与作废逻辑两种模式完全一致，暴力枚举防护不受影响。
+function verifyCode(email, code, opts) {
+  const consume = !opts || opts.consume !== false;
   // datetime(expires_at) 归一化 ISO(…T…Z) 与 SQLite(空格) 两种时间格式，
   // 避免字符串比较使 'T' > ' ' 导致验证码当日恒有效
   const row = db.prepare("SELECT * FROM email_codes WHERE email = ? AND used = 0 AND datetime(expires_at) > datetime('now') ORDER BY id DESC LIMIT 1").get(email);
@@ -92,7 +96,9 @@ function verifyCode(email, code) {
     }
     return false;
   }
-  db.prepare('UPDATE email_codes SET used = 1 WHERE id = ?').run(row.id);
+  if (consume) {
+    db.prepare('UPDATE email_codes SET used = 1 WHERE id = ?').run(row.id);
+  }
   return true;
 }
 

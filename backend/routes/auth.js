@@ -78,7 +78,7 @@ router.post('/verify-code', verifyCodeRateLimit, (req, res) => {
   if (!email || !code) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '邮箱和验证码不能为空。' });
   }
-  const ok = verifyCode(email, code);
+  const ok = verifyCode(email, code, { consume: false });
   if (!ok) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: '验证码无效或已过期。' });
   }

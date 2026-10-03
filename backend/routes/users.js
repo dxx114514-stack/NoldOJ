@@ -62,7 +62,9 @@ router.get('/rating', optionalAuth, (req, res) => {
 // 公开用户资料 API（所有人可访问）
 // 返回隐私开关，供前端决定是否展示成就/看板/收藏入口
 router.get('/:id/profile', (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, hide_achievements, hide_dashboard, hide_favorites, created_at FROM users WHERE id = ?').get(req.params.id);
+  // hide_rating 一并返回：与 hide_achievements / hide_dashboard / hide_favorites 一样，
+  // 由前端据此决定是否展示 Rating（排行榜本身已过滤，个人页此前漏了这一项）
+  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, hide_rating, hide_achievements, hide_dashboard, hide_favorites, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!user) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
@@ -70,7 +72,7 @@ router.get('/:id/profile', (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, preferred_language, submit_lock_exempt, hide_achievements, hide_dashboard, hide_favorites, created_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, nickname, role, signature, bio, rating, preferred_language, submit_lock_exempt, hide_rating, hide_achievements, hide_dashboard, hide_favorites, created_at FROM users WHERE id = ?').get(req.user.id);
   res.json(user);
 });
 
@@ -226,6 +228,10 @@ router.post('/:id/unban', requireAuth, requireRole('admin'), (req, res) => {
   if (!target) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'User not found.' });
   }
+  // 与 force-logout / ban 保持一致：管理员不得解封同级或更高权限的账号（su 账号）
+  if (!canManage(req.user, target)) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot unban a user with equal or higher privileges (except yourself).' });
+  }
   db.prepare('UPDATE users SET banned = 0, updated_at = datetime(\'now\') WHERE id = ?').run(target.id);
   audit(req.user, 'unban', target);
   res.json({ message: 'User unbanned.' });
@@ -258,6 +264,8 @@ router.post('/:id/reset-password', requireAuth, requireRole('su'), (req, res) =>
   const hash = bcrypt.hashSync(new_password, 10);
   db.prepare('UPDATE users SET password_hash = ?, updated_at = datetime(\'now\') WHERE id = ?').run(hash, req.params.id);
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(user.id);
+  // 与 force-logout 一致：否则已签发的 access token 在过期前仍可用旧密码继续操作
+  db.prepare("UPDATE users SET force_logout_at = datetime('now') WHERE id = ?").run(user.id);
   audit(req.user, 'reset-password', user);
   res.json({ message: 'Password reset successfully.' });
 });

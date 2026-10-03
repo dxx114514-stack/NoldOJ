@@ -137,7 +137,8 @@
     }
     function onFilterChange() { currentPage = 1; loadProblems(); }
 
-    async function loadProblems() {
+    async function loadProblems(page) {
+      if (page) currentPage = page;
       syncUrl();
       const search = document.getElementById('search').value;
       try {

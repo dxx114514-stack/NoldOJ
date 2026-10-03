@@ -53,7 +53,7 @@
             </div>
           </div>
         `).join('');
-        renderPagination('pager', Math.ceil(data.total / data.size), data.page, 'loadList');
+        renderPagination('pager', Math.ceil(data.total / data.size), data.page, 'goPage');
       } catch (err) {
         list.innerHTML = `<p class="text-red-500 text-center py-12">${escapeHtml(err.message) || '加载失败'}</p>`;
       }

@@ -345,6 +345,7 @@
           </thead>
           <tbody id="adminUsers" class="divide-y divide-gray-100 dark:divide-gray-700"></tbody>
         </table>
+        <div id="usersPager" class="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-sm"></div>
       </div>
     </div>
 
@@ -1580,13 +1581,32 @@
       }
     }
 
-    async function loadUsers() {
+    let usersPage = 1;
+    async function loadUsers(page) {
+      if (page) usersPage = page;
       const currentUser = getUser();
       const isSu = currentUser && currentUser.role === 'su';
       const hierarchy = ['user', 'teacher', 'admin', 'su'];
       const myLevel = hierarchy.indexOf(currentUser?.role || '');
       try {
-        const data = await apiCall('GET', '/users?limit=100');
+        // 后端 parsePageLimit 把 limit 硬封顶在 100，之前固定拉第一页且没有翻页控件，
+        // 第 101 位之后的用户在管理台里根本看不到、也搜不到
+        const data = await apiCall('GET', `/users?page=${usersPage}&limit=100`);
+        if (!data.users.length && usersPage > 1) {
+          return loadUsers(usersPage - 1);
+        }
+        const total = data.total || data.users.length;
+        const pageSize = data.limit || 100;
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        const pager = document.getElementById('usersPager');
+        if (pager) {
+          const btn = (target, label) => `
+            <button ${target < 1 || target > totalPages ? 'disabled' : ''} onclick="loadUsers(${target})"
+              class="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-600 ${target < 1 || target > totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700'} text-gray-700 dark:text-gray-300">${label}</button>`;
+          pager.innerHTML = `
+            <span class="text-gray-500 dark:text-gray-400">共 ${total} 位用户 · 第 ${usersPage}/${totalPages} 页</span>
+            <span class="space-x-2">${btn(usersPage - 1, '上一页')}${btn(usersPage + 1, '下一页')}</span>`;
+        }
         document.getElementById('adminUsers').innerHTML = data.users.map(u => {
           const targetLevel = hierarchy.indexOf(u.role);
           const canOperate = u.id !== currentUser.id && myLevel > targetLevel;
@@ -1789,8 +1809,8 @@ async function banUser(id) { try { await apiCall('POST', `/users/${id}/ban`); lo
       try {
         await apiCall('POST', '/contests', {
           title: document.getElementById('cTitle').value,
-          start_time: document.getElementById('cStart').value,
-          end_time: document.getElementById('cEnd').value,
+          start_time: localInputToIso(document.getElementById('cStart').value),
+          end_time: localInputToIso(document.getElementById('cEnd').value),
           freeze_minutes: parseInt(document.getElementById('cFreeze').value) || 0,
         });
         hideCreateContest();

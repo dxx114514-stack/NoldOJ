@@ -127,7 +127,8 @@
       return f;
     }
 
-    async function loadSubmissions() {
+    async function loadSubmissions(page) {
+      if (page) currentPage = page;
       if (!requireAuth()) return;
       try {
         const filters = getFilters();

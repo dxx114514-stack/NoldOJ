@@ -23,8 +23,11 @@ async function processIdeQueue() {
   } catch (err) {
     console.error(`IDE run error for #${runId}:`, err);
     db.prepare("UPDATE ide_runs SET status = 'system_error', stderr = ? WHERE id = ?").run(stripPaths(String(err.message || err || 'Unknown error')), runId);
+  } finally {
+    // 必须放在 finally：catch 里的 db/stripPaths 自身也可能抛错，
+    // 一旦漏掉就会把 isRunning 永久卡在 true，此后所有 IDE 运行请求静默排队不执行
+    isRunning = false;
   }
-  isRunning = false;
   if (ideQueue.length > 0) {
     setImmediate(processIdeQueue);
   }

@@ -559,3 +559,15 @@ CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam ON exam_submissions(exam_id
 CREATE INDEX IF NOT EXISTS idx_exam_submissions_user ON exam_submissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_exam_answers_submission ON exam_answers(submission_id);
 
+-- 考试作答起始时刻（服务端强制 time_limit 用）
+-- 每次 attempt 第一次进入考试即写入，刷新页面不会重置，防止前端倒计时被绕过
+CREATE TABLE IF NOT EXISTS exam_attempts (
+  exam_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  attempt INTEGER NOT NULL,
+  started_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (exam_id, user_id, attempt),
+  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+

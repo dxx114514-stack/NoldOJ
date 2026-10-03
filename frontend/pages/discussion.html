@@ -55,7 +55,7 @@
               <a href="profile.html?id=${r.user_id}" class="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(r.nickname || r.username)}</a>
               ${r.role==='admin'||r.role==='su'?'<span class="px-1.5 py-0.5 text-xs rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">管理员</span>':r.role==='teacher'?'<span class="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">教师</span>':''}
               <span class="text-xs text-gray-400">${new Date(r.created_at).toLocaleString()}</span>
-              ${(user.id === r.author_id || isAdmin) ? `<button onclick="deleteReply(${r.id})" class="ml-auto text-xs text-red-500 hover:underline">删除</button>` : ''}
+              ${(user && (user.id === r.author_id || isAdmin)) ? `<button onclick="deleteReply(${r.id})" class="ml-auto text-xs text-red-500 hover:underline">删除</button>` : ''}
             </div>
             <div class="prose dark:prose-invert max-w-none text-sm">${safeMarkdown(r.content)}</div>
             <div class="mt-2">
@@ -74,7 +74,7 @@
                     <div class="flex items-center gap-2 mb-1">
                       <a href="profile.html?id=${c.user_id}" class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">${escapeHtml(c.nickname || c.username)}</a>
                       <span class="text-xs text-gray-400">${new Date(c.created_at).toLocaleString()}</span>
-                      ${(user.id === c.author_id || isAdmin) ? `<button onclick="deleteReply(${c.id})" class="ml-auto text-xs text-red-500 hover:underline">删除</button>` : ''}
+                      ${(user && (user.id === c.author_id || isAdmin)) ? `<button onclick="deleteReply(${c.id})" class="ml-auto text-xs text-red-500 hover:underline">删除</button>` : ''}
                     </div>
                     <div class="text-sm text-gray-700 dark:text-gray-200 dark:text-gray-300">${safeMarkdown(c.content)}</div>
                   </div>

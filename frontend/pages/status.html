@@ -37,7 +37,9 @@
   </div>
   <script>
     document.getElementById('nav').innerHTML = renderNav('admin');
-    if (!requireRole(['admin','su'])) return;
+    // 注意: classic script 顶层不允许 return(会抛 SyntaxError 使整块脚本失效),
+    // requireRole 失败时会自行跳转, 这里只在放行时才发起首次加载。
+    const statusAllowed = requireRole(['admin','su']);
 
     function fmtBytes(n) {
       if (n === undefined || n === null) return '-';
@@ -131,7 +133,7 @@
         document.getElementById('countCards').innerHTML = `<p class="col-span-full text-center text-red-500 py-8">${escapeHtml(err.message) || '加载失败'}</p>`;
       }
     }
-    load();
+    if (statusAllowed) load();
   </script>
 </body>
 </html>

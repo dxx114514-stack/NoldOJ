@@ -30,7 +30,8 @@
       document.getElementById('createBtnSlot').innerHTML = `<a href="/pages/problem-set-edit.html" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700">+ 新建题单</a>`;
     }
 
-    async function load() {
+    async function load(pageNum) {
+      if (pageNum) page = pageNum;
       try {
         const data = await apiCall('GET', `/problem-sets?page=${page}&size=12`);
         const list = document.getElementById('list');

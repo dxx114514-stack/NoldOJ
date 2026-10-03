@@ -150,4 +150,16 @@ router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
   res.json({ message: 'File deleted.' });
 });
 
+// multer 抛出的错误（扩展名不在白名单、超过 limits.fileSize）没有本路由级错误处理时，
+// 会一路冒到 Express 默认兜底 handler，返回 500 纯文本而不是统一的 JSON 400
+router.use((err, req, res, next) => {
+  if (err && (err.name === 'MulterError' || err.message === 'File type not allowed.')) {
+    const message = err.code === 'LIMIT_FILE_SIZE'
+      ? '文件超过大小限制。'
+      : (err.message || '文件上传失败。');
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message });
+  }
+  return next(err);
+});
+
 module.exports = router;

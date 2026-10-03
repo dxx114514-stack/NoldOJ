@@ -309,7 +309,14 @@
       }
     }
 
-    loadProblem();
+    // 题面(#favBtn / #hintBtn) 在此之后才写入 DOM, 两处初始化都必须等渲染完成
+    loadProblem().then(() => {
+      initFavorite();
+      if (getToken()) {
+        const hintBtn = document.getElementById('hintBtn');
+        if (hintBtn) hintBtn.classList.remove('hidden');
+      }
+    });
 
     // Favorite
     let favorited = false;
@@ -345,14 +352,6 @@
         btn.classList.toggle('dark:bg-yellow-900/30', favorited);
         btn.classList.toggle('dark:text-yellow-300', favorited);
       } catch (err) { alert(err.message || '操作失败'); }
-    }
-
-    initFavorite();
-
-    // AI Hint button
-    if (getToken()) {
-      const hintBtn = document.getElementById('hintBtn');
-      if (hintBtn) hintBtn.classList.remove('hidden');
     }
 
     async function getAiHint(btn) {

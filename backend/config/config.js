@@ -245,7 +245,9 @@ module.exports = {
     timeLimitMultiplier: 2,
     maxProcesses: 64,
     tempDir: process.env.SANDBOX_TEMP || path.join(os.tmpdir(), 'NoldOJ-sandbox'),
-    maxOutputSize: 64 * 1024,
+    // 输出上限需 >= 期望输出上限(judge.js MAX_TESTDATA_BYTES = 16MB)，
+    // 否则大输出题的正确程序在 64KB 处被 kill 且被误判成 TLE，永无 AC。
+    maxOutputSize: 16 * 1024 * 1024,
     maxSourceSize: 64 * 1024,
     // 安全沙箱: 编译 sandbox_runner.cpp 后自动启用 Job Object + 受限令牌隔离
     // 未编译时自动回退到传统模式 (spawn + memwatch)

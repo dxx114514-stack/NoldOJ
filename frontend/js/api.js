@@ -544,6 +544,15 @@ function requireRole(roles, redirectUrl) {
   return true;
 }
 
+// datetime-local 输入值（本地墙钟、无时区信息）→ ISO8601（UTC）。
+// 裸值直接发给后端时，服务端 new Date() 按"服务器时区"解析，而页面展示按"浏览器时区"解析，
+// 服务器与客户端时区不一致就整段错位（考试创建早已转换，比赛创建此前漏了）。
+function localInputToIso(v) {
+  if (!v) return null;
+  const ms = Date.parse(v);
+  return isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
 function showError(elId, message) {
   const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
   if (!el) return;

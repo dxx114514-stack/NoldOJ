@@ -162,7 +162,7 @@
         document.getElementById('f-desc').value = data.description || '';
         document.getElementById('f-time').value = data.time_limit || 0;
         document.getElementById('f-pass').value = data.pass_score || 0;
-        document.getElementById('f-attempts').value = data.max_attempts || 1;
+        document.getElementById('f-attempts').value = data.max_attempts ?? 1;
         document.getElementById('f-public').checked = data.is_public === 1;
         document.getElementById('f-hidden').checked = data.is_hidden === 1;
         document.getElementById('f-showanswer').checked = data.show_answer === 1;
@@ -340,7 +340,7 @@
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">内存 (MB)</label>
-                  <input type="number" value="${pg.memory_limit}" min="1" max="1048576"
+                  <input type="number" value="${pg.memory_limit}" min="1" max="1024"
                     onchange="questions[${i}].program.memory_limit = Number(this.value)"
                     class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white">
                 </div>
@@ -621,15 +621,19 @@
         }
         if (pg.allowed_languages.length === 0) pg.allowed_languages = langList.map(l => l.name);
         pg.time_limit = Math.min(10000, Math.max(1, Number(pg.time_limit) || 1000));
-        pg.memory_limit = Math.min(1048576, Math.max(1, Number(pg.memory_limit) || 256));
+        pg.memory_limit = Math.min(1024, Math.max(1, Number(pg.memory_limit) || 256));
       }
+
+      // 最大尝试次数: 0 = 不限次数。不能用 `|| 1` 兜底, 否则 0 会被吃掉变成 1。
+      const attemptsRaw = parseInt(document.getElementById('f-attempts').value, 10);
+      const maxAttempts = Number.isInteger(attemptsRaw) && attemptsRaw >= 0 ? attemptsRaw : 1;
 
       const payload = {
         title,
         description: document.getElementById('f-desc').value.trim(),
         time_limit: parseInt(document.getElementById('f-time').value) || 0,
         pass_score: parseInt(document.getElementById('f-pass').value) || 0,
-        max_attempts: parseInt(document.getElementById('f-attempts').value) || 1,
+        max_attempts: maxAttempts,
         show_answer: document.getElementById('f-showanswer').checked,
         is_public: document.getElementById('f-public').checked,
         is_hidden: document.getElementById('f-hidden').checked,

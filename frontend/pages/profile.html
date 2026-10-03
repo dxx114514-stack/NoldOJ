@@ -62,7 +62,7 @@
                 <div class="flex items-center space-x-2 mt-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">@${escapeHtml(u.username)}</span>
                   ${roleBadge(u.role)}
-                  <span class="px-2 py-0.5 text-xs rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">Rating: ${u.rating || 1500}</span>
+                  ${(isSelf || isPrivileged(currentUser) || !u.hide_rating) ? `<span class="px-2 py-0.5 text-xs rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">Rating: ${u.rating || 1500}</span>` : ''}
                 </div>
               </div>
             </div>

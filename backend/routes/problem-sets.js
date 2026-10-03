@@ -198,10 +198,34 @@ router.put('/:id/problems', requireAuth, (req, res) => {
   if (!Array.isArray(problemIds)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problemIds must be an array.' });
   }
-  db.prepare('DELETE FROM problem_set_items WHERE set_id = ?').run(ps.id);
-  const ins = db.prepare('INSERT OR IGNORE INTO problem_set_items (set_id, problem_id, sort_order) VALUES (?, ?, ?)');
-  problemIds.forEach((pid, idx) => ins.run(ps.id, pid, idx));
-  res.json({ message: 'Problem list updated.', count: problemIds.length });
+  // 强制整数并去重：这些值直接写入 problem_set_items.problem_id
+  const ids = [];
+  for (const raw of problemIds) {
+    const n = Number(raw);
+    if (!Number.isInteger(n)) {
+      return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'problemIds must be an array of problem ids.' });
+    }
+    if (!ids.includes(n)) ids.push(n);
+  }
+  // 题目不存在时原先会先 DELETE 全部条目、再在 INSERT 处抛 FK 错 → 500 且题单被清空
+  const existsStmt = db.prepare('SELECT 1 FROM problems WHERE id = ?');
+  const missing = ids.filter(id => !existsStmt.get(id));
+  if (missing.length > 0) {
+    return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Problems not found: ${missing.join(', ')}` });
+  }
+
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM problem_set_items WHERE set_id = ?').run(ps.id);
+    const ins = db.prepare('INSERT OR IGNORE INTO problem_set_items (set_id, problem_id, sort_order) VALUES (?, ?, ?)');
+    ids.forEach((pid, idx) => ins.run(ps.id, pid, idx));
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch {}
+    console.error('[PROBLEM-SET] update problems failed:', e && e.message);
+    return res.status(500).json({ code: 1, reason: 'ERR_INTERNAL', message: 'Failed to update problem list.' });
+  }
+  res.json({ message: 'Problem list updated.', count: ids.length });
 });
 
 // 删除（作者或 admin；个人题单作者可为普通用户）

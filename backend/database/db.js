@@ -146,35 +146,44 @@ async function initDB() {
 
   const subRow = sqlDb.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='submissions'").get();
   if (subRow && !String(subRow.sql).includes('pending_review')) {
-    sqlDb.exec("ALTER TABLE submissions RENAME TO submissions_old");
-    sqlDb.exec(`CREATE TABLE submissions (
-      id INTEGER PRIMARY KEY,
-      user_id INTEGER NOT NULL,
-      problem_id INTEGER NOT NULL,
-      language TEXT NOT NULL,
-      source_code TEXT DEFAULT '',
-      answer_data TEXT DEFAULT '',
-      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','running','compiling','judging','accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded','runtime_error','compile_error','system_error','pending_rejudge','pending_review')),
-      score REAL DEFAULT 0,
-      time_used INTEGER DEFAULT 0,
-      memory_used INTEGER DEFAULT 0,
-      compile_output TEXT DEFAULT '',
-      JudgerDetail TEXT DEFAULT '{}',
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
-    )`);
-    // R9-14: 显式列名映射而非 SELECT *——旧表若被 ALTER 加过列，位置序会错位。
-    // 新表列 = 上述 CREATE 的固定列；按名取交集后逐列复制，缺列给默认值。
-    const oldCols = tableCols('submissions_old');
-    const pick = ['id','user_id','problem_id','language','source_code','answer_data','status','score','time_used','memory_used','compile_output','JudgerDetail','created_at']
-      .filter(c => oldCols.includes(c));
-    sqlDb.exec(`INSERT INTO submissions (${pick.join(',')}) SELECT ${pick.join(',')} FROM submissions_old`);
-    sqlDb.exec("DROP TABLE submissions_old");
-    sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id)");
-    sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_problem ON submissions(problem_id)");
-    sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status)");
-    console.log('[DB] submissions table CHECK constraint updated with pending_review');
+    // 必须关闭 foreign_keys（与下面 exam_questions 重建同理）：
+    // FK 开启时 RENAME 会把 submission_details 等子表的 REFERENCES 一并改写成 submissions_old，
+    // 紧接着 DROP TABLE submissions_old 又会触发 ON DELETE CASCADE 把 submission_details
+    // 全部清空（数据永久丢失），repairDanglingSubmissionsOldRefs 只能修回引用、找不回行。
+    sqlDb.exec('PRAGMA foreign_keys = OFF');
+    try {
+      sqlDb.exec("ALTER TABLE submissions RENAME TO submissions_old");
+      sqlDb.exec(`CREATE TABLE submissions (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        problem_id INTEGER NOT NULL,
+        language TEXT NOT NULL,
+        source_code TEXT DEFAULT '',
+        answer_data TEXT DEFAULT '',
+        status TEXT DEFAULT 'pending' CHECK(status IN ('pending','running','compiling','judging','accepted','wrong_answer','time_limit_exceeded','memory_limit_exceeded','runtime_error','compile_error','system_error','pending_rejudge','pending_review')),
+        score REAL DEFAULT 0,
+        time_used INTEGER DEFAULT 0,
+        memory_used INTEGER DEFAULT 0,
+        compile_output TEXT DEFAULT '',
+        JudgerDetail TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+      )`);
+      // R9-14: 显式列名映射而非 SELECT *——旧表若被 ALTER 加过列，位置序会错位。
+      // 新表列 = 上述 CREATE 的固定列；按名取交集后逐列复制，缺列给默认值。
+      const oldCols = tableCols('submissions_old');
+      const pick = ['id','user_id','problem_id','language','source_code','answer_data','status','score','time_used','memory_used','compile_output','JudgerDetail','created_at']
+        .filter(c => oldCols.includes(c));
+      sqlDb.exec(`INSERT INTO submissions (${pick.join(',')}) SELECT ${pick.join(',')} FROM submissions_old`);
+      sqlDb.exec("DROP TABLE submissions_old");
+      sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id)");
+      sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_problem ON submissions(problem_id)");
+      sqlDb.exec("CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status)");
+      console.log('[DB] submissions table CHECK constraint updated with pending_review');
+    } finally {
+      sqlDb.exec('PRAGMA foreign_keys = ON');
+    }
   }
 
   // R11-?: 修复上述迁移（或历史上更早版本）遗留的 submissions_old 悬空外键（幂等）。

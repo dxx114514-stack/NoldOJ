@@ -21,10 +21,13 @@ function logAdminAction(req, action) {
   let bodyStr = '';
   if (req.body && Object.keys(req.body).length > 0) {
     try {
-      const safe = { ...req.body };
-      delete safe.password;
-      delete safe.password_hash;
-      delete safe.token;
+      // 脱敏：change-password / reset-password 的明文口令、验证码、令牌等不得落盘。
+      // 原先只 delete 了三个固定字段，new_password / old_password 会原样写进 admin.log。
+      const SENSITIVE_KEY = /(password|passwd|pwd|token|secret|credential|authorization|verify_?code|email_?code|otp|^code$)/i;
+      const safe = {};
+      for (const [k, v] of Object.entries(req.body)) {
+        safe[k] = SENSITIVE_KEY.test(k) ? '***' : v;
+      }
       bodyStr = ' body=' + JSON.stringify(safe).slice(0, 500);
     } catch {}
   }
@@ -40,8 +43,10 @@ function logAdminAction(req, action) {
 }
 
 function adminLogger(req, res, next) {
-  if (!req.user || !['admin', 'su'].includes(req.user.role)) return next();
-
+  // req.user 由路由级 requireAuth/optionalAuth 赋值，本中间件挂在路由之前，
+  // 此刻必然是 undefined —— 原先在这里判断角色会导致包装永不生效、admin.log 恒空。
+  // 改为无条件包一层 res.json，真正取用 req.user 的时机是路由处理完、
+  // 即将响应时，那时鉴权已经完成。
   const originalJson = res.json.bind(res);
   res.json = function (data) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {

@@ -785,7 +785,8 @@ static void deleteTreeW(const wchar_t* root) {
 }
 
 // D-L14: 写入元数据前确保 metaFile 不是目录。
-// 恶意提交可在 workDir 内预创建名为 _meta.json 的目录，导致 fopen("w") 失败、
+// 元数据路径现由 executor 传入，位于 workDir **之外**（用户程序无法创建同名目录/只读文件），
+// 这里仍保留防御：若异常情况下 metaFile 是目录，fopen("w") 会失败、
 // 元数据丢失（executor 读不到 meta → 回退到进程退出码，判题信息失真）。
 static void ensureMetaPath(const char* path) {
     std::wstring wp = utf8ToWide(path);
@@ -797,7 +798,10 @@ static void ensureMetaPath(const char* path) {
 static void writeMeta(const char* path, int exitCode, DWORD timeMs, SIZE_T memKB, const char* signal) {
     ensureMetaPath(path);
     FILE* f = fopen(path, "w");
-    if (!f) return;
+    if (!f) {
+        sandboxLog("Failed to open meta file for writing");
+        return;
+    }
     // JSON 字符串转义：防止 signal 含双引号/反斜杠导致元数据被破坏
     std::string sig(signal ? signal : "");
     std::string esc;

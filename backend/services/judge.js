@@ -20,7 +20,11 @@ const MAX_GROUP_EVAL_ITERATIONS = 100;
 const MAX_TESTDATA_BYTES = 16 * 1024 * 1024; // 16MB 单测试数据文件上限
 // D-M11: 测试点资源硬上限兜底（教师可配置任意值 → 服务端强制封顶，防判题线程被独占）
 const MAX_TL_MS = 10000;     // 单测试点 ≤10s
-const MAX_ML_KB = 1024 * 1024; // 单测试点 ≤1024MB
+// problem.memory_limit / test_cases.memory_limit 全链路存的是 **MB**
+// （executor: memoryLimitMb*1024→KB；sandbox_runner: *1024*1024→bytes；前端默认 256、显示 "MB"）。
+// 原先这里写成 1024*1024 并命名为 _KB，等于把封顶放到 1TB —— 形同虚设，
+// 而且会成为"MLE 漏判"的根因之一：内存限制被放到天量后 Job Object 永不触发 OOM。
+const MAX_ML_MB = 1024; // 单测试点 ≤1024MB
 
 // D-M11: 服务端硬上限钳制（TLE≤10s、MLE≤1024MB）
 function clampLimits(tl, ml) {
@@ -28,7 +32,7 @@ function clampLimits(tl, ml) {
   const m = Number(ml) > 0 ? Number(ml) : null;
   return {
     tl: t === null ? null : Math.min(t, MAX_TL_MS),
-    ml: m === null ? null : Math.min(m, MAX_ML_KB)
+    ml: m === null ? null : Math.min(m, MAX_ML_MB)
   };
 }
 
@@ -41,7 +45,12 @@ function stripInternalPaths(text, workDir) {
 }
 
 function compareTextStrict(expected, actual) {
-  return expected.trimEnd() === actual.trimEnd();
+  // Windows 下 C/C++(MSVC 文本模式)、Java 输出 CRLF，Python/Node 输出 LF；
+  // 而期望文件的换行风格取决于数据来源（AI 生成已归一化为 LF，ZIP/.out 上传则原样落盘）。
+  // trimEnd() 只去字符串最末尾，行中间的 \r 去不掉，必须先统一分隔符，
+  // 否则同一份数据无法同时满足各语言（整题全 WA）。
+  const normalize = (s) => String(s).replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd();
+  return normalize(expected) === normalize(actual);
 }
 
 function compareTextRelaxed(expected, actual) {
@@ -67,17 +76,45 @@ function compareRealNumber(expected, actual, tolerance) {
   return true;
 }
 
-function compareOutput(expected, actual, problem) {
+// 比较器三态结果：ok=判定通过；!ok=判定不通过（该算学生的错）；
+// checkerError=比较器自身故障（SPJ 抛错/超时/输出无法解析、容差配置非法）。
+// 后者绝不能落成"答案错误"，否则教师写错的 SPJ 会让全站提交静默变 WA 且无从排查。
+function compareOutputSync(expected, actual, problem) {
   const mode = problem.compare_mode;
-  if (mode === 'text_strict') return compareTextStrict(expected, actual);
-  if (mode === 'text_relaxed') return compareTextRelaxed(expected, actual);
+  if (mode === 'text_relaxed') return { ok: compareTextRelaxed(expected, actual), checkerError: null };
   if (mode === 'real_number') {
     let tolerance = { absolute: 0.001, relative: 0.001 };
-    try { tolerance = JSON.parse(problem.real_number_tolerance); } catch {}
-    return compareRealNumber(expected, actual, tolerance);
+    if (problem.real_number_tolerance !== undefined && problem.real_number_tolerance !== null && problem.real_number_tolerance !== '') {
+      try { tolerance = JSON.parse(problem.real_number_tolerance); } catch {
+        return { ok: false, checkerError: 'real_number_tolerance 不是合法 JSON，无法比对。' };
+      }
+      const a = Number(tolerance && tolerance.absolute);
+      const r = Number(tolerance && tolerance.relative);
+      if (!isFinite(a) || !isFinite(r) || a < 0 || r < 0) {
+        return { ok: false, checkerError: 'real_number_tolerance 结构非法，无法比对。' };
+      }
+      tolerance = { absolute: a, relative: r };
+    }
+    return { ok: compareRealNumber(expected, actual, tolerance), checkerError: null };
   }
-  if (mode === 'spj') return runSPJ(problem.spj_code, expected, actual);
-  return compareTextStrict(expected, actual);
+  return { ok: compareTextStrict(expected, actual), checkerError: null };
+}
+
+async function compareOutputEx(expected, actual, problem) {
+  if (problem.compare_mode === 'spj') {
+    const r = await runSPJEx(problem.spj_code, expected, actual);
+    if (r.error) return { ok: false, checkerError: r.error };
+    return { ok: r.pass, checkerError: null };
+  }
+  return compareOutputSync(expected, actual, problem);
+}
+
+// 对外保持原签名：非 SPJ 模式同步返回布尔（现有单测与调用方依赖这一点），SPJ 返回 Promise
+function compareOutput(expected, actual, problem) {
+  if (problem.compare_mode === 'spj') {
+    return compareOutputEx(expected, actual, problem).then(r => r.ok);
+  }
+  return compareOutputSync(expected, actual, problem).ok;
 }
 
 // 读取测试数据文件，限制单文件大小防止超大用例整读入内存导致 OOM。
@@ -112,17 +149,17 @@ function readTestdata(filePath, problemDir) {
 // 原实现在判题进程内同步 vm.runInContext: 长 SPJ 会卡死单线程事件循环；
 // 且 vm 逃逸可触及宿主 realm。现改为 spawn 独立 node 子进程（进程级隔离），
 // 子进程内再套一层 vm + JSON 字面量注入保持 realm 隔离，超时/输出超限即 kill。
-function runSPJ(spjCode, expected, actual) {
+function runSPJEx(spjCode, expected, actual) {
   return new Promise((resolve) => {
     let tmpDir = null;
     let settled = false;
     let timer = null;
-    const finish = (val) => {
+    const finish = (pass, error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       try { if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-      resolve(val);
+      resolve({ pass: !!pass, error: error || null });
     };
 
     try {
@@ -170,18 +207,25 @@ function runSPJ(spjCode, expected, actual) {
       // 硬超时: 独立 kill 子进程，不阻塞事件循环
       timer = setTimeout(() => {
         try { proc.kill('SIGKILL'); } catch {}
-        finish(false);
+        finish(false, 'SPJ 超时未返回结果');
       }, SPJ_TIMEOUT_MS + 1000);
 
-      proc.on('error', () => finish(false));
+      proc.on('error', () => finish(false, 'SPJ 进程启动失败'));
       proc.on('close', () => {
+        const raw = out.trim().split('\n').pop() || '';
         try {
-          const j = JSON.parse(out.trim().split('\n').pop());
-          finish(!!(j && j.ok && j.pass));
-        } catch { finish(false); }
+          const j = JSON.parse(raw);
+          if (!j || !j.ok) {
+            finish(false, 'SPJ 执行出错: ' + String((j && j.error) || 'unknown'));
+          } else {
+            finish(!!j.pass, null);
+          }
+        } catch {
+          finish(false, 'SPJ 输出无法解析: ' + raw.slice(0, 200));
+        }
       });
-    } catch {
-      finish(false);
+    } catch (e) {
+      finish(false, 'SPJ 执行异常: ' + String((e && e.message) || e));
     }
   });
 }
@@ -230,10 +274,12 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
         continue;
       }
       const answer = submission.answer_data || '';
-      const passed = await compareOutput(expected, answer, problem);
-      const status = passed ? 'accepted' : 'wrong_answer';
-      updateDetail.run(status, 0, 0, 0, answer.slice(0, MAX_OUTPUT_LOG_CHARS), '', 0, '', detailId);
-      tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed: 0, memoryUsed: 0, stdout: answer.slice(0, MAX_OUTPUT_LOG_CHARS), stderr: '', exitCode: 0, detailId });
+      const cmp = await compareOutputEx(expected, answer, problem);
+      // 比较器故障（容差配置非法 / SPJ 出错）不得记成学生的"答案错误"
+      const status = cmp.ok ? 'accepted' : (cmp.checkerError ? 'system_error' : 'wrong_answer');
+      const checkerError = cmp.checkerError || '';
+      updateDetail.run(status, 0, 0, 0, answer.slice(0, MAX_OUTPUT_LOG_CHARS), '', 0, checkerError.slice(0, MAX_OUTPUT_LOG_CHARS), detailId);
+      tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed: 0, memoryUsed: 0, stdout: answer.slice(0, MAX_OUTPUT_LOG_CHARS), stderr: '', exitCode: 0, detailId, checkerOutput: checkerError });
     }
 
     let finalScore, finalStatus, finalTime, finalMemory;
@@ -245,7 +291,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
       finalScore = result.score; finalStatus = result.status; finalTime = result.time; finalMemory = result.memory;
     }
     for (const tc of tcResults) {
-      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, tc.stdout || '', tc.stderr || '', typeof tc.exitCode === 'number' ? tc.exitCode : -1, '', tc.detailId);
+      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, tc.stdout || '', tc.stderr || '', typeof tc.exitCode === 'number' ? tc.exitCode : -1, tc.checkerOutput || '', tc.detailId);
     }
     updateSubmission.run(finalStatus, finalScore, finalTime, finalMemory, '', submission.id);
     return;
@@ -275,6 +321,44 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
     }
 
     const tcResults = [];
+
+    // 单个测试点的执行与结果落库（分组 / 未分组 / 无分组三种路径共用）
+    // 返回该测试点是否 accepted
+    const runOneTestCase = async (tc) => {
+      const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running');
+      const detailId = detail.lastInsertRowid;
+      try {
+        const stdin = tc.input_data || readTestdata(tc.input_file, problemDir);
+        const expected = tc.output_data || readTestdata(tc.output_file, problemDir);
+        const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
+        const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows, problem.problem_type);
+
+        const timeUsed = result.timeUsed;
+        const cmp = await compareOutputEx(expected, result.stdout, problem);
+        const passed = cmp.ok;
+        const checkerError = cmp.checkerError || '';
+        let status = passed ? 'accepted' : 'wrong_answer';
+        if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
+        // 输出超限是独立状态: 若并入 SIGKILL 分支会被误报成 TLE
+        else if (result.signal === 'OUTPUT_LIMIT') status = passed ? 'accepted' : 'wrong_answer';
+        else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
+        else if (result.exitCode !== 0) status = 'runtime_error';
+        // 比较器自身故障只能归为 system_error；放在最后表示仅在"其它原因都解释不了"时兜底
+        else if (checkerError) status = 'system_error';
+
+        const memKB = result.memoryUsed || 0;
+        const logOut = (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS);
+        const logErr = (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS);
+        updateDetail.run(status, 0, timeUsed, memKB, logOut, logErr, result.exitCode, checkerError.slice(0, MAX_OUTPUT_LOG_CHARS), detailId);
+        tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: logOut, stderr: logErr, exitCode: result.exitCode, detailId, checkerOutput: checkerError });
+        return status === 'accepted';
+      } catch (err) {
+        const msg = stripInternalPaths(err.message, workDir);
+        updateDetail.run('system_error', 0, 0, 0, '', msg, -1, '', detailId);
+        tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: msg, exitCode: -1, detailId });
+        return false;
+      }
+    };
 
     if (hasGroups) {
       const tcMap = new Map();
@@ -321,62 +405,25 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
         let groupAllAccepted = true;
 
         for (const tc of groupTCs) {
-          const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running');
-          const detailId = detail.lastInsertRowid;
-
-          try {
-            const stdin = tc.input_data || readTestdata(tc.input_file, problemDir);
-            const expected = tc.output_data || readTestdata(tc.output_file, problemDir);
-            const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
-            const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows, problem.problem_type);
-
-            const timeUsed = result.timeUsed;
-            const passed = await compareOutput(expected, result.stdout, problem);
-            let status = passed ? 'accepted' : 'wrong_answer';
-            if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
-            else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
-            else if (result.exitCode !== 0) status = 'runtime_error';
-
-            if (status !== 'accepted') groupAllAccepted = false;
-            const memKB = result.memoryUsed || 0;
-            updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), result.exitCode, '', detailId);
-            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), stderr: (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), exitCode: result.exitCode, detailId });
-          } catch (err) {
-            groupAllAccepted = false;
-            updateDetail.run('system_error', 0, 0, 0, '', stripInternalPaths(err.message, workDir), -1, '', detailId);
-            tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: stripInternalPaths(err.message, workDir), exitCode: -1, detailId });
-          }
+          if (!(await runOneTestCase(tc))) groupAllAccepted = false;
         }
 
         if (!groupAllAccepted) {
           failedGroups.add(groupId);
         }
       }
+
+      // 未分组测试点（group_id IS NULL → 聚到 key 0）不属于任何 test_group，
+      // 上面的 topoOrder 遍历永远命不中。routes/problems.js 删除分组时会执行
+      // `UPDATE test_cases SET group_id = NULL`，新增测试点时若不选分组同样落到 key 0。
+      // 若不执行，这些点既不跑也没有详情、更不计分 —— 学生只做剩余分组即可拿满分。
+      const ungroupedTCs = tcMap.get(0) || [];
+      for (const tc of ungroupedTCs) {
+        await runOneTestCase(tc);
+      }
     } else {
       for (const tc of testCases) {
-        const detail = insertDetail.run(submission.id, tc.id, tc.group_id || null, tc.subtask_id || '', 'running');
-        const detailId = detail.lastInsertRowid;
-
-        try {
-          const stdin = tc.input_data || readTestdata(tc.input_file, problemDir);
-          const expected = tc.output_data || readTestdata(tc.output_file, problemDir);
-          const { tl: tcTimeLimit, ml: tcMemLimit } = clampLimits(tc.time_limit || timeLimitMs, tc.memory_limit || problem.memory_limit);
-          const result = await sandbox.runCode(workDir, srcFile, exeFile, lang, stdin, tcTimeLimit, tcMemLimit, isWindows, problem.problem_type);
-
-          const timeUsed = result.timeUsed;
-          const passed = await compareOutput(expected, result.stdout, problem);
-          let status = passed ? 'accepted' : 'wrong_answer';
-          if (result.signal === 'MEMORY_LIMIT') status = 'memory_limit_exceeded';
-          else if (result.signal === 'SIGKILL' || timeUsed >= tcTimeLimit) status = 'time_limit_exceeded';
-          else if (result.exitCode !== 0) status = 'runtime_error';
-
-          const memKB = result.memoryUsed || 0;
-          updateDetail.run(status, 0, timeUsed, memKB, (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), result.exitCode, '', detailId);
-          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status, score: tc.score, timeUsed, memoryUsed: memKB, stdout: (result.stdout || '').slice(0, MAX_OUTPUT_LOG_CHARS), stderr: (result.stderr || '').slice(0, MAX_OUTPUT_LOG_CHARS), exitCode: result.exitCode, detailId });
-        } catch (err) {
-          updateDetail.run('system_error', 0, 0, 0, '', stripInternalPaths(err.message, workDir), -1, '', detailId);
-          tcResults.push({ tcId: tc.id, groupId: tc.group_id, subtaskId: tc.subtask_id || '', status: 'system_error', score: 0, timeUsed: 0, memoryUsed: 0, stdout: '', stderr: stripInternalPaths(err.message, workDir), exitCode: -1, detailId });
-        }
+        await runOneTestCase(tc);
       }
     }
 
@@ -399,7 +446,7 @@ async function evaluateTestCases(submission, problemId, testCases, timeLimitMs) 
     }
 
     for (const tc of tcResults) {
-      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, tc.stdout || '', tc.stderr || '', typeof tc.exitCode === 'number' ? tc.exitCode : -1, '', tc.detailId);
+      updateDetail.run(tc.status, tc.status === 'accepted' ? tc.score : 0, tc.timeUsed, tc.memoryUsed, tc.stdout || '', tc.stderr || '', typeof tc.exitCode === 'number' ? tc.exitCode : -1, tc.checkerOutput || '', tc.detailId);
     }
 
     updateSubmission.run(finalStatus, finalScore, finalTime, finalMemory, '', submission.id);
@@ -441,6 +488,18 @@ function topoSortGroups(groups) {
   return order;
 }
 
+// 提交/分组级状态归并。原先只会产出 accepted / time_limit_exceeded / wrong_answer，
+// 导致测试点的 runtime_error、memory_limit_exceeded、system_error 全被降级成
+// "答案错误"——教师误删 .out 时学生会看到 WA 而不是 system_error。
+// skipped 是依赖跳过，不参与失败状态选择。
+const FAILURE_STATUS_ORDER = ['system_error', 'memory_limit_exceeded', 'time_limit_exceeded', 'runtime_error', 'wrong_answer'];
+function aggregateFailureStatus(items) {
+  for (const s of FAILURE_STATUS_ORDER) {
+    if (items.some(x => x.status === s)) return s;
+  }
+  return 'wrong_answer';
+}
+
 function evaluateSimple(problem, tcResults) {
   const hasScript = problem.scoring_script && problem.scoring_script.trim();
 
@@ -454,7 +513,7 @@ function evaluateSimple(problem, tcResults) {
     }
     return {
       score: allPassed ? totalScore : tcResults.filter(t => t.status === 'accepted').reduce((s, t) => s + t.score, 0),
-      status: allPassed ? 'accepted' : (maxTime > 0 && tcResults.some(t => t.status === 'time_limit_exceeded') ? 'time_limit_exceeded' : 'wrong_answer'),
+      status: allPassed ? 'accepted' : aggregateFailureStatus(tcResults),
       time: maxTime,
       memory: maxMem
     };
@@ -563,7 +622,7 @@ function evaluateWithGroups(problem, groups, tcResults) {
         }
         groupResults[group.id] = {
           score: allPassed ? score : 0,
-          status: allSkipped ? 'skipped' : (allPassed ? 'accepted' : 'wrong_answer'),
+          status: allSkipped ? 'skipped' : (allPassed ? 'accepted' : aggregateFailureStatus(groupTCs)),
           time: maxTime,
           memory: maxMem,
           maxScore: group.score
@@ -586,6 +645,23 @@ function evaluateWithGroups(problem, groups, tcResults) {
 
   const hasProblemScript = problem.scoring_script && problem.scoring_script.trim();
 
+  // 未分组测试点（group_id 为空 → key 0）不属于任何 test_group，上面的遍历覆盖不到，
+  // 必须单独归并，否则它们被实际执行了却不参与总分与状态判定。
+  const ungroupedTCs = tcsByGroup[0] || [];
+  let ungroupedResult = null;
+  if (ungroupedTCs.length > 0) {
+    const passed = ungroupedTCs.filter(t => t.status === 'accepted');
+    const allUngroupedPassed = passed.length === ungroupedTCs.length;
+    ungroupedResult = {
+      score: allUngroupedPassed
+        ? ungroupedTCs.reduce((s, t) => s + t.score, 0)
+        : passed.reduce((s, t) => s + t.score, 0),
+      status: allUngroupedPassed ? 'accepted' : aggregateFailureStatus(ungroupedTCs),
+      time: ungroupedTCs.reduce((m, t) => Math.max(m, t.timeUsed), 0),
+      memory: ungroupedTCs.reduce((m, t) => Math.max(m, t.memoryUsed), 0)
+    };
+  }
+
   if (hasProblemScript) {
     const context = {};
     for (const [gid, gr] of Object.entries(groupResults)) {
@@ -593,6 +669,13 @@ function evaluateWithGroups(problem, groups, tcResults) {
       context[`@score${gid}`] = gr.score;
       context[`@time${gid}`] = gr.time;
       context[`@memory${gid}`] = gr.memory;
+    }
+    // 未分组测试点以 0 号"组"暴露（test_groups.id 从 1 自增，不会冲突）
+    if (ungroupedResult) {
+      context['@status0'] = statusToConstant(ungroupedResult.status);
+      context['@score0'] = ungroupedResult.score;
+      context['@time0'] = ungroupedResult.time;
+      context['@memory0'] = ungroupedResult.memory;
     }
     context['@total_score'] = 0;
     context['@final_status'] = 2;
@@ -603,9 +686,11 @@ function evaluateWithGroups(problem, groups, tcResults) {
     return { score: result.total_score, status: result.final_status, time: result.final_time, memory: result.final_memory };
   }
 
+  const allResults = Object.values(groupResults);
+  if (ungroupedResult) allResults.push(ungroupedResult);
+
   let totalScore = 0, maxTime = 0, maxMem = 0, allPassed = true;
-  for (const gid of Object.keys(groupResults)) {
-    const gr = groupResults[gid];
+  for (const gr of allResults) {
     totalScore += gr.score;
     maxTime = Math.max(maxTime, gr.time);
     maxMem = Math.max(maxMem, gr.memory);
@@ -614,7 +699,7 @@ function evaluateWithGroups(problem, groups, tcResults) {
 
   return {
     score: totalScore,
-    status: allPassed ? 'accepted' : 'wrong_answer',
+    status: allPassed ? 'accepted' : aggregateFailureStatus(allResults),
     time: maxTime,
     memory: maxMem
   };
@@ -632,6 +717,9 @@ async function judgeSubmission(submissionId) {
 
   db.prepare("UPDATE submissions SET status = 'judging' WHERE id = ?").run(submissionId);
   emitJudgeStatus(submissionId, submission.user_id, 'judging');
+  // 每轮判题都从空白详情开始：rejudge 可能发生在上一轮尚未结束时，
+  // 若不清理会出现"状态已更新但残留上一轮详情"或重复详情行。
+  try { db.prepare('DELETE FROM submission_details WHERE submission_id = ?').run(submissionId); } catch {}
 
   const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(submission.problem_id);
   if (!problem) {
@@ -742,6 +830,8 @@ const runningJobs = new Set();
 // rejudge 任务入队时记录原始状态（在路由层已被改为 pending_rejudge，无法回读），
 // 供评分发放去重判断（wasAccepted/wasCompileError）
 const rejudgePrevStatus = new Map();
+// 判题进行中收到的 rejudge 请求：等当前这一轮结束后必须再跑一次
+const rejudgeRequested = new Set();
 
 // 并发判题池：最多同时运行 maxThreads 条提交，各自独立判题线程
 async function runOne(submissionId) {
@@ -751,8 +841,16 @@ async function runOne(submissionId) {
     console.error(`Judge error for submission ${submissionId}:`, sanitizeLog(String(err && err.message || err)));
     db.prepare("UPDATE submissions SET status = 'system_error' WHERE id = ?").run(submissionId);
   } finally {
-    rejudgePrevStatus.delete(submissionId);
+    // 本轮判题期间若又收到 rejudge 请求（路由层已清空详情、置 pending_rejudge），
+    // 必须重新入队，否则该次 rejudge 会静默丢失，提交停留在"已判完但没有测试点详情"的中间态。
+    const again = rejudgeRequested.delete(submissionId);
+    // 再次入队时保留 prevStatus 供下一轮使用；否则本轮结束后清掉
+    if (!again) rejudgePrevStatus.delete(submissionId);
     runningIds.delete(submissionId);
+    if (again) {
+      queuedIds.add(submissionId);
+      judgeQueue.push(submissionId);
+    }
   }
 }
 
@@ -763,7 +861,9 @@ function pumpQueue() {
     runningIds.add(submissionId);
     const job = runOne(submissionId);
     runningJobs.add(job);
-    job.finally(() => {
+    // runOne 内部已 catch，这里只回收槽位；单独 catch 是为了避免 .finally() 派生的
+    // Promise 变成 unhandledRejection → server.js 直接 process.exit(1)
+    job.then(() => {}, () => {}).finally(() => {
       runningJobs.delete(job);
       pumpQueue();
     });
@@ -771,8 +871,14 @@ function pumpQueue() {
 }
 
 function enqueueSubmission(submissionId, prevStatus) {
-  if (queuedIds.has(submissionId) || runningIds.has(submissionId)) return;
+  // prevStatus 必须在任何早退之前落表：否则"正在排队/正在判题"时被丢弃，
+  // judgeSubmission 会读到 pending_rejudge → wasCompileError=false → CE 重复扣 Rating
   if (prevStatus) rejudgePrevStatus.set(submissionId, prevStatus);
+  if (runningIds.has(submissionId)) {
+    rejudgeRequested.add(submissionId);
+    return;
+  }
+  if (queuedIds.has(submissionId)) return;
   queuedIds.add(submissionId);
   judgeQueue.push(submissionId);
   pumpQueue();
@@ -790,5 +896,5 @@ function recoverInterruptedSubmissions() {
   return rows.length;
 }
 
-module.exports = { judgeSubmission, enqueueSubmission, compareOutput, recoverInterruptedSubmissions };
+module.exports = { judgeSubmission, enqueueSubmission, compareOutput, compareOutputEx, recoverInterruptedSubmissions };
 

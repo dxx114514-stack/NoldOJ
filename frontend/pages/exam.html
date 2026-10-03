@@ -234,18 +234,36 @@
       initProgramEditors();
 
       // 启动计时器（考试已结束则不再计时）
+      // 剩余时间以服务端锚点为准：attempt_started_at 在首次进入考试时写入服务端，
+      // 刷新页面不会重置；同时与考试窗口 end_time 取较小值。
       if (!locked && e.time_limit && e.time_limit > 0) {
         timeLeft = e.time_limit * 60;
+        const startedMs = e.attempt_started_at ? Date.parse(e.attempt_started_at) : NaN;
+        const anchorMs = e.server_now ? Date.parse(e.server_now) : Date.now();
+        if (!isNaN(startedMs) && !isNaN(anchorMs)) {
+          timeLeft = Math.max(0, Math.ceil(e.time_limit * 60 - (anchorMs - startedMs) / 1000));
+        }
+        if (e.end_time) {
+          const endMs = Date.parse(e.end_time);
+          if (!isNaN(endMs)) timeLeft = Math.min(timeLeft, Math.max(0, Math.ceil((endMs - Date.now()) / 1000)));
+        }
         updateTimer();
-        timer = setInterval(() => {
-          timeLeft--;
-          updateTimer();
-          if (timeLeft <= 0) {
-            clearInterval(timer);
-            alert('时间到！自动提交试卷。');
-            submitExam();
-          }
-        }, 1000);
+        const onExpire = () => {
+          alert('时间到！自动提交试卷。');
+          submitExam();
+        };
+        if (timeLeft <= 0) {
+          onExpire();
+        } else {
+          timer = setInterval(() => {
+            timeLeft--;
+            updateTimer();
+            if (timeLeft <= 0) {
+              clearInterval(timer);
+              onExpire();
+            }
+          }, 1000);
+        }
       }
 
       renderMathDefaults(document.getElementById('content'));

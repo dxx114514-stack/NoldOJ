@@ -127,6 +127,10 @@ router.put('/:id', requireAuth, (req, res) => {
   if (req.user.id !== disc.author_id && !isAdminOrSu(req.user.role)) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Cannot edit others\' discussions.' });
   }
+  // 锁定后作者不得再改（与回复 PUT /:id 的处理保持一致），否则锁定形同虚设
+  if (disc.locked && !['admin', 'su', 'teacher'].includes(req.user.role)) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '讨论已被锁定' });
+  }
   const { title, content } = req.body;
   if (title !== undefined && String(title).length > MAX_TITLE_LENGTH) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: `Title must be at most ${MAX_TITLE_LENGTH} characters.` });

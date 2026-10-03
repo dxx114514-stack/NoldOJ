@@ -259,7 +259,9 @@ function renderMarkdown(text) {
     let out = parseBlocks(t.split('\n'));
     out = sanitizeHtml(out);
     // 回填(sanitize 后): DOMPurify 已放行 iframe/data-*/class; 若被意外剥离则跳过
-    out = out.replace(/\uE000I(\d+)\uE001/g, (_, i) => (italics[+i] !== undefined ? italics[+i] : ''));
+    // 斜体内容在分词阶段原样透传过 HTML 标签, 必须在回填时单独清洗,
+    // 否则 *<img onerror=...>* 会绕过上面的 DOMPurify 白名单(存储型 XSS)。
+    out = out.replace(/\uE000I(\d+)\uE001/g, (_, i) => (italics[+i] !== undefined ? sanitizeHtml(italics[+i]) : ''));
     out = out.replace(/\uE000(\d+)\uE001/g, (_, i) => (embeds[+i] !== undefined ? embeds[+i] : ''));
     return `<div class="prose prose-sm dark:prose-invert max-w-none text-left text-gray-700 dark:text-gray-200 leading-relaxed">${out}</div>`;
   } catch (e) {

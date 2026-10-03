@@ -9,6 +9,7 @@ const {
   normalizeExamTime, validateExamWindow, examWindowState,
   fromSqliteUtc, toSqliteUtc, resolveFreeze, checkExamWindow
 } = require('../utils/examWindow');
+const { startAttempt, checkExamTimeLimit, SUBMIT_GRACE_MS } = require('../utils/examAttempts');
 
 const router = express.Router();
 
@@ -125,7 +126,7 @@ function normalizeProgramQuestion(q) {
       output_desc: sanitizeText(p.output_desc || ''),
       hint: sanitizeText(p.hint || ''),
       time_limit: clampInt(p.time_limit, 1, 10000, 1000),
-      memory_limit: clampInt(p.memory_limit, 1, 1048576, 256),
+      memory_limit: clampInt(p.memory_limit, 1, 1024, 256),
       allowed_languages: JSON.stringify(allowed)
     },
     testcases
@@ -261,18 +262,24 @@ router.get('/:id', optionalAuth, (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Exam not found.' });
   }
 
-  if (exam.is_hidden && !(req.user && ['teacher', 'admin', 'su'].includes(req.user.role))) {
+  const isStaffUser = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+
+  if (exam.is_hidden && !isStaffUser) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam not found.' });
+  }
+  // 私有试卷：与列表页（WHERE e.is_public=1）、交卷（POST /:id/submit）保持一致，
+  // 否则匿名用户可直链读取 is_public=0 试卷的全部题干与选项
+  if (!exam.is_public && !isStaffUser) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam is not public.' });
   }
 
   // 时间窗：开考前对考生不可见（教师/管理员可预览）；结束后仍可查看结果
-  if (examWindowState(exam) === 'not_started' &&
-      !(req.user && ['teacher', 'admin', 'su'].includes(req.user.role))) {
+  if (examWindowState(exam) === 'not_started' && !isStaffUser) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: '考试尚未开始。' });
   }
 
   // 获取题目（不含答案，除非是教师+且有查询参数 show_answers=true）
-  const showAnswers = req.query.show_answers === 'true' && req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
+  const showAnswers = req.query.show_answers === 'true' && isStaffUser;
 
   let questions;
   if (showAnswers) {
@@ -289,6 +296,7 @@ router.get('/:id', optionalAuth, (req, res) => {
   // 如果已登录，获取用户提交记录
   let userSubmission = null;
   let currentAttempt = 1;
+  let attemptStartedAt = null;
   if (req.user) {
     const attemptCount = db.prepare('SELECT COUNT(*) as c FROM exam_submissions WHERE exam_id = ? AND user_id = ?').get(exam.id, req.user.id).c;
     currentAttempt = attemptCount + 1;
@@ -296,6 +304,10 @@ router.get('/:id', optionalAuth, (req, res) => {
       SELECT * FROM exam_submissions WHERE exam_id = ? AND user_id = ?
       ORDER BY submitted_at DESC LIMIT 1
     `).get(exam.id, req.user.id);
+    // 首次进入即起算作答时限（刷新不重置）；教师/管理员不计时
+    if (exam.time_limit > 0 && !isStaffUser) {
+      attemptStartedAt = startAttempt(exam.id, req.user.id, currentAttempt);
+    }
   }
 
   // 编程题：下发内部题目配置；教师 show_answers 时附题目全文与测试数据；考生附当前 attempt 的提交状态
@@ -338,7 +350,16 @@ router.get('/:id', optionalAuth, (req, res) => {
     }
   }
 
-  res.json({ ...exam, questions, user_submission: userSubmission, current_attempt: currentAttempt });
+  res.json({
+    ...exam,
+    questions,
+    user_submission: userSubmission,
+    current_attempt: currentAttempt,
+    // 服务端计时锚点：前端用 (server_now - attempt_started_at) 计算剩余时间，
+    // 避免依赖客户端时钟，也使刷新页面无法重置倒计时
+    attempt_started_at: attemptStartedAt,
+    server_now: new Date().toISOString()
+  });
 });
 
 // 排行榜：完成门槛 + 封榜过滤 + 每人最佳一次尝试排名（仅考生入榜）
@@ -350,6 +371,9 @@ router.get('/:id/leaderboard', optionalAuth, (req, res) => {
   const staff = !!req.user && ['teacher', 'admin', 'su'].includes(req.user.role);
   if (exam.is_hidden && !staff) {
     return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam not found.' });
+  }
+  if (!exam.is_public && !staff) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: 'Exam is not public.' });
   }
   if (!exam.leaderboard_enabled) {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Leaderboard not found.' });
@@ -756,6 +780,13 @@ router.post('/:id/submit', requireAuth, (req, res) => {
   }
   const attempt = attemptCount + 1;
 
+  // 作答时限（time_limit）服务端强制：仅靠前端倒计时刷新即可重置，这里按
+  // exam_attempts 里记录的起始时刻兜底；教师/管理员放行
+  const timeMsg = checkExamTimeLimit(exam, req.user, attempt, { graceMs: SUBMIT_GRACE_MS });
+  if (timeMsg) {
+    return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: timeMsg });
+  }
+
   const { answers } = req.body;
   if (!Array.isArray(answers)) {
     return res.status(400).json({ code: 1, reason: 'ERR_INVALID_ARGUMENT', message: 'answers is required.' });
@@ -912,8 +943,8 @@ router.get('/:id/submission/:sid', requireAuth, (req, res) => {
         SELECT es.*, e.title as exam_title, e.show_answer, e.total_score as exam_total_score
         FROM exam_submissions es
         JOIN exams e ON e.id = es.exam_id
-        WHERE es.id = ?
-      `).get(req.params.sid);
+        WHERE es.id = ? AND es.exam_id = ?
+      `).get(req.params.sid, req.params.id);
       if (!sub) {
         return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Submission not found.' });
       }
@@ -1049,6 +1080,7 @@ router.post('/:id/ai-grade/:sid', requireAuth, requireRole('teacher'), async (re
     return res.status(400).json({ code: 1, reason: 'ERR_NO_PENDING', message: '没有待评分的主观题。' });
   }
 
+  const failedAnswerIds = [];
   for (const answer of pendingAnswers) {
     try {
       const prompt = answer.ai_grading_prompt ||
@@ -1069,12 +1101,16 @@ router.post('/:id/ai-grade/:sid', requireAuth, requireRole('teacher'), async (re
       try {
         // 尝试解析 JSON
         const parsed = JSON.parse(aiResult);
-        score = Math.min(Math.max(0, parsed.score || 0), answer.max_score);
+        score = Math.min(Math.max(0, Number(parsed.score) || 0), answer.max_score);
         comment = parsed.comment || '';
       } catch {
-        // 如果解析失败，尝试从文本中提取分数
-        const scoreMatch = aiResult.match(/(\d+)/);
-        score = scoreMatch ? Math.min(parseInt(scoreMatch[1]), answer.max_score) : 0;
+        // 解析失败时从文本中提取分数：优先取"得分/评分/score"引导的数字，
+        // 否则直接取第一个数字很容易抓到题号、满分或年份，导致评分严重偏离
+        const named = aiResult.match(/(?:得分|分数|评分|score)\s*[：:=是为]?\s*(\d+(?:\.\d+)?)/i);
+        const anyNum = aiResult.match(/(\d+(?:\.\d+)?)/);
+        let parsedScore = named ? parseFloat(named[1]) : (anyNum ? parseFloat(anyNum[1]) : 0);
+        if (!isFinite(parsedScore)) parsedScore = 0;
+        score = Math.min(Math.max(0, parsedScore), answer.max_score);
         comment = aiResult;
       }
 
@@ -1084,17 +1120,26 @@ router.post('/:id/ai-grade/:sid', requireAuth, requireRole('teacher'), async (re
       `).run(score, score, comment, answer.id);
     } catch (err) {
       console.error('[AI Grading] Error:', err.message);
+      // 单题失败不能拖垮整批，但必须记录下来：否则这些题仍是 pending，
+      // 却会被下面无条件写成 status='graded' / ai_graded=1，教师再也看不到待批改入口
+      failedAnswerIds.push(answer.id);
     }
   }
 
-  // 更新提交状态
+  // 更新提交状态（只有全部待评分题目成功才标记为已评完）
+  const allGraded = failedAnswerIds.length === 0;
   const totalScore = db.prepare('SELECT SUM(score) as total FROM exam_answers WHERE submission_id = ?').get(req.params.sid).total || 0;
   db.prepare(`
-    UPDATE exam_submissions SET total_score = ?, status = 'graded', ai_graded = 1, graded_at = datetime('now'), graded_by = ?
+    UPDATE exam_submissions SET total_score = ?, status = ?, ai_graded = ?, graded_by = ?,
+      graded_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END
     WHERE id = ?
-  `).run(totalScore, req.user.id, req.params.sid);
+  `).run(totalScore, allGraded ? 'graded' : 'grading', allGraded ? 1 : 0, req.user.id, allGraded ? 1 : 0, req.params.sid);
 
-  res.json({ total_score: totalScore, status: 'graded' });
+  res.json({
+    total_score: totalScore,
+    status: allGraded ? 'graded' : 'grading',
+    failed_answers: failedAnswerIds.length
+  });
 });
 
 module.exports = router;

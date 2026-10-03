@@ -9,6 +9,8 @@ const { reviewCode, CODE_LENGTH_LIMIT } = require('../services/security');
 const { sanitizeLog, banUserAndRevoke } = require('../utils/securityHelpers');
 const { parsePageLimit } = require('../utils/pagination');
 const { checkExamWindow } = require('../utils/examWindow');
+const { problemVisibilityError } = require('../utils/visibility');
+const { checkExamTimeLimit, startAttempt, SUBMIT_GRACE_MS } = require('../utils/examAttempts');
 const config = require('../config/config');
 
 const router = express.Router();
@@ -132,6 +134,15 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
     return res.status(404).json({ code: 3, reason: 'ERR_NOT_FOUND', message: 'Problem not found.' });
   }
 
+  // ── 可见性校验（与 GET /problems/:id 保持一致）──
+  // 试卷内编程题（problem.exam_id 非空）的 is_public=0/is_hidden=1 是建卷时的固定写法，
+  // 其可见性由下方 exam 分支判定；其余题目一律走统一校验，
+  // 否则赛前的比赛题、隐藏题只要猜到 id 就能提交并回读测试数据。
+  if (!problem.exam_id) {
+    const verr = problemVisibilityError(problem, req);
+    if (verr) return res.status(403).json(verr);
+  }
+
   // ── 试卷编程题提交校验 ──
   let examAttempt = null;
   if (problem.exam_id) {
@@ -166,6 +177,12 @@ router.post('/', requireAuth, rateLimit, async (req, res) => {
       return res.status(400).json({ code: 1, reason: 'ERR_MAX_ATTEMPTS', message: '考试尝试次数已用尽，无法再提交代码。' });
     }
     examAttempt = attemptCount + 1;
+    // 作答时限服务端强制（刷新前端倒计时无效）；首次提交时若尚无起始时刻则现起算
+    startAttempt(exam.id, req.user.id, examAttempt);
+    const timeMsg = checkExamTimeLimit(exam, req.user, examAttempt, { graceMs: SUBMIT_GRACE_MS });
+    if (timeMsg) {
+      return res.status(403).json({ code: 6, reason: 'ERR_FORBIDDEN', message: timeMsg });
+    }
     // 每次尝试每题仅 1 次提交（teacher+ 可重复提交以便调试）
     if (req.user.role === 'user') {
       const used = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE exam_id = ? AND user_id = ? AND exam_attempt = ? AND problem_id = ?')

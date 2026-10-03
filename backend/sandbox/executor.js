@@ -224,7 +224,13 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
     const execFile = parts[0].replace(/^"|"$/g, '');
     const execArgs = parts.slice(1).map(a => a.replace(/^"|"$/g, ''));
 
-    const metaFile = path.join(workDir, '_meta.json');
+    // 判题元数据必须放在 workDir **之外**：
+    // 用户程序的 cwd 就是 workDir，若 _meta.json 落在里面，恶意提交可以先写入伪造的
+    // {"exit_code":0,"time_used":1,"signal":"null"} 再置为只读属性（workDir 默认被降为
+    // Low IL，子进程可在其中创建文件），使 runner 的 fopen("w") 静默失败，
+    // 从而把 TLE/MLE/RE 伪装成 AC。workDir 的父目录仍是 Medium IL，低完整性子进程写不进去。
+    const metaFile = path.join(config.sandbox.tempDir, path.basename(workDir) + '.meta.json');
+    try { fs.rmSync(metaFile, { force: true }); } catch {}
     const maxProcs = config.sandbox.maxProcesses || 64;
 
     // sandbox_runner.exe [--file-io] <time_ms> <mem_mb> <max_proc> <meta_file> <exe> [args...]
@@ -243,6 +249,8 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
     let stdout = '';
     let stderr = '';
     let killed = false;
+    // 输出超限与超时是两回事: 必须区分, 否则被 kill 的大输出程序会被误判成 TLE
+    let outputExceeded = false;
 
     const proc = spawn(SANDBOX_RUNNER_PATH, runnerArgs, {
       cwd: workDir,
@@ -260,6 +268,7 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
       stdout += data.toString();
       if (stdout.length > config.sandbox.maxOutputSize) {
         killed = true;
+        outputExceeded = true;
         killProc(proc, isWindows);
       }
     });
@@ -268,10 +277,14 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
       stderr += data.toString();
       if (stderr.length > config.sandbox.maxOutputSize) {
         killed = true;
+        outputExceeded = true;
         killProc(proc, isWindows);
       }
     });
 
+    // 子进程提前退出/启动失败时, stdin 写入会以 EPIPE 在该 stream 上 emit 'error';
+    // 没有监听器会冒泡成 uncaughtException → server.js 直接 process.exit(1) 整站重启
+    proc.stdin.on('error', () => {});
     if (stdin) {
       proc.stdin.write(stdin);
     }
@@ -287,6 +300,7 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
         const metaRaw = fs.readFileSync(metaFile, 'utf8');
         meta = JSON.parse(metaRaw);
       } catch {}
+      try { fs.rmSync(metaFile, { force: true }); } catch {}
 
       resolve({
         stdout,
@@ -294,7 +308,9 @@ function runCodeSandboxed(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, m
         exitCode: meta ? meta.exit_code : (code !== null ? code : -1),
         timeUsed: meta ? meta.time_used : timeUsed,
         memoryUsed: meta ? meta.memory_used : 0,
-        signal: meta ? (meta.signal === 'null' ? null : meta.signal) : (killed ? 'SIGKILL' : null)
+        signal: outputExceeded
+          ? 'OUTPUT_LIMIT'
+          : (meta ? (meta.signal === 'null' ? null : meta.signal) : (killed ? 'SIGKILL' : null))
       });
     });
 
@@ -328,6 +344,7 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
 
     const startTime = Date.now();
     let killed = false;
+    let outputExceeded = false;
     let peakMemoryKB = 0;
     let memoryLimitKB = memoryLimitMb * 1024;
 
@@ -344,6 +361,7 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
       stdout += data.toString();
       if (stdout.length > config.sandbox.maxOutputSize) {
         killed = true;
+        outputExceeded = true;
         killProc(proc, isWindows);
       }
     });
@@ -352,10 +370,13 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
       stderr += data.toString();
       if (stderr.length > config.sandbox.maxOutputSize) {
         killed = true;
+        outputExceeded = true;
         killProc(proc, isWindows);
       }
     });
 
+    // EPIPE 未监听会冒泡成 uncaughtException → 整站 process.exit(1)
+    proc.stdin.on('error', () => {});
     if (stdin) {
       proc.stdin.write(stdin);
     }
@@ -400,7 +421,7 @@ function runCodeLegacy(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memo
         exitCode: code !== null ? code : -1,
         timeUsed,
         memoryUsed: peakMemoryKB,
-        signal: killed ? (oom ? 'MEMORY_LIMIT' : 'SIGKILL') : null
+        signal: outputExceeded ? 'OUTPUT_LIMIT' : (killed ? (oom ? 'MEMORY_LIMIT' : 'SIGKILL') : null)
       });
     });
 
@@ -434,6 +455,10 @@ function runCode(workDir, srcFile, exeFile, lang, stdin, timeLimitMs, memoryLimi
 }
 
 function cleanupWorkDir(workDir) {
+  // 顺带清理可能残留的判题元数据（位于 workDir 同级，正常在 close 时已删）
+  try {
+    fs.rmSync(path.join(config.sandbox.tempDir, path.basename(workDir) + '.meta.json'), { force: true });
+  } catch {}
   try {
     fs.rmSync(workDir, { recursive: true, force: true, maxRetries: 3 });
   } catch (e) {
